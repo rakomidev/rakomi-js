@@ -1,0 +1,96 @@
+{
+  "name": "@rakomi/sdk-core",
+  "version": "0.1.0",
+  "description": "Framework-agnostic core for the Rakomi authentication SDKs.",
+  "keywords": [
+    "rakomi",
+    "authentication",
+    "auth",
+    "oauth",
+    "oidc",
+    "pkce",
+    "sdk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rakomidev/rakomi-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rakomidev/rakomi-js/issues"
+  },
+  "homepage": "https://github.com/rakomidev/rakomi-js#readme",
+  "rakomi": {
+    "apiVersion": "2026-03-01"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./oauth/errors": {
+      "import": {
+        "types": "./dist/oauth/errors.d.ts",
+        "default": "./dist/oauth/errors.js"
+      },
+      "require": {
+        "types": "./dist/oauth/errors.d.cts",
+        "default": "./dist/oauth/errors.cjs"
+      }
+    },
+    "./oauth/pkce": {
+      "import": {
+        "types": "./dist/oauth/pkce.d.ts",
+        "default": "./dist/oauth/pkce.js"
+      },
+      "require": {
+        "types": "./dist/oauth/pkce.d.cts",
+        "default": "./dist/oauth/pkce.cjs"
+      }
+    },
+    "./types/adapters": {
+      "import": {
+        "types": "./dist/types/adapters.d.ts",
+        "default": "./dist/types/adapters.js"
+      },
+      "require": {
+        "types": "./dist/types/adapters.d.cts",
+        "default": "./dist/types/adapters.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "author": "CRE8EVE Sp. z o.o.",
+  "files": [
+    "dist",
+    "!dist/metafile-*.json",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "THIRD-PARTY-NOTICES",
+    "sbom.cdx.json"
+  ],
+  "scripts": {
+    "build": "NODE_OPTIONS=--max-old-space-size=4096 tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ test/ --max-warnings=0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "jose": "^6.2.3"
+  }
+}

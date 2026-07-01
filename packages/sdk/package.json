@@ -1,0 +1,63 @@
+{
+  "name": "@rakomi/node",
+  "version": "0.20.0",
+  "description": "Server-side Node.js SDK for Rakomi — verify access tokens and webhook signatures. EU-native auth-as-a-service.",
+  "keywords": [
+    "rakomi",
+    "authentication",
+    "auth",
+    "oauth",
+    "oidc",
+    "jwt",
+    "jwks",
+    "webhook",
+    "sdk",
+    "nodejs"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rakomidev/rakomi-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rakomidev/rakomi-js/issues"
+  },
+  "homepage": "https://github.com/rakomidev/rakomi-js#readme",
+  "rakomi": {
+    "apiVersion": "2026-03-01"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "rakomi-doctor": "./dist/doctor.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "author": "CRE8EVE Sp. z o.o.",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "sbom.cdx.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.typetest.json",
+    "lint": "eslint src/ test/ --max-warnings=0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "jose": "^6.2.3"
+  },
+  "license": "MIT"
+}

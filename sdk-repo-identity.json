@@ -1,0 +1,18 @@
+{
+  "org": "rakomidev",
+  "repo": "rakomi-js",
+  "slug": "rakomidev/rakomi-js",
+  "url": "https://github.com/rakomidev/rakomi-js",
+  "repositoryUrl": "git+https://github.com/rakomidev/rakomi-js.git",
+  "bugsUrl": "https://github.com/rakomidev/rakomi-js/issues",
+  "homepage": "https://github.com/rakomidev/rakomi-js#readme",
+  "releasesUrl": "https://github.com/rakomidev/rakomi-js/releases",
+  "securityAdvisoriesUrl": "https://github.com/rakomidev/rakomi-js/security/advisories/new",
+  "hrefAllowPrefix": "https://github.com/rakomidev/rakomi-js",
+  "changesetRepo": "rakomidev/rakomi-js",
+  "externalRepoAllow": [
+    "panva/jose"
+  ],
+  "securityTxtCanonical": "https://rakomi.com/.well-known/security.txt",
+  "nameSystemClarifier": "`rakomi-js` = the full JavaScript/TypeScript SDK: Node server-side, React, React Native (and future frameworks)."
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "sdk-toolchain-pin/v1",
+  "node": {
+    "major": "22"
+  },
+  "typescript": "5.9.3",
+  "esbuild": "0.27.7",
+  "tsup": "8.5.1",
+  "pnpm": "10.6.5",
+  "npmPublishFloor": "11.5.1",
+  "_npmPublishFloorComment": "npm >= 11.5.1 is the load-bearing pin for OIDC provenance auto-generation (npm Trusted Publishing GA 2025-07-31). It is a PUBLISH-CONTEXT floor — checked only by the publish workflow, NOT by the determinism gate, which packs via pnpm and never invokes npm. Node 22 historically ships an older npm, so the publish job must `npm i -g npm@>=11.5.1` (or use a runner image that does). Recorded here as the single source the publish workflow reads."
+}

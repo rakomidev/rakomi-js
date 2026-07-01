@@ -1,0 +1,36 @@
+{
+  "name": "rakomi-js",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.6.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @rakomi/node run build && pnpm --filter @rakomi/react run build && pnpm --filter @rakomi/react-native run build && pnpm --filter @rakomi/sdk-core run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "tsup": "8.5.1",
+    "esbuild": "0.27.7",
+    "esbuild-plugin-preserve-directives": "0.0.11",
+    "turbo": "^2.8.12",
+    "@types/node": "^22.19.13",
+    "@types/react": "^19",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-native": ">=0.81",
+    "expo": ">=54",
+    "jose": "^6.2.3",
+    "publint": "0.3.21",
+    "@arethetypeswrong/cli": "0.18.3",
+    "@cyclonedx/cyclonedx-npm": "^4.1.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,163 @@
+name: Publish @rakomi/* (OIDC trusted publishing + SLSA provenance)
+
+on:
+  push:
+    tags:
+      - "sdk/v[0-9]*.[0-9]*.[0-9]*"
+      - "sdk-core/v[0-9]*.[0-9]*.[0-9]*"
+      - "react/v[0-9]*.[0-9]*.[0-9]*"
+      - "react-native/v[0-9]*.[0-9]*.[0-9]*"
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Assert repository is PUBLIC on a durable SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPO: rakomidev/rakomi-js
+        run: |
+          set -euo pipefail
+          VIS=$(gh repo view "$EXPECTED_REPO" --json visibility --jq '.visibility')
+          if [ "$VIS" != "PUBLIC" ]; then
+            echo "ERROR: repository visibility is '$VIS', not PUBLIC — publishing while private mints provenance that resolves to a dead public link"
+            exit 1
+          fi
+          if [ -z "${GITHUB_SHA:-}" ] || [ "${#GITHUB_SHA}" -ne 40 ]; then
+            echo "ERROR: no durable 40-hex commit SHA for this publish"
+            exit 1
+          fi
+          echo "repo is PUBLIC at $GITHUB_SHA"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Build/commit identity scan — no personal email
+        run: node scripts/check-build-identity.mjs
+
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          cache: pnpm
+
+      - name: Pin npm CLI to the trusted-publishing floor
+        env:
+          NPM_FLOOR: "11.5.1"
+        run: npm install -g "npm@${NPM_FLOOR}"
+
+      - name: Resolve package from the protected tag
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$REF" in
+            refs/tags/sdk/v*)          PKG_DIR=packages/sdk;          PKG_NAME=@rakomi/node;         PREFIX=sdk/v ;;
+            refs/tags/sdk-core/v*)     PKG_DIR=packages/sdk-core;     PKG_NAME=@rakomi/sdk-core;     PREFIX=sdk-core/v ;;
+            refs/tags/react/v*)        PKG_DIR=packages/react;        PKG_NAME=@rakomi/react;        PREFIX=react/v ;;
+            refs/tags/react-native/v*) PKG_DIR=packages/react-native; PKG_NAME=@rakomi/react-native; PREFIX=react-native/v ;;
+            *) echo "ERROR: tag $REF is not a recognized per-package release namespace"; exit 1 ;;
+          esac
+          {
+            echo "PKG_DIR=$PKG_DIR"
+            echo "PKG_NAME=$PKG_NAME"
+            echo "TAG_VERSION=${REF#refs/tags/${PREFIX}}"
+          } >> "$GITHUB_ENV"
+          echo "publishing $PKG_NAME from $PKG_DIR"
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: OIDC trusted-publisher config preflight
+        run: node scripts/check-oidc-config-match.mjs --package "$PKG_NAME"
+
+      - name: Build ${{ env.PKG_NAME }}
+        run: pnpm --filter "$PKG_NAME" run build
+
+      - name: Test ${{ env.PKG_NAME }}
+        run: pnpm --filter "$PKG_NAME" run test
+
+      - name: Generate SBOM + third-party notices (CRA Annex I Part II)
+        run: |
+          set -euo pipefail
+          if [ "$PKG_NAME" = "@rakomi/node" ]; then
+            pnpm exec cyclonedx-npm \
+              --omit dev --ignore-npm-errors --output-reproducible \
+              --spec-version 1.6 --output-format JSON \
+              --output-file "$PKG_DIR/sbom.cdx.json" \
+              -- "$PKG_DIR/package.json" || true
+            T=$(mktemp) && jq '.metadata.authors = [{"name": "CRE8EVE"}]' "$PKG_DIR/sbom.cdx.json" > "$T" && mv "$T" "$PKG_DIR/sbom.cdx.json"
+          else
+            node scripts/metafile-to-cdx.mjs --pkg "$PKG_DIR" --validate
+            node scripts/metafile-to-notices.mjs --pkg "$PKG_DIR"
+          fi
+
+      - name: Pack the verified tarball
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tgz"
+          pnpm --filter "$PKG_NAME" pack --pack-destination "$RUNNER_TEMP/tgz"
+          TGZ=$(ls "$RUNNER_TEMP/tgz"/*.tgz)
+          echo "TGZ=$TGZ" >> "$GITHUB_ENV"
+          GATE_SHA512=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write('sha512:'+c.createHash('sha512').update(f.readFileSync(process.env.TGZ)).digest('hex'))")
+          echo "GATE_SHA512=$GATE_SHA512" >> "$GITHUB_ENV"
+          echo "packed $TGZ ($GATE_SHA512)"
+
+      - name: Provenance repo-match (byte-string, not a regex)
+        run: node scripts/check-provenance-repo-match.mjs --tarball "$TGZ"
+
+      - name: Validate tag matches package.json version
+        run: |
+          set -euo pipefail
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "ERROR: git tag version ${TAG_VERSION} != package.json version ${PKG_VERSION}"
+            exit 1
+          fi
+        working-directory: ${{ env.PKG_DIR }}
+
+      - name: Publish-order guard — sdk-core resolvable first
+        run: node scripts/check-publish-order.mjs --package "$PKG_NAME"
+
+      - name: Install gitleaks (pinned, checksum-verified) for the no-secrets gate
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          set -euo pipefail
+          cd /tmp
+          curl -fsSL -o "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o checksums.txt "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" checksums.txt | sha256sum -c -
+          tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Release gates — supply-chain floor
+        run: node scripts/run-release-gates.mjs --tarball "$RUNNER_TEMP/tgz" --no-build
+      - name: Pack-install gate (zero workspace:* leak + sdk-core-as-real-dep)
+        run: node scripts/sdk-pack-install-gate.mjs --tarball "$RUNNER_TEMP/tgz"
+
+      - name: Publish the verified bytes to npm with provenance (point of no return)
+        run: npm publish "$TGZ" --provenance --access public --tag latest
+
+      - name: Provenance subject digest == gate digest
+        run: node scripts/check-provenance-subject.mjs --package "$PKG_NAME" --expect-digest "$GATE_SHA512"
+      - name: Provenance predicate scrub — field-aware
+        run: node scripts/check-provenance-predicate.mjs --package "$PKG_NAME"
+      - name: Rekor inclusion-proof issuer assertion
+        run: node scripts/check-rekor-issuer.mjs --package "$PKG_NAME" --expect-digest "$GATE_SHA512"

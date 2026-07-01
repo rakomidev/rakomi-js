@@ -1,0 +1,135 @@
+{
+  "name": "@rakomi/react",
+  "version": "0.6.0",
+  "description": "React SDK for Rakomi authentication — hooks and prebuilt UI components.",
+  "keywords": [
+    "rakomi",
+    "authentication",
+    "auth",
+    "oauth",
+    "oidc",
+    "react",
+    "hooks",
+    "sdk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rakomidev/rakomi-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rakomidev/rakomi-js/issues"
+  },
+  "homepage": "https://github.com/rakomidev/rakomi-js#readme",
+  "rakomi": {
+    "apiVersion": "2026-03-01"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./sign-in": {
+      "import": {
+        "types": "./dist/components/sign-in/index.d.ts",
+        "default": "./dist/components/sign-in/index.js"
+      },
+      "require": {
+        "types": "./dist/components/sign-in/index.d.cts",
+        "default": "./dist/components/sign-in/index.cjs"
+      }
+    },
+    "./sign-up": {
+      "import": {
+        "types": "./dist/components/sign-up/index.d.ts",
+        "default": "./dist/components/sign-up/index.js"
+      },
+      "require": {
+        "types": "./dist/components/sign-up/index.d.cts",
+        "default": "./dist/components/sign-up/index.cjs"
+      }
+    },
+    "./user-button": {
+      "import": {
+        "types": "./dist/components/user-button/index.d.ts",
+        "default": "./dist/components/user-button/index.js"
+      },
+      "require": {
+        "types": "./dist/components/user-button/index.d.cts",
+        "default": "./dist/components/user-button/index.cjs"
+      }
+    },
+    "./user-profile": {
+      "import": {
+        "types": "./dist/components/user-profile/index.d.ts",
+        "default": "./dist/components/user-profile/index.js"
+      },
+      "require": {
+        "types": "./dist/components/user-profile/index.d.cts",
+        "default": "./dist/components/user-profile/index.cjs"
+      }
+    },
+    "./billing": {
+      "import": {
+        "types": "./dist/components/billing/index.d.ts",
+        "default": "./dist/components/billing/index.js"
+      },
+      "require": {
+        "types": "./dist/components/billing/index.d.cts",
+        "default": "./dist/components/billing/index.cjs"
+      }
+    },
+    "./styles": "./dist/styles/base.css",
+    "./types": {
+      "import": {
+        "types": "./dist/types.d.ts"
+      },
+      "require": {
+        "types": "./dist/types.d.cts"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "author": "CRE8EVE Sp. z o.o.",
+  "files": [
+    "dist",
+    "!dist/metafile-*.json",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "THIRD-PARTY-NOTICES",
+    "sbom.cdx.json"
+  ],
+  "scripts": {
+    "build": "NODE_OPTIONS=--max-old-space-size=4096 tsup && node ../../scripts/copy-dir.mjs src/styles dist/styles",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.typetest.json",
+    "lint": "eslint src/ test/ --max-warnings=0",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@rakomi/node": "workspace:^"
+  },
+  "dependencies": {
+    "@rakomi/sdk-core": "workspace:^"
+  }
+}

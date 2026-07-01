@@ -1,0 +1,98 @@
+{
+  "name": "@rakomi/react-native",
+  "version": "0.1.0",
+  "description": "React Native / Expo SDK for Rakomi authentication.",
+  "keywords": [
+    "rakomi",
+    "authentication",
+    "auth",
+    "oauth",
+    "oidc",
+    "react-native",
+    "expo",
+    "sdk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rakomidev/rakomi-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rakomidev/rakomi-js/issues"
+  },
+  "homepage": "https://github.com/rakomidev/rakomi-js#readme",
+  "rakomi": {
+    "apiVersion": "2026-03-01"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./native": {
+      "import": {
+        "types": "./dist/native/index.d.ts",
+        "default": "./dist/native/index.js"
+      },
+      "require": {
+        "types": "./dist/native/index.d.cts",
+        "default": "./dist/native/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "author": "CRE8EVE Sp. z o.o.",
+  "files": [
+    "dist",
+    "!dist/metafile-*.json",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "COMPLIANCE.md",
+    "THIRD-PARTY-NOTICES",
+    "sbom.cdx.json"
+  ],
+  "scripts": {
+    "build": "NODE_OPTIONS=--max-old-space-size=4096 tsup",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.typetest.json",
+    "lint": "eslint src/ test/ --max-warnings=0",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "expo": ">=54",
+    "react": ">=18",
+    "react-native": ">=0.81"
+  },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": false
+    },
+    "react": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@rakomi/react": "workspace:*"
+  },
+  "dependencies": {
+    "@rakomi/sdk-core": "workspace:^",
+    "jose": "^6.2.3"
+  }
+}

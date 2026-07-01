@@ -1,0 +1,668 @@
+{
+  "$schema": "cleanroom-manifest/v1",
+  "repo": "rakomidev/rakomi-js",
+  "versionLabel": "ponr-real",
+  "generatedBy": "Rakomi SDK clean-room release export",
+  "orphanIdentity": {
+    "name": "Rakomi Release Bot",
+    "email": "release-bot@rakomi.com"
+  },
+  "denylistVersion": "2.0.0",
+  "toolchainPin": {
+    "$schema": "sdk-toolchain-pin/v1",
+    "node": {
+      "major": "22"
+    },
+    "typescript": "5.9.3",
+    "esbuild": "0.27.7",
+    "tsup": "8.5.1",
+    "pnpm": "10.6.5",
+    "npmPublishFloor": "11.5.1"
+  },
+  "toolchainPinSha256": "sha256:6d85ee17b0111387037ff334302889045066cee03ac54ac0315fc34ef194618e",
+  "ranUnder": {
+    "node": "v22.22.2",
+    "typescript": "5.9.3"
+  },
+  "scope": "source-tree (src/** + generated inline barrel). package.json / README / CHANGELOG = publish-config task (dependency sanitization + Changesets regen + README authoring)",
+  "allowList": "default-deny: src/** only (tests, snapshots, mocks, examples, configs, dotfiles EXCLUDED)",
+  "packages": [
+    {
+      "name": "@rakomi/node",
+      "version": "0.20.0",
+      "tagPrefix": "sdk",
+      "emittedSymbols": [],
+      "fileCount": 27
+    },
+    {
+      "name": "@rakomi/react",
+      "version": "0.6.0",
+      "tagPrefix": "react",
+      "emittedSymbols": [
+        "HEX_COLOR_REGEX",
+        "PASSWORD_MIN_LENGTH",
+        "blendColors",
+        "darkenHex",
+        "derivedBgSecondaryColor",
+        "derivedBorderColor",
+        "hexToHsl",
+        "hslToHex",
+        "interpolate",
+        "relativeLuminance"
+      ],
+      "fileCount": 76
+    },
+    {
+      "name": "@rakomi/react-native",
+      "version": "0.1.0",
+      "tagPrefix": "react-native",
+      "emittedSymbols": [],
+      "fileCount": 27
+    },
+    {
+      "name": "@rakomi/sdk-core",
+      "version": "0.1.0",
+      "tagPrefix": "sdk-core",
+      "emittedSymbols": [],
+      "fileCount": 19
+    }
+  ],
+  "files": [
+    {
+      "path": "packages/react-native/src/components/conditional.tsx",
+      "sha256": "sha256:f46d194d2a806e28516ff62920114c95478e0ae57a8af8da15f925709ff41037"
+    },
+    {
+      "path": "packages/react-native/src/components/sign-in.tsx",
+      "sha256": "sha256:8d6d50578b920eea2c54e9ec61d2a146015caa0732f05360c48fbe4bcd0cbeee"
+    },
+    {
+      "path": "packages/react-native/src/components/sign-up.tsx",
+      "sha256": "sha256:79deb442d9633a9ea1a1ce00127f9bf609654d29b8ec688cb2d870774fb9c52e"
+    },
+    {
+      "path": "packages/react-native/src/components/user-button.tsx",
+      "sha256": "sha256:b7d7df634b2aff4475b427ff40e082f9493ea56312b7c3ca66db1b4c00fc4eac"
+    },
+    {
+      "path": "packages/react-native/src/components/user-profile.tsx",
+      "sha256": "sha256:2817acee9fe93632bdb3a50e8062c41c7e23b38bad87ea46ac49acd91a9ef2bd"
+    },
+    {
+      "path": "packages/react-native/src/context.tsx",
+      "sha256": "sha256:bdd5f991f8aeb85aefb777da550eaac9adc5c6e9cc2a803534283391e7d24181"
+    },
+    {
+      "path": "packages/react-native/src/hooks/index.ts",
+      "sha256": "sha256:4e1dd2ba6d591edd95851c17bcc72efa3b3a6479281b67e8c8d52d935e29f859"
+    },
+    {
+      "path": "packages/react-native/src/hooks/use-auth-flows.ts",
+      "sha256": "sha256:6ca2aa2e1a45cd9bcd8bf398f109e17304a0decedf41604e293f9feb436a013e"
+    },
+    {
+      "path": "packages/react-native/src/hooks/use-auth.ts",
+      "sha256": "sha256:ce5554f701dc8bd61616f4e4502bb7c3f4dfbc168153bc438915232ed8acbb87"
+    },
+    {
+      "path": "packages/react-native/src/hooks/use-session.ts",
+      "sha256": "sha256:1d3e17f8c8b95c089b39667d12c33a87000e590000b6e80fe6ed037e8ae27e9c"
+    },
+    {
+      "path": "packages/react-native/src/hooks/use-submit-oauth-tokens.ts",
+      "sha256": "sha256:759bc8df8431b05c80f397ee55cab0012c1be7fdfd293a2efa4af44b1f791759"
+    },
+    {
+      "path": "packages/react-native/src/hooks/use-user.ts",
+      "sha256": "sha256:20426f2d0baaff3fba9a0bdf654ae7ca7536411a25a30126dab2d40a5c0c40d6"
+    },
+    {
+      "path": "packages/react-native/src/index.ts",
+      "sha256": "sha256:921438f8c7949f8aad0ec47fdb68af042799365f2ec755c904259172c259b10e"
+    },
+    {
+      "path": "packages/react-native/src/internal/canonical-url.ts",
+      "sha256": "sha256:37d5942308e251eddc1f2a8315e91774c289a38c546a0bf7a33e133f99a4b693"
+    },
+    {
+      "path": "packages/react-native/src/internal/dpop-refresh.ts",
+      "sha256": "sha256:22a880b6333730a19a7a271f0547cf860371c7fbfb6a8cee3fe7b41c885e384d"
+    },
+    {
+      "path": "packages/react-native/src/internal/dpop-session.ts",
+      "sha256": "sha256:d10a4a66bb9ee509eab58f3a8023027c0fcd59dc94e425f0b2add9facdc0de24"
+    },
+    {
+      "path": "packages/react-native/src/internal/http-client.ts",
+      "sha256": "sha256:89ec00ff4904be2c2e7f62f17ae96f87f97576a89167786fb7cdc7a3ac0da050"
+    },
+    {
+      "path": "packages/react-native/src/internal/rn-primitives.ts",
+      "sha256": "sha256:11f6e15dbcd4790b106e34716d0f4546153b7cf3438cf3a0ce7a95006344845e"
+    },
+    {
+      "path": "packages/react-native/src/internal/token-runtime.ts",
+      "sha256": "sha256:558c422020b28ed98f952ef550d072bbcae02b5a37ac27eb4f64155163308f05"
+    },
+    {
+      "path": "packages/react-native/src/internal/webhook-verify.ts",
+      "sha256": "sha256:74180da57874b6b7a5b9132b3cdbf5d53f314e463e075124c0bac6df39e29247"
+    },
+    {
+      "path": "packages/react-native/src/native/bare-rn-example.ts",
+      "sha256": "sha256:5b995601e6e1efa607f4cf628f06379f3681a9a01147fd5a624eb61bb32c4363"
+    },
+    {
+      "path": "packages/react-native/src/native/dpop-prover.ts",
+      "sha256": "sha256:2ac0324987559511b9ee8556da7b8db68826f23e364c11c30b6aa199ee70de5d"
+    },
+    {
+      "path": "packages/react-native/src/native/expo-adapter.ts",
+      "sha256": "sha256:b2115c9108a2465948035cc14066d6d01f672481670d41d7291d1b725605e76b"
+    },
+    {
+      "path": "packages/react-native/src/native/expo-modules.d.ts",
+      "sha256": "sha256:6c89c772ef4f2af9eefb787cbc7a23a47d8002ff1e44c06502e5efeadc41bc60"
+    },
+    {
+      "path": "packages/react-native/src/native/index.ts",
+      "sha256": "sha256:8667bd4bc3bb342101297670eaa810151f872270071507d4cb069e5959a253d8"
+    },
+    {
+      "path": "packages/react-native/src/native/types.ts",
+      "sha256": "sha256:7e06e5a3d29d1706a06a7649dc599b6a3ad824b2f0740b1572f6df798b2fecee"
+    },
+    {
+      "path": "packages/react-native/src/oauth/social-auth.ts",
+      "sha256": "sha256:160be48d5b8040f714c6be8f693b094b415b51584237e6fab216a0c4d8c11b27"
+    },
+    {
+      "path": "packages/react/src/_inlined-symbols.ts",
+      "sha256": "sha256:9447ed29b2e3cd18b57fd861da5b1e4fdd45ce18c6be26834f2d9b53764d7ecf"
+    },
+    {
+      "path": "packages/react/src/appearance.ts",
+      "sha256": "sha256:ae334665d2f8d3ce471824958d44e11a90c5603fdd1e924760ae3a8c6a7a919a"
+    },
+    {
+      "path": "packages/react/src/components/billing/customer-portal.tsx",
+      "sha256": "sha256:73d6103ad4e31e3fab4fb90b839e61d439765e40c52f4ffd1495add836106795"
+    },
+    {
+      "path": "packages/react/src/components/billing/index.ts",
+      "sha256": "sha256:f7c9a8e1709d639cfb17e8cfd87a3b2fc11a04ae97bbaff426d979b32eef1842"
+    },
+    {
+      "path": "packages/react/src/components/billing/pricing-table.tsx",
+      "sha256": "sha256:89424b64a410c85bebcde48d17137e02a543de015aa550318192278fc11a5960"
+    },
+    {
+      "path": "packages/react/src/components/billing/subscription-manager.tsx",
+      "sha256": "sha256:3d8071a82d67ec2803048530287e792e302b048eb61c05f9dab3717ab7722d64"
+    },
+    {
+      "path": "packages/react/src/components/billing/types.ts",
+      "sha256": "sha256:a3d31690e5915c7d6a030900a7d3fd13a376797d49c6509f27f42e639418b9c5"
+    },
+    {
+      "path": "packages/react/src/components/Feature.tsx",
+      "sha256": "sha256:23d14f0ac88dd5f12915fb3686f7d0e0e2538c3e11ee2b36981a78d7b3e3a653"
+    },
+    {
+      "path": "packages/react/src/components/protect.tsx",
+      "sha256": "sha256:ee375774d68bd626b1ebe56097cf728aa04472c6a51e5719ffa0938575a19ebf"
+    },
+    {
+      "path": "packages/react/src/components/sign-in/index.ts",
+      "sha256": "sha256:4489d5879e237a5405b2c63f4d24b12a4eca0dce8604f3829e58c83c48c1f46d"
+    },
+    {
+      "path": "packages/react/src/components/sign-in/sign-in.tsx",
+      "sha256": "sha256:7960b3b56799ab74a7d9ac8c872281c8f043cb73f19d19b82a253744849c9a53"
+    },
+    {
+      "path": "packages/react/src/components/sign-in/types.ts",
+      "sha256": "sha256:fed8eead967ad1b785df26e0e04d57a5fb5564707d8d8d699471f6d2a92af77c"
+    },
+    {
+      "path": "packages/react/src/components/sign-up/index.ts",
+      "sha256": "sha256:ee20c26f1b9d2650d2444de8b52f91003dd0cfb667edd91d5ea893554b8029dd"
+    },
+    {
+      "path": "packages/react/src/components/sign-up/sign-up.tsx",
+      "sha256": "sha256:fd1034906f4192c144f51821cd41c6b0c332cd6bde7ee816be19f72e5b9e451f"
+    },
+    {
+      "path": "packages/react/src/components/sign-up/types.ts",
+      "sha256": "sha256:399d73005182ea9e41a2d5cc834aff68c4174b54ab20eea156d4681e19c95e68"
+    },
+    {
+      "path": "packages/react/src/components/signed-in.tsx",
+      "sha256": "sha256:affaf1faf810cfb74e9e5fd73788d6ab3a73e3ac3257ed3d65b39575ac1ff4b8"
+    },
+    {
+      "path": "packages/react/src/components/signed-out.tsx",
+      "sha256": "sha256:48325b22dbb6e842671809e06f795cec815a498d5b5662ccbf5e76bb4ee31e49"
+    },
+    {
+      "path": "packages/react/src/components/user-button/index.ts",
+      "sha256": "sha256:94305c61db699850b2f6dde4d4b754aa3e927729e1a21f966cfbe961fb6ffe3e"
+    },
+    {
+      "path": "packages/react/src/components/user-button/types.ts",
+      "sha256": "sha256:cfd933e7cff1fb16c36a01c0f22350680ca8b9e7c2c9390388cf62ca7327b25d"
+    },
+    {
+      "path": "packages/react/src/components/user-button/user-button.tsx",
+      "sha256": "sha256:893610e4ed64bc2aa5caca41f7a12433878ebcff404fd614fadf6b4dfcb667ee"
+    },
+    {
+      "path": "packages/react/src/components/user-profile/index.ts",
+      "sha256": "sha256:f79941f2d681ff454faefb0440904ab4368bb19cd8a594737de0552c9d62c736"
+    },
+    {
+      "path": "packages/react/src/components/user-profile/types.ts",
+      "sha256": "sha256:3135cba2adb43f8bc679f19b5880a2d376649259f9dd5c866b319daae0b16f0e"
+    },
+    {
+      "path": "packages/react/src/components/user-profile/user-profile.tsx",
+      "sha256": "sha256:9db0b37209ce00c12e909d8fa7d8d0bca6a6063180f393950aeafebeec1dc3f0"
+    },
+    {
+      "path": "packages/react/src/context.tsx",
+      "sha256": "sha256:824181d3d15f65e1e29b0775b3cdac7e01a51d39e96e58e66ff569d2aeb652b9"
+    },
+    {
+      "path": "packages/react/src/event-log.ts",
+      "sha256": "sha256:0eaaf57ac3ee7112081341570cd8ee1ba4b79cc87da964b125aa6b9aad2acd17"
+    },
+    {
+      "path": "packages/react/src/hooks/use-anonymous-signin.ts",
+      "sha256": "sha256:5a986fa59ac4950917f636cb2a031b3e44f896c0ffeb9a7ae78676c5e5a75e4d"
+    },
+    {
+      "path": "packages/react/src/hooks/use-auth-config.ts",
+      "sha256": "sha256:a0d187970bb81576a7cbeb6db4ba2763067f77b488f92a0dbf03419bcb249c66"
+    },
+    {
+      "path": "packages/react/src/hooks/use-auth.ts",
+      "sha256": "sha256:12caaed8f9eff276fb3114b95da050ac0f240f424946af8d81cbd0ec723a2641"
+    },
+    {
+      "path": "packages/react/src/hooks/use-baas-plans.ts",
+      "sha256": "sha256:22e9164afa88c1f1d7ca07fcf6390ef02e5a8fb0a65297596ecdce0ae17d8c75"
+    },
+    {
+      "path": "packages/react/src/hooks/use-baas-subscription.ts",
+      "sha256": "sha256:101825928cf5c1b811f05c31bac3f5d330e83434e765221eaff206b152a8ca2b"
+    },
+    {
+      "path": "packages/react/src/hooks/use-branding.ts",
+      "sha256": "sha256:96b86ac97d17881b50db1639f44833dad79a3059d9521cbc564d94606087e118"
+    },
+    {
+      "path": "packages/react/src/hooks/use-flag.ts",
+      "sha256": "sha256:c71cf2bb08abc78b29bac855946ecb126c1852017b7303719269803f59c4db8d"
+    },
+    {
+      "path": "packages/react/src/hooks/use-linked-accounts.ts",
+      "sha256": "sha256:22e32175b1bfec6dfab0ea792d8db52df196f6ab770c42412f82fcc22a43f5a8"
+    },
+    {
+      "path": "packages/react/src/hooks/use-organization-list.ts",
+      "sha256": "sha256:c742e39a652dc8852904353fb0edcd3d08e347d131bdf1de5eda2f1e633e1ba4"
+    },
+    {
+      "path": "packages/react/src/hooks/use-organization.ts",
+      "sha256": "sha256:e9e11467bc256210a258f9945099f00083db9c2b8156cac91f0e12dd5fca32b9"
+    },
+    {
+      "path": "packages/react/src/hooks/use-session.ts",
+      "sha256": "sha256:f8cf13cf708ca72d53edd63a06bafd886627a483c65c4c8ddc5f707a482fdc86"
+    },
+    {
+      "path": "packages/react/src/hooks/use-translation.ts",
+      "sha256": "sha256:aea13fb5c473809106832e0c5d87c46f44ed562421970c326f7f5b6d4bb711a4"
+    },
+    {
+      "path": "packages/react/src/hooks/use-user.ts",
+      "sha256": "sha256:39b51de0b6a23ac776330ae68c9a35705e1cd1f2082df1b1ae2f6b4fc1323c3b"
+    },
+    {
+      "path": "packages/react/src/i18n/de.ts",
+      "sha256": "sha256:f358addc70483fd9d48cc4d31f8a8a6bb4023ccc6e9af8f02d22ca0646db1b3a"
+    },
+    {
+      "path": "packages/react/src/i18n/en.ts",
+      "sha256": "sha256:5f98abb0267a9bded1640eff81fb15b635714fc4948749f9970ba4c7d91a13a1"
+    },
+    {
+      "path": "packages/react/src/i18n/es.ts",
+      "sha256": "sha256:74df209818ff9d8e00e7bbdabfe82334c702b1e1c9d86b4d7d700998cebaccfa"
+    },
+    {
+      "path": "packages/react/src/i18n/fr.ts",
+      "sha256": "sha256:bfc48f52b9bb9dc8b75316812750939e9c45842c5ad469c0d72d4c607fc48341"
+    },
+    {
+      "path": "packages/react/src/i18n/index.ts",
+      "sha256": "sha256:6ede8383630f43202c19dd30268bff831910b33ec7046bba0e3452b83dd7c83c"
+    },
+    {
+      "path": "packages/react/src/i18n/pl.ts",
+      "sha256": "sha256:2f708aed83c912e23da109179f66a33590d45c702db1446c5c138689afe2f2a7"
+    },
+    {
+      "path": "packages/react/src/i18n/types.ts",
+      "sha256": "sha256:25dd8d600ffeb364cd0b82039b82040f1c780c453ac49c24d730514a791678aa"
+    },
+    {
+      "path": "packages/react/src/index.ts",
+      "sha256": "sha256:5f7804d54246d987fdd654d6c655eab693b1728ff40ac1fb690fde4121721788"
+    },
+    {
+      "path": "packages/react/src/internal/auth-error-boundary.tsx",
+      "sha256": "sha256:8995752146eb8c1da560ae055e9b2ac984dc5a16ac4b3fa1bc97f3b17086efd4"
+    },
+    {
+      "path": "packages/react/src/internal/branding-styles.ts",
+      "sha256": "sha256:811fff4244fb4a8257fa3eff5b5f634ef56910936e6c237417a56e547c9de458"
+    },
+    {
+      "path": "packages/react/src/internal/password-input.tsx",
+      "sha256": "sha256:81fd04e95879306e2e984c12bcdc7c1546e1ba04d4bd62f1065ef299d9f2ec84"
+    },
+    {
+      "path": "packages/react/src/internal/use-auth-internals.ts",
+      "sha256": "sha256:b354f2c85fbb54d1e3f22fd3202e60e78251566b1ac81548c53e74f1273b730d"
+    },
+    {
+      "path": "packages/react/src/jwt-decode.ts",
+      "sha256": "sha256:ab1f55af2c67dac5793d244db01b7e3d42cf6bf7a0737589b7be0bbf85f71988"
+    },
+    {
+      "path": "packages/react/src/lib/fetch-client.ts",
+      "sha256": "sha256:d949539774263cd233ecc9fea18370c98e909275386c6a88a6615b90055a14a6"
+    },
+    {
+      "path": "packages/react/src/oauth/anonymous-signin.ts",
+      "sha256": "sha256:28ad130661d13b7dd33696d4d85c840345b6759bb4473ef33dd72ba5b6d55a33"
+    },
+    {
+      "path": "packages/react/src/oauth/auth-config.ts",
+      "sha256": "sha256:40d6c8eb53dbd2453efc976078c6d3c2622f0bcdd1bf13f48c71f432a29425b4"
+    },
+    {
+      "path": "packages/react/src/oauth/authorize.ts",
+      "sha256": "sha256:a923aacd0d1335396cc0f8a3870e741a7521263b176db51e478bd53ee416d0c4"
+    },
+    {
+      "path": "packages/react/src/oauth/direct-auth.ts",
+      "sha256": "sha256:88441ec3bb15a423e9db0c922fcec012ab93d721380546324c26f0bbb8c7ffa5"
+    },
+    {
+      "path": "packages/react/src/oauth/email-otp.ts",
+      "sha256": "sha256:885acacee2bbe79d0ed3360655d75a24ff3c89fcccd9dbaee8955e3b99a7247a"
+    },
+    {
+      "path": "packages/react/src/oauth/errors.ts",
+      "sha256": "sha256:f9a5c2f48a4b69c61cf71b67036edb0a45a388c056528edf2c5b8509a1273151"
+    },
+    {
+      "path": "packages/react/src/oauth/magic-link.ts",
+      "sha256": "sha256:62a3ad6feffbe1d29967fc8abd8dabde70db5f4ad9005daf4c3696853289940f"
+    },
+    {
+      "path": "packages/react/src/oauth/mfa.ts",
+      "sha256": "sha256:0a743f5d005742558f229a1bc3243e0498213979c995aaa658b19a91bd99a0af"
+    },
+    {
+      "path": "packages/react/src/oauth/password-reset.ts",
+      "sha256": "sha256:3411d9a485530b650b1259d7cd53a5b7934b3389da4d85349c16ba582935dba7"
+    },
+    {
+      "path": "packages/react/src/oauth/pkce.ts",
+      "sha256": "sha256:68271fd31f01d0e0b4146cca6c8de7cdb09b55610477f2757ff71c7ec41ea058"
+    },
+    {
+      "path": "packages/react/src/oauth/profile.ts",
+      "sha256": "sha256:937d4a77b60aa26617c495d5f4d7c04a512e87b33f238f5f53c6ba712734e982"
+    },
+    {
+      "path": "packages/react/src/oauth/register.ts",
+      "sha256": "sha256:09f2c7737b82be30a56fa1d66a754f306b906290f7f5e6c06a6714acee19f056"
+    },
+    {
+      "path": "packages/react/src/oauth/social-auth.ts",
+      "sha256": "sha256:e743bdb96e0b0e30fff2fa9a76ea40a6842094099129691dc9ee8d735eeb6376"
+    },
+    {
+      "path": "packages/react/src/oauth/state.ts",
+      "sha256": "sha256:476ae8c03e2f46914d2591d04402f8c1db61207a0329eacc6d8130ec4c396e82"
+    },
+    {
+      "path": "packages/react/src/oauth/token.ts",
+      "sha256": "sha256:d886a767130cacf29475d2ea6f4fa917b46b13ff66e93baa996b93804ca35501"
+    },
+    {
+      "path": "packages/react/src/rbac.ts",
+      "sha256": "sha256:d1589fa8d7a5cd6975ae0fd251eda3878049992c7389e4f3806c789292f43c6c"
+    },
+    {
+      "path": "packages/react/src/storage.ts",
+      "sha256": "sha256:bc8c18328699be37bb4e8a9db785d991c0c3fbc511206a5acfe654cc48bd8958"
+    },
+    {
+      "path": "packages/react/src/styles/base.css",
+      "sha256": "sha256:6deef24d91ecbd335b506a97c3c36469e9cceff70439185d58c70fe878e5e614"
+    },
+    {
+      "path": "packages/react/src/tab-sync.ts",
+      "sha256": "sha256:ca2cbc31777a69722298008727d68b27b0810f1ef33b397ba2114e1f9d994910"
+    },
+    {
+      "path": "packages/react/src/token-manager.ts",
+      "sha256": "sha256:63d2af4aba1ccc83a56babc60e84cb96b6489b943e76d307d1c50b3b4ae5fddd"
+    },
+    {
+      "path": "packages/react/src/types.ts",
+      "sha256": "sha256:80fa2ffe1417641e85d0dca0959ae16a663e276703cde3f824034175be941d2f"
+    },
+    {
+      "path": "packages/react/src/utils/copy-to-clipboard.ts",
+      "sha256": "sha256:07b961ca9975e0c7b756608d49ca8f57ee2005db322cea7e5c574ca36f53dec2"
+    },
+    {
+      "path": "packages/react/src/utils/password-strength.ts",
+      "sha256": "sha256:45275539f2bdeb505d5d95d2c01ea5287952ef59569c6d599b06c16fd4dfab63"
+    },
+    {
+      "path": "packages/react/src/utils/safe-url.ts",
+      "sha256": "sha256:1685491b9727dc5d7bb2c726e87aa1413552356490ba9619b01a1000b28aa464"
+    },
+    {
+      "path": "packages/sdk-core/src/auth-flows.ts",
+      "sha256": "sha256:c85ed8b394b49082fc335b2ba2e96649b3716157a292caf9118c2c9b44d0d946"
+    },
+    {
+      "path": "packages/sdk-core/src/auth-machine.ts",
+      "sha256": "sha256:c99d74ec6d75270797ea2a9921c15c5dde907d0e19667c30a4ef3437af9f4657"
+    },
+    {
+      "path": "packages/sdk-core/src/event-log.ts",
+      "sha256": "sha256:1f368280dbbad5dc1f8d06e40f6eabf3e8eeef7728ccfe43a9c631720d76cd33"
+    },
+    {
+      "path": "packages/sdk-core/src/i18n.ts",
+      "sha256": "sha256:c3d91da894d7463c00fb0263c4d553ef89f0bbde0cec820bcdf1566e8e11cffa"
+    },
+    {
+      "path": "packages/sdk-core/src/index.ts",
+      "sha256": "sha256:4ba8a0a938914759f8b371962dd70b3e4858aca50f886338f5dcef3606fb6f5c"
+    },
+    {
+      "path": "packages/sdk-core/src/jwks-cache.ts",
+      "sha256": "sha256:008d6c18490893b7d7f500c76a023d8daa4c33526e62daef40d4eaa303cce817"
+    },
+    {
+      "path": "packages/sdk-core/src/jwt-decode.ts",
+      "sha256": "sha256:ce8fdab7f20dc5ee936bec91b4e9b2c3bac5d5f82d0ba8ca04e805cfdb56cdfc"
+    },
+    {
+      "path": "packages/sdk-core/src/oauth/authorize.ts",
+      "sha256": "sha256:24926d0429993eae5dcb045dc7ef5be1d771e39ea3f5dff2047f7bdaa2edb2af"
+    },
+    {
+      "path": "packages/sdk-core/src/oauth/errors.ts",
+      "sha256": "sha256:331a52d518b477671b864cc8fd918ebcd9880627f42c7a9ce0ee4f5b1dffbe9c"
+    },
+    {
+      "path": "packages/sdk-core/src/oauth/mfa.ts",
+      "sha256": "sha256:07681d1a22eb9a7d70cd27069b6205d762da372039f450bfe3458c7b149609c9"
+    },
+    {
+      "path": "packages/sdk-core/src/oauth/pkce.ts",
+      "sha256": "sha256:6ddad58b0dbb0f05de09cb27f43bd29ff086dde6d3e7fa438f0e34661c80e1c2"
+    },
+    {
+      "path": "packages/sdk-core/src/oauth/state.ts",
+      "sha256": "sha256:378635d60fd6e8f0f8cca7786b019db4440b1c518c6e361288d671ce0f3b2a8b"
+    },
+    {
+      "path": "packages/sdk-core/src/oauth/token-exchange.ts",
+      "sha256": "sha256:3992eee9de05530b6c54354c909079d201bff40ed160d8cb209a3415770e379d"
+    },
+    {
+      "path": "packages/sdk-core/src/rbac.ts",
+      "sha256": "sha256:9f4468f6e88a2faf365f2e14a60f80b01d02ccc7aeb6204ffc276ae458d8cabd"
+    },
+    {
+      "path": "packages/sdk-core/src/storage-keys.ts",
+      "sha256": "sha256:2d98ed1da76eadba31fae811a9f655c24f3a2c35f59a0d22227fc9c04559d44a"
+    },
+    {
+      "path": "packages/sdk-core/src/types/adapters.ts",
+      "sha256": "sha256:89ff31bc1d19eb3415a685202baf5d26c3ff443061fac37adf36b3dc9f36ff44"
+    },
+    {
+      "path": "packages/sdk-core/src/types/auth-error.ts",
+      "sha256": "sha256:28a00a9959301866931720589857bfb2c5c9fe88b5f88e6aeb2943b82e651bdf"
+    },
+    {
+      "path": "packages/sdk-core/src/types/auth.ts",
+      "sha256": "sha256:d7538e63a9a7e67cf75d72ca42154844307dfb7ddeaa63a6d8e545bbfbfe56ce"
+    },
+    {
+      "path": "packages/sdk-core/src/utils.ts",
+      "sha256": "sha256:a500e7096dd1cfea8bd7199d00acd6679a428e0451b0c506b7e99ae323ff68aa"
+    },
+    {
+      "path": "packages/sdk/src/agents.ts",
+      "sha256": "sha256:099fa02c60c6e121be7f4c1ae8dffd8875c1d9bd86ec67ee59e0f67c2f2d4e57"
+    },
+    {
+      "path": "packages/sdk/src/anonymous.ts",
+      "sha256": "sha256:9ac3d0e0cc99113e3cf9628465950443c617c8d677dbb1435994c6725c47ac07"
+    },
+    {
+      "path": "packages/sdk/src/ciba.ts",
+      "sha256": "sha256:82aad6a3c47b8954cee009175210cee5697c16fca5b32fbbde5f459db7c167fe"
+    },
+    {
+      "path": "packages/sdk/src/client.ts",
+      "sha256": "sha256:0e5b6ce8bfbbca8c54e81171ee0084d030b0dec369002def291753aeb2aaaae6"
+    },
+    {
+      "path": "packages/sdk/src/credentials.ts",
+      "sha256": "sha256:ab55aae260d2c9aa7ec5fdb9e41f788112be0b1c72b984d2ca955a6334f6e6d4"
+    },
+    {
+      "path": "packages/sdk/src/device.ts",
+      "sha256": "sha256:fc4637c31e25f4dd591f6243257d0c59f677036e491cf8c4e56ab39aadcf296c"
+    },
+    {
+      "path": "packages/sdk/src/doctor.ts",
+      "sha256": "sha256:5d978a49fb41f911e767b4a90c825f411aa1944a40b2dc984c8526ed517b36de"
+    },
+    {
+      "path": "packages/sdk/src/dpop-session.ts",
+      "sha256": "sha256:0202597f386a92b7c6196b29179496cb721e4d4a570081073ac761cd8748251c"
+    },
+    {
+      "path": "packages/sdk/src/dpop.ts",
+      "sha256": "sha256:9a40a5fb86a7eda51de98bc43aebc2f79d789b6d0d17062334fe6715daa1c2b8"
+    },
+    {
+      "path": "packages/sdk/src/env-detect.ts",
+      "sha256": "sha256:ef1dc1b07e9f83deeb3b4f788a460496767dbc987268f152ccc37147f5ec5050"
+    },
+    {
+      "path": "packages/sdk/src/errors.ts",
+      "sha256": "sha256:c894f04db393c99afa329b3ccff87ab40543bb7543c3c85bb478faa72d54dc29"
+    },
+    {
+      "path": "packages/sdk/src/eudi.ts",
+      "sha256": "sha256:c454bd99c05b1902acb490f8db16292277b1d045d0df9844853fdba6501a7e09"
+    },
+    {
+      "path": "packages/sdk/src/flags.ts",
+      "sha256": "sha256:96d92b54011060a28843f5b0dc3cfe7e87f9a7cba90e46f15ed5b1ea704a7595"
+    },
+    {
+      "path": "packages/sdk/src/guards.ts",
+      "sha256": "sha256:96ba31aad568e773adf4313979718d72c1cfa72bfe3dae6c2189e4765e549fcd"
+    },
+    {
+      "path": "packages/sdk/src/index.ts",
+      "sha256": "sha256:5bf7eb6375aa2a70aa0c1b30684962467380b2dbd137224efa7d70ff83571e04"
+    },
+    {
+      "path": "packages/sdk/src/internal/canonical-url.ts",
+      "sha256": "sha256:04bc68a739a4950b6b5e0e873026c4b54c11413a093f0867f5d753013c3d4822"
+    },
+    {
+      "path": "packages/sdk/src/internal/shared-constants.ts",
+      "sha256": "sha256:0ecf683a4d9db78049d8b92a431bdd449e1dc499ed29d51aa7261fa08ea1ff03"
+    },
+    {
+      "path": "packages/sdk/src/jwks-cache.ts",
+      "sha256": "sha256:19e303b438604ca69b0b8768457d210ac0448a5134f8968135677cb476f6e08c"
+    },
+    {
+      "path": "packages/sdk/src/link.ts",
+      "sha256": "sha256:aa12dc4527c448d94d2c7ba9738cf65542ef018fd8f91da7e2f901cdbde7cfaa"
+    },
+    {
+      "path": "packages/sdk/src/middleware.ts",
+      "sha256": "sha256:1d881bc89ea7561de97fc7e670c14fc5c10c28ce3e16ff97efd351393fb254ce"
+    },
+    {
+      "path": "packages/sdk/src/oauth.ts",
+      "sha256": "sha256:c8f5ed012911a8c950d715393e12b04e949729880a740ad9009a4a677dcbe79f"
+    },
+    {
+      "path": "packages/sdk/src/rbac.ts",
+      "sha256": "sha256:93b88142ec142758af7bf175dbe369c7f88ee1468568f712888c8259ebcfc1d1"
+    },
+    {
+      "path": "packages/sdk/src/token-exchange.ts",
+      "sha256": "sha256:49ae27f36fed7473f6d0232a6277da18cdd1ba131633506245209eed16760039"
+    },
+    {
+      "path": "packages/sdk/src/types.ts",
+      "sha256": "sha256:6fa38eb620c14e28360cd0d81720c6d0779c57cee31ea9b663d8364a54641917"
+    },
+    {
+      "path": "packages/sdk/src/verify-publisher-webhook.ts",
+      "sha256": "sha256:d7532cc53c35d59a9244a6962f6db4454f137025f23c9f8b377d8ad5ced455b2"
+    },
+    {
+      "path": "packages/sdk/src/verify-token.ts",
+      "sha256": "sha256:f43d489d0e0b0d9006004e3e07d6159f3d31e2810c9c85813b070fc02caab913"
+    },
+    {
+      "path": "packages/sdk/src/verify-webhook.ts",
+      "sha256": "sha256:76bcd6a9e498cf8543bd2894c883f7aad950ba7b804729f5c141946722918ed1"
+    }
+  ]
+}

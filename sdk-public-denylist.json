@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "categories": [
+    {
+      "id": "private-registry-creds",
+      "why": "predicate-scrub category — terms held as sha256 (plaintext in the upstream deny-list; hashed here so the public file leaks no internal tell)",
+      "case": "insensitive",
+      "hashedLiterals": [
+        {
+          "len": 18,
+          "h": "0e10f3b8bb2a1ef311aba90fc1dd1e92b64513ea594607a17d1cd5f79c425792"
+        },
+        {
+          "len": 18,
+          "h": "cb7507b9c304d38bdd6da2189a508195413ce84a24bb8e70b4c3743e73d01d5e"
+        },
+        {
+          "len": 10,
+          "h": "39248f301225c5724f7df053a37441d5f650d4107a86ea486173636a51326c53"
+        },
+        {
+          "len": 8,
+          "h": "dadf9a0861cf7b940e2dd35c61fada0f3c95ec1efcddfde70e6833f0d6e42b9f"
+        }
+      ]
+    },
+    {
+      "id": "ci-runner-internal",
+      "why": "predicate-scrub category — terms held as sha256 (plaintext in the upstream deny-list; hashed here so the public file leaks no internal tell)",
+      "case": "insensitive",
+      "hashedLiterals": [
+        {
+          "len": 11,
+          "h": "4ff74fee4b291f59e0b1cd0a1b95896d08600e87126221fe3d21dcb168a6d323"
+        },
+        {
+          "len": 15,
+          "h": "837dc14ff4c32542cb2b6938130b97db76ee8b98dea75adac9e4be71c8cae49b"
+        }
+      ]
+    }
+  ]
+}

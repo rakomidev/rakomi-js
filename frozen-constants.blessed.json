@@ -1,0 +1,11 @@
+{
+  "issuer": "https://rakomi.com",
+  "audience": "https://rakomi.com",
+  "endpoints": {
+    "authorization_endpoint": "https://accounts.rakomi.com/oauth/authorize",
+    "token_endpoint": "https://api.rakomi.com/oauth/token",
+    "jwks_uri": "https://api.rakomi.com/.well-known/jwks.json",
+    "userinfo_endpoint": "https://api.rakomi.com/oauth/userinfo"
+  },
+  "alg": "RS256"
+}

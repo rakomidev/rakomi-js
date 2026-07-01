@@ -1,0 +1,4 @@
+# Gitleaks configuration for the public SDK release pipeline.
+# Extends the gitleaks v8 default ruleset; the published packages ship no secrets.
+[extend]
+useDefault = true
