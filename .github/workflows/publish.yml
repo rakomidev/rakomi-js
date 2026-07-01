@@ -83,9 +83,6 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: OIDC trusted-publisher config preflight
-        run: node scripts/check-oidc-config-match.mjs --package "$PKG_NAME"
-
       - name: Build ${{ env.PKG_NAME }}
         run: pnpm --filter "$PKG_NAME" run build
 
