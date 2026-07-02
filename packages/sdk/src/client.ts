@@ -101,7 +101,9 @@ export class RakomiClient {
       if (url.protocol !== 'https:' && !isLocalhost) {
         throw new RakomiError(CONFIG_INVALID_BASE_URL());
       }
-      this.baseUrl = config.baseUrl.replace(/\/+$/, '');
+      let end = config.baseUrl.length;
+      while (end > 0 && config.baseUrl.charCodeAt(end - 1) === 47 /* '/' */) end--;
+      this.baseUrl = config.baseUrl.slice(0, end);
     } else {
       this.baseUrl = DEFAULT_BASE_URL;
     }
