@@ -29,6 +29,29 @@ export function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts })
 }
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(0, ms))
+}
+
+export function fetchAttestations(pkg, version = 'latest', { retries = 5, backoffMs = 2000, fetchText } = {}) {
+  const getUrl = () => run('npm', ['view', `${pkg}@${version}`, 'dist.attestations.url']).trim()
+  const httpGet = fetchText || ((url) => run('curl', ['-sSf', '--max-time', '30', url]))
+  let lastErr
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const url = getUrl()
+      if (!url) throw new CliError(`no dist.attestations.url for ${pkg}@${version} — no provenance attestation attached`)
+      const parsed = JSON.parse(httpGet(url))
+      if (parsed && Array.isArray(parsed.attestations) && parsed.attestations.length > 0) return parsed
+      lastErr = new CliError('attestation bundle resolved but attestations[] is empty (indexing lag?)')
+    } catch (e) {
+      lastErr = e
+    }
+    if (attempt < retries) sleepSync(backoffMs * attempt)
+  }
+  throw new CliError(`could not fetch a non-empty attestation bundle for ${pkg}@${version} after ${retries} attempts: ${lastErr && lastErr.message ? lastErr.message : lastErr}`)
+}
+
 export function report(label, result) {
   if (result.ok) {
     console.error(`  ✓ ${label}: ${result.reason || 'PASS'}`)

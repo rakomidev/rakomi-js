@@ -148,8 +148,8 @@ jobs:
         run: npm publish "$TGZ" --provenance --access public --tag latest
 
       - name: Provenance subject digest == gate digest
-        run: node scripts/check-provenance-subject.mjs --package "$PKG_NAME" --expect-digest "$GATE_SHA512"
+        run: node scripts/check-provenance-subject.mjs --package "$PKG_NAME" --version "$TAG_VERSION" --expect-digest "$GATE_SHA512"
       - name: Provenance predicate scrub — field-aware
-        run: node scripts/check-provenance-predicate.mjs --package "$PKG_NAME"
+        run: node scripts/check-provenance-predicate.mjs --package "$PKG_NAME" --version "$TAG_VERSION"
       - name: Rekor inclusion-proof issuer assertion
-        run: node scripts/check-rekor-issuer.mjs --package "$PKG_NAME" --expect-digest "$GATE_SHA512"
+        run: node scripts/check-rekor-issuer.mjs --package "$PKG_NAME" --version "$TAG_VERSION" --expect-digest "$GATE_SHA512"

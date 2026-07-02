@@ -126,4 +126,88 @@ export function assertRekorIssuer(rekor, expectedDigest, allowedIssuers) {
   return { ok: true, reason: `Rekor inclusion proof verified; keyless issuer ${issuer}; subject matches gate digest` }
 }
 
+export const SLSA_PROVENANCE_V1 = 'https://slsa.dev/provenance/v1'
+
+export function selectAttestation(attestationsResponse, predicateType) {
+  const list = attestationsResponse && Array.isArray(attestationsResponse.attestations) ? attestationsResponse.attestations : null
+  if (!list) throw new ProvenanceCheckError('attestations response has no attestations[] array (unexpected bundle shape)')
+  const hit = list.find((a) => a && a.predicateType === predicateType)
+  if (!hit) throw new ProvenanceCheckError(`no attestation of predicateType "${predicateType}" in the bundle [${list.map((a) => a?.predicateType).join(', ')}]`)
+  return hit
+}
+
+export function decodeInTotoStatement(attestation) {
+  const payload = attestation?.bundle?.dsseEnvelope?.payload
+  if (typeof payload !== 'string' || payload.length === 0) throw new ProvenanceCheckError('attestation bundle has no dsseEnvelope.payload — cannot decode the in-toto Statement')
+  let json
+  try {
+    json = Buffer.from(payload, 'base64').toString('utf8')
+  } catch {
+    throw new ProvenanceCheckError('dsseEnvelope.payload is not valid base64')
+  }
+  try {
+    return JSON.parse(json)
+  } catch {
+    throw new ProvenanceCheckError('decoded dsseEnvelope.payload is not valid JSON')
+  }
+}
+
+const OID_ISSUER_V1 = Buffer.from([0x06, 0x0a, 0x2b, 0x06, 0x01, 0x04, 0x01, 0x83, 0xbf, 0x30, 0x01, 0x01])
+const OID_ISSUER_V2 = Buffer.from([0x06, 0x0a, 0x2b, 0x06, 0x01, 0x04, 0x01, 0x83, 0xbf, 0x30, 0x01, 0x08])
+
+function readDerLen(der, i) {
+  const first = der[i]
+  if (first < 0x80) return { len: first, next: i + 1 }
+  const n = first & 0x7f
+  let len = 0
+  for (let k = 0; k < n; k++) len = (len << 8) | der[i + 1 + k]
+  return { len, next: i + 1 + n }
+}
+
+export function extractOidcIssuerFromCert(rawBytesB64) {
+  if (typeof rawBytesB64 !== 'string' || rawBytesB64.length === 0) return null
+  let der
+  try {
+    der = Buffer.from(rawBytesB64, 'base64')
+  } catch {
+    return null
+  }
+  for (const [oid, v2] of [[OID_ISSUER_V2, true], [OID_ISSUER_V1, false]]) {
+    const at = der.indexOf(oid)
+    if (at < 0) continue
+    let i = at + oid.length
+    if (der[i] === 0x01) {
+      const { next } = readDerLen(der, i + 1)
+      i = next + 1
+    }
+    if (der[i] !== 0x04) continue
+    const { len, next } = readDerLen(der, i + 1)
+    let start = next
+    let end = next + len
+    if (v2 && der[start] === 0x0c) {
+      const inner = readDerLen(der, start + 1)
+      start = inner.next
+      end = inner.next + inner.len
+    }
+    const s = der.slice(start, end).toString('utf8')
+    if (/^https?:\/\//.test(s)) return s
+  }
+  return null
+}
+
+export function rekorEntryFromBundle(attestation) {
+  const vm = attestation?.bundle?.verificationMaterial || {}
+  const tlog = Array.isArray(vm.tlogEntries) ? vm.tlogEntries : []
+  const entry = tlog[0]
+  const inclusionProofVerified = !!(entry && entry.inclusionProof && entry.logIndex != null)
+  const statement = decodeInTotoStatement(attestation)
+  const sha512 = statement?.subject?.[0]?.digest?.sha512
+  const rawCert = vm.certificate?.rawBytes || vm.x509CertificateChain?.certificates?.[0]?.rawBytes
+  return {
+    inclusionProofVerified,
+    subjectDigest: sha512 ? `sha512:${sha512}` : undefined,
+    certificateIssuer: extractOidcIssuerFromCert(rawCert),
+  }
+}
+
 export { SCANNED_PREDICATE_FIELDS }
