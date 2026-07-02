@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/sdk-core",
-  "version": "0.0.1-rc.1",
+  "version": "0.0.1-rc.2",
   "description": "Framework-agnostic core for the Rakomi authentication SDKs.",
   "keywords": [
     "rakomi",
