@@ -6,7 +6,7 @@ export class PnpmLsError extends Error {}
 
 export function makePurl(name, version) {
   const encoded = name.startsWith('@')
-    ? '%40' + name.slice(1).replace('/', '%2F')
+    ? '%40' + name.slice(1).replace(/\//g, '%2F')
     : name;
   return `pkg:npm/${encoded}@${version}`;
 }

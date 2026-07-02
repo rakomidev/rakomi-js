@@ -63,7 +63,7 @@ const byCodepoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 
 export function buildSbomDoc(pkg, { repoRoot = REPO_ROOT } = {}) {
   const { expected, manifest } = computeExpectedComponentSet(pkg, { repoRoot })
-  const selfPurl = `pkg:npm/${manifest.name.startsWith('@') ? '%40' + manifest.name.slice(1).replace('/', '%2F') : manifest.name}@${manifest.version}`
+  const selfPurl = `pkg:npm/${manifest.name.startsWith('@') ? '%40' + manifest.name.slice(1).replace(/\//g, '%2F') : manifest.name}@${manifest.version}`
   const components = [...expected].sort(byCodepoint).map((purl) => {
     const { name, version } = parsePurl(purl)
     return {
