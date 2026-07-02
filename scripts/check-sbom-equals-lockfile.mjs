@@ -46,12 +46,12 @@ export function expectedSetFromMetafiles(metafiles) {
   return set
 }
 
-export function prodExternalSeeds({ dependencies = {}, peerDependencies = {}, externals = null } = {}) {
+export function prodExternalSeeds({ dependencies = {}, peerDependencies = {}, bundled = null } = {}) {
   const peers = new Set(Object.keys(peerDependencies || {}))
   const base = Object.keys(dependencies || {}).filter((d) => !peers.has(d))
-  if (externals === null) return base
-  const ext = externals instanceof Set ? externals : new Set(externals)
-  return base.filter((d) => ext.has(d))
+  if (bundled === null) return base
+  const inlined = bundled instanceof Set ? bundled : new Set(bundled)
+  return base.filter((d) => !inlined.has(d))
 }
 
 export function lockfileClosureForSeeds(pkgName, seedNames) {
@@ -92,13 +92,50 @@ export function diffSboms(expected, actual) {
   return { missing, added }
 }
 
-function readMetafiles(pkgDir) {
-  const paths = ['esm', 'cjs'].map((f) => join(REPO_ROOT, pkgDir, 'dist', `metafile-${f}.json`)).filter(existsSync)
+function readMetafiles(pkgDir, repoRoot = REPO_ROOT) {
+  const paths = ['esm', 'cjs'].map((f) => join(repoRoot, pkgDir, 'dist', `metafile-${f}.json`)).filter(existsSync)
   return paths.map((p) => JSON.parse(readFileSync(p, 'utf8')))
 }
 
 function metafileHasInputs(metafiles) {
   return metafiles.some((m) => Object.values(m.outputs || {}).some((o) => Object.keys(o.inputs || {}).length > 0))
+}
+
+const UNSUPPORTED_DEP_FIELDS = Object.freeze(['optionalDependencies', 'bundledDependencies', 'bundleDependencies'])
+
+function assertSupportedDepFields(pj, name) {
+  for (const f of UNSUPPORTED_DEP_FIELDS) {
+    if (pj[f] && typeof pj[f] === 'object' && Object.keys(pj[f]).length > 0) {
+      throw new GateError(`${name}: manifest declares ${f} [${(Array.isArray(pj[f]) ? pj[f] : Object.keys(pj[f])).join(', ')}] — the seed model only covers (dependencies − peerDependencies − inlined); ${f} is consumer-installed too and would be a SILENT SBOM omission (CWE-1357). Extend prodExternalSeeds deliberately (ADR) before shipping this package.`)
+    }
+  }
+}
+
+function isTsupBuilt(pj) {
+  return /(^|[\s&|=/])tsup(\s|$)/.test(pj.scripts?.build || '')
+}
+
+export function computeExpectedComponentSet(pkg, { repoRoot = REPO_ROOT } = {}) {
+  const pj = JSON.parse(readFileSync(join(repoRoot, pkg.dir, 'package.json'), 'utf8'))
+  assertSupportedDepFields(pj, pkg.name)
+  const metafiles = readMetafiles(pkg.dir, repoRoot)
+  const metafileExists = metafiles.length > 0
+  if (isTsupBuilt(pj) && (!metafileExists || !metafileHasInputs(metafiles))) {
+    throw new GateError(`${pkg.name}: tsup-built package has no parseable/non-empty dist/metafile-*.json — refusing the silent tsc fall-through that would empty the inlined half (run the build; if the bundler changed, re-author extractBundledModules)`)
+  }
+  let bundled = new Set()
+  let inlinedNames = null
+  if (metafileExists) {
+    if (!metafileHasInputs(metafiles)) {
+      throw new GateError(`${pkg.name}: metafile present but zero-input (truncated/broken build) — cannot derive the expected closed set (run the build)`)
+    }
+    bundled = expectedSetFromMetafiles(metafiles)
+    inlinedNames = new Set(extractBundledModules(metafiles).bundled.keys())
+  }
+  const seeds = prodExternalSeeds({ dependencies: pj.dependencies, peerDependencies: pj.peerDependencies, bundled: inlinedNames })
+  const closure = lockfileClosureForSeeds(pkg.name, seeds)
+  const expected = new Set([...bundled, ...closure])
+  return { expected, bundled, closure, seeds, manifest: pj, declaredProd: Object.keys(pj.dependencies || {}), metafileExists }
 }
 
 const argv = process.argv.slice(2)
@@ -145,32 +182,17 @@ function main() {
       const tgz = tarballs.get(pkg.name)
       if (!tgz) { fail(relGateMessage(N4E, 'CANNOT-EVALUATE', pkg.name, '', 'no tarball available to inspect')); continue }
 
-      const metafiles = readMetafiles(pkg.dir)
-      const pj = JSON.parse(readFileSync(join(REPO_ROOT, pkg.dir, 'package.json'), 'utf8'))
-      const declaredProd = Object.keys(pj.dependencies || {})
       readTarball(tgz)
       const sbomText = readTarballFile(tgz, 'sbom.cdx.json')
-      const metafileExists = metafiles.length > 0
-      const groundTruth = metafileExists ? 'bundle+externals' : 'lockfile'
 
-      let bundled = new Set()
-      if (metafileExists) {
-        if (!metafileHasInputs(metafiles)) {
-          fail(relGateMessage(N4E, 'CANNOT-EVALUATE', pkg.name, '', 'metafile present but zero-input (truncated/broken build) — cannot derive the expected closed set (run the build)'))
-          inspected++
-          continue
-        }
-        bundled = expectedSetFromMetafiles(metafiles)
-      }
-      const externals = metafileExists ? extractBundledModules(metafiles).externals : null
-      const seeds = prodExternalSeeds({ dependencies: pj.dependencies, peerDependencies: pj.peerDependencies, externals })
-      let closure
-      try { closure = lockfileClosureForSeeds(pkg.name, seeds) }
-      catch (e) {
+      let expected, bundled, declaredProd, metafileExists
+      try {
+        ({ expected, bundled, declaredProd, metafileExists } = computeExpectedComponentSet(pkg))
+      } catch (e) {
         if (e instanceof GateError) { fail(relGateMessage(N4E, 'CANNOT-EVALUATE', pkg.name, '', e.message)); inspected++; continue }
         throw e
       }
-      const expected = new Set([...bundled, ...closure])
+      const groundTruth = metafileExists ? 'bundle+externals' : 'lockfile'
 
       if (structuralVacuousGreen({ expectedSize: expected.size, declaredProdCount: declaredProd.length })) {
         failStructural(relGateMessage(N4G, 'CANNOT-EVALUATE', pkg.name, '', `declares ${declaredProd.length} prod dependenc(ies) [${declaredProd.join(', ')}] but the derived expected component set is EMPTY (neither inlined nor externalised-and-resolved) — refusing a vacuous-green pass`, 'move a build/type-only dep to devDependencies, or fix the SBOM derivation model'))

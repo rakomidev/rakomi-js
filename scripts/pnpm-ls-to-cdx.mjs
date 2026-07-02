@@ -1,8 +1,6 @@
-#!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 export class PnpmLsError extends Error {}
 
@@ -17,54 +15,25 @@ export function normalizePurl(purl) {
   try {
     return decodeURIComponent(purl);
   } catch {
-    return purl.split('%40').join('@').split('%2F').join('/');
+    return purl.replace(/%2F/gi, '/').replace(/%40/gi, '@');
   }
 }
 
 function resolveVersion(info) {
+  if (info == null || typeof info.version !== 'string') {
+    throw new PnpmLsError(`pnpm ls node has no string version (unresolved/optional entry): ${JSON.stringify(info?.version)}`);
+  }
   if (!info.version.startsWith('link:')) return info.version;
+  let pkg;
   try {
-    const pkg = JSON.parse(readFileSync(join(info.path, 'package.json'), 'utf8'));
-    return pkg.version;
-  } catch {
-    return '0.0.0-workspace';
+    pkg = JSON.parse(readFileSync(join(info.path, 'package.json'), 'utf8'));
+  } catch (e) {
+    throw new PnpmLsError(`cannot resolve workspace link version from ${info.path}/package.json: ${e.message}`);
   }
-}
-
-function walkTree(root) {
-  const components = [];
-  const depRelationships = [];
-  const seen = new Set();
-
-  function walk(pkg) {
-    const deps = pkg.dependencies ?? {};
-    const childRefs = [];
-    for (const [name, info] of Object.entries(deps)) {
-      const version = resolveVersion(info);
-      const purl = makePurl(name, version);
-      childRefs.push(purl);
-      if (!seen.has(purl)) {
-        seen.add(purl);
-        components.push({ type: 'library', 'bom-ref': purl, name, version, purl });
-        const transitiveDeps = walk(info);
-        depRelationships.push({ ref: purl, dependsOn: transitiveDeps });
-      }
-    }
-    return childRefs;
+  if (typeof pkg.version !== 'string' || pkg.version.length === 0) {
+    throw new PnpmLsError(`workspace package.json at ${info.path} has no usable version`);
   }
-
-  const rootPurl = makePurl(root.name, root.version);
-  const rootDeps = walk(root);
-  depRelationships.unshift({ ref: rootPurl, dependsOn: rootDeps });
-  return { rootPurl, rootDeps, components, depRelationships };
-}
-
-export function componentSetFromPnpmLs(lsArray) {
-  if (!Array.isArray(lsArray) || lsArray.length === 0 || typeof lsArray[0] !== 'object') {
-    throw new PnpmLsError('pnpm-ls-to-cdx: expected a non-empty `pnpm ls --json` array');
-  }
-  const { components } = walkTree(lsArray[0]);
-  return new Set(components.map((c) => normalizePurl(c.purl)));
+  return pkg.version;
 }
 
 export function prodClosureForSeeds(lsArray, seedNames) {
@@ -75,6 +44,10 @@ export function prodClosureForSeeds(lsArray, seedNames) {
   const out = new Set();
   const seen = new Set();
   const topDeps = lsArray[0].dependencies ?? {};
+  const unresolved = [...seeds].filter((n) => !Object.prototype.hasOwnProperty.call(topDeps, n));
+  if (unresolved.length) {
+    throw new PnpmLsError(`seed(s) declared in the manifest but ABSENT from the pnpm ls --prod tree (pruned/unresolved — refusing a silently-narrowed closure): ${unresolved.join(', ')}`);
+  }
   const walk = (name, info) => {
     const purl = normalizePurl(makePurl(name, resolveVersion(info)));
     if (seen.has(purl)) return;
@@ -86,41 +59,4 @@ export function prodClosureForSeeds(lsArray, seedNames) {
     if (seeds.has(name)) walk(name, info);
   }
   return out;
-}
-
-export function buildCdxFromPnpmLs(lsArray, { serialNumber, timestamp }) {
-  const root = lsArray[0];
-  const { rootPurl, components, depRelationships } = walkTree(root);
-  return {
-    bomFormat: 'CycloneDX',
-    specVersion: '1.6',
-    version: 1,
-    serialNumber,
-    metadata: {
-      timestamp,
-      tools: [{ vendor: 'Rakomi', name: 'pnpm-ls-to-cdx', version: '1.0.0' }],
-      component: {
-        type: 'library',
-        'bom-ref': rootPurl,
-        name: root.name,
-        version: root.version,
-        purl: rootPurl,
-      },
-    },
-    components,
-    dependencies: depRelationships,
-  };
-}
-
-function main() {
-  const input = JSON.parse(readFileSync('/dev/stdin', 'utf8'));
-  const doc = buildCdxFromPnpmLs(input, {
-    serialNumber: `urn:uuid:${crypto.randomUUID()}`,
-    timestamp: new Date().toISOString(),
-  });
-  process.stdout.write(JSON.stringify(doc, null, 2) + '\n');
-}
-
-if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
 }

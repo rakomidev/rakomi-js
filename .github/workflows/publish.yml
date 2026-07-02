@@ -83,37 +83,32 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Build ${{ env.PKG_NAME }}
-        run: pnpm --filter "$PKG_NAME" run build
+      - name: Build all publishable packages (full set)
+        run: pnpm exec turbo run build --force
 
-      - name: Test ${{ env.PKG_NAME }}
-        run: pnpm --filter "$PKG_NAME" run test
-
-      - name: Generate SBOM + third-party notices (CRA Annex I Part II)
+      - name: Generate SBOM + third-party notices — full set (CRA Annex I Part II)
         run: |
           set -euo pipefail
-          if [ "$PKG_NAME" = "@rakomi/node" ]; then
-            pnpm exec cyclonedx-npm \
-              --omit dev --ignore-npm-errors --output-reproducible \
-              --spec-version 1.6 --output-format JSON \
-              --output-file "$PKG_DIR/sbom.cdx.json" \
-              -- "$PKG_DIR/package.json" || true
-            T=$(mktemp) && jq '.metadata.authors = [{"name": "CRE8EVE"}]' "$PKG_DIR/sbom.cdx.json" > "$T" && mv "$T" "$PKG_DIR/sbom.cdx.json"
-          else
-            node scripts/metafile-to-cdx.mjs --pkg "$PKG_DIR" --validate
-            node scripts/metafile-to-notices.mjs --pkg "$PKG_DIR"
-          fi
+          node scripts/generate-sbom.mjs --validate
+          node -e "import('./scripts/lib/sdk-supply-chain-common.mjs').then(m=>{const {packages}=m.enumeratePublishablePackages(process.cwd());process.stdout.write(packages.filter(p=>p.name!=='@rakomi/node').map(p=>p.dir).join('\n'))})" \
+            | while IFS= read -r DIR; do
+                [ -n "$DIR" ] && node scripts/metafile-to-notices.mjs --pkg "$DIR"
+              done
 
-      - name: Pack the verified tarball
+      - name: Pack the verified tarballs — full set
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/tgz"
-          pnpm --filter "$PKG_NAME" pack --pack-destination "$RUNNER_TEMP/tgz"
-          TGZ=$(ls "$RUNNER_TEMP/tgz"/*.tgz)
+          for DIR in $(node -e "import('./scripts/lib/sdk-supply-chain-common.mjs').then(m=>{const {packages}=m.enumeratePublishablePackages(process.cwd());process.stdout.write(packages.map(p=>p.dir).join('\n'))})"); do
+            ( cd "$DIR" && pnpm pack --pack-destination "$RUNNER_TEMP/tgz" )
+          done
+          TARBALL_PREFIX=$(printf '%s' "$PKG_NAME" | sed 's|@||; s|/|-|g')
+          TGZ="$RUNNER_TEMP/tgz/${TARBALL_PREFIX}-${TAG_VERSION}.tgz"
+          test -f "$TGZ" || { echo "ERROR: expected tarball $TGZ not found after pack"; ls -la "$RUNNER_TEMP/tgz"; exit 1; }
+          GATE_SHA512=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write('sha512:'+c.createHash('sha512').update(f.readFileSync(process.argv[1])).digest('hex'))" "$TGZ")
           echo "TGZ=$TGZ" >> "$GITHUB_ENV"
-          GATE_SHA512=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write('sha512:'+c.createHash('sha512').update(f.readFileSync(process.env.TGZ)).digest('hex'))")
           echo "GATE_SHA512=$GATE_SHA512" >> "$GITHUB_ENV"
-          echo "packed $TGZ ($GATE_SHA512)"
+          echo "packed full set; publishing $TGZ ($GATE_SHA512)"
 
       - name: Provenance repo-match (byte-string, not a regex)
         run: node scripts/check-provenance-repo-match.mjs --tarball "$TGZ"

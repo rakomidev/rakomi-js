@@ -40,24 +40,6 @@ export function assertPublishOrder(pkgName, sdkCoreExists) {
     : { ok: false, reason: `${pkgName} depends on ${SDK_CORE} but ${SDK_CORE} is not yet on the registry — publish ${SDK_CORE} first (dependency-confusion window)` }
 }
 
-export function assertOidcConfigMatch(configured, expected) {
-  if (!configured || typeof configured !== 'object') {
-    return { ok: false, reason: 'no trusted-publisher configured on npm for this package (OIDC publish would 404) — configure org/repo/workflow/environment first' }
-  }
-  for (const field of ['org', 'repo', 'workflow', 'environment']) {
-    if (!configured[field] || !expected[field]) {
-      return { ok: false, reason: `trusted-publisher ${field} is unset (npm="${configured[field]}" workflow="${expected[field]}") — the OIDC identity must pin org/repo/workflow/environment` }
-    }
-    if (configured[field] !== expected[field]) {
-      return { ok: false, reason: `trusted-publisher ${field} mismatch: npm="${configured[field]}" workflow="${expected[field]}" — OIDC token exchange will 404` }
-    }
-  }
-  if (configured.twoFactorBlocks === true) {
-    return { ok: false, reason: 'org 2FA-required-to-publish is configured to block the automation/OIDC path — green-CI/403-publish' }
-  }
-  return { ok: true, reason: `trusted-publisher matches repo:${expected.org}/${expected.repo} workflow:${expected.workflow} environment:${expected.environment}` }
-}
-
 export function assertSubjectDigest(statement, expectedDigest) {
   const subjects = statement && Array.isArray(statement.subject) ? statement.subject : null
   if (!subjects || subjects.length === 0) return { ok: false, reason: 'provenance statement has no subject[] — cannot bind published bytes to the gate digest' }
