@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/react",
-  "version": "0.6.0",
+  "version": "0.1.0",
   "description": "React SDK for Rakomi authentication — hooks and prebuilt UI components.",
   "keywords": [
     "rakomi",

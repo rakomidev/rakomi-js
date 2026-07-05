@@ -38,6 +38,17 @@
           "h": "837dc14ff4c32542cb2b6938130b97db76ee8b98dea75adac9e4be71c8cae49b"
         }
       ]
+    },
+    {
+      "id": "legal-entity-miscasing",
+      "why": "predicate-scrub category — terms held as sha256 (plaintext in the upstream deny-list; hashed here so the public file leaks no internal tell)",
+      "case": "sensitive",
+      "hashedLiterals": [
+        {
+          "len": 7,
+          "h": "186d1e3b79c837ce0894b55863a238b0103a9540e8e0842ec8e797860b8612ed"
+        }
+      ]
     }
   ]
 }
