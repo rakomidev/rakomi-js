@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { isCliEntry } from './lib/cli-entry.mjs'
 import {
   enumeratePublishablePackages,
   GateError,
@@ -134,7 +135,7 @@ function main() {
   console.error('\nNO-SOURCE-MAP-IN-TARBALL: PASS')
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isCliEntry(import.meta.url)) {
   try {
     main()
   } catch (e) {

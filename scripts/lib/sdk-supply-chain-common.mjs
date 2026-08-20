@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-export const CRYPTO_SENSITIVE_DEPS = Object.freeze(['jose'])
+export const CRYPTO_SENSITIVE_DEPS = Object.freeze(['jose', '@simplewebauthn/browser'])
 
 export const STEADY_STATE_PUBLISH_WORKFLOWS = Object.freeze(['.github/workflows/publish.yml'])
 
@@ -17,46 +17,124 @@ export const BANNED_INSTALL_SCRIPTS = Object.freeze(['preinstall', 'install', 'p
 export const EXPECTED_REGISTRY_HOSTS = Object.freeze(['registry.npmjs.org'])
 
 export const PACKAGE_NAME_RESTATEMENT_SITES = Object.freeze([
-  'scripts/lib/sdk-supply-chain-common.mjs (DERIVED — zero edits)',
+  'scripts/lib/sdk-supply-chain-common.mjs#PUBLISHABLE_PACKAGES (add a reviewed manifest row)',
   'the CI security-scan workflow (add a packages/<dir> glob)',
   'the upstream release-gate reference (add a binding-table row)',
 ])
 
 export class GateError extends Error {}
 
-export function enumeratePublishablePackages(repoRoot = REPO_ROOT) {
-  let config
-  try {
-    config = JSON.parse(readFileSync(join(repoRoot, '.changeset/config.json'), 'utf8'))
-  } catch (e) {
-    throw new GateError(`cannot read .changeset/config.json: ${e.message}`)
+export const PUBLISHABLE_PACKAGES = Object.freeze([
+  Object.freeze({ name: '@rakomi/sdk-core', dir: 'packages/sdk-core', tagPrefix: 'sdk-core', registry: 'npm', lockstepMajor: true }),
+  Object.freeze({ name: '@rakomi/node', dir: 'packages/sdk', tagPrefix: 'sdk', registry: 'npm', lockstepMajor: false }),
+  Object.freeze({ name: '@rakomi/react', dir: 'packages/react', tagPrefix: 'react', registry: 'npm', lockstepMajor: true }),
+  Object.freeze({ name: '@rakomi/react-native', dir: 'packages/react-native', tagPrefix: 'react-native', registry: 'npm', lockstepMajor: true }),
+  Object.freeze({ name: 'rakomi-swift', dir: 'packages/swift', tagPrefix: 'swift', registry: 'spm', lockstepMajor: false }),
+  Object.freeze({ name: 'rakomi_flutter', dir: 'packages/flutter', tagPrefix: 'flutter', registry: 'pub', lockstepMajor: false }),
+])
+
+export function nativePublishableSurfaces(repoRoot = REPO_ROOT) {
+  const rows = PUBLISHABLE_PACKAGES.filter((p) => p.registry !== 'npm')
+  if (rows.length === 0) throw new GateError('PUBLISHABLE_PACKAGES has zero native (registry!==npm) entries — the native manifest is empty or corrupt')
+  for (const r of rows) {
+    if (!existsSync(join(repoRoot, r.dir))) {
+      throw new GateError(`native publishable surface "${r.name}" declares dir "${r.dir}" which does not exist — manifest is stale`)
+    }
   }
-  const fixed = Array.isArray(config.fixed) && Array.isArray(config.fixed[0]) ? config.fixed[0] : []
-  if (fixed.length === 0) {
-    throw new GateError('.changeset/config.json fixed[0] is empty — expected the JS-family lockstep group')
+  return Object.freeze(rows.map((r) => Object.freeze({ name: r.name, dir: r.dir, tagPrefix: r.tagPrefix, registry: r.registry })))
+}
+
+export const KNOWN_SEPARATE_PUBLISHABLE = Object.freeze(['@rakomi/create-rakomi-app'])
+
+export function enumeratePublishablePackages(repoRoot = REPO_ROOT, opts = {}) {
+  const manifest = opts.manifest || PUBLISHABLE_PACKAGES
+  const knownSeparate = opts.knownSeparate || KNOWN_SEPARATE_PUBLISHABLE
+  const reconcile = opts.reconcile !== false
+
+  const npmManifest = manifest.filter((p) => p.registry === 'npm')
+  if (npmManifest.length === 0) {
+    throw new GateError('PUBLISHABLE_PACKAGES has zero npm-registry entries — the release manifest is empty or corrupt')
   }
-  const names = [...new Set([...fixed, '@rakomi/node'])]
 
   const byName = new Map()
+  const privateByName = new Map()
   const pkgsDir = join(repoRoot, 'packages')
-  for (const entry of readdirSync(pkgsDir, { withFileTypes: true })) {
+  let entries
+  try {
+    entries = readdirSync(pkgsDir, { withFileTypes: true })
+  } catch (e) {
+    throw new GateError(`cannot read packages/ under ${repoRoot}: ${e.message}`)
+  }
+  for (const entry of entries) {
     if (!entry.isDirectory()) continue
     const mf = join(pkgsDir, entry.name, 'package.json')
     if (!existsSync(mf)) continue
     try {
       const pj = JSON.parse(readFileSync(mf, 'utf8'))
-      if (pj.name) byName.set(pj.name, `packages/${entry.name}`)
+      if (pj.name) {
+        byName.set(pj.name, `packages/${entry.name}`)
+        privateByName.set(pj.name, pj.private === true)
+      }
     } catch { }
   }
 
   const packages = []
-  for (const name of names) {
-    const dir = byName.get(name)
-    if (!dir) throw new GateError(`publishable package "${name}" not found under packages/* — name→dir map is stale`)
-    packages.push({ name, dir })
+  for (const p of npmManifest) {
+    const dir = byName.get(p.name)
+    if (!dir) {
+      throw new GateError(`publishable package "${p.name}" (PUBLISHABLE_PACKAGES) not found under packages/* — manifest is stale`)
+    }
+    if (dir !== p.dir) {
+      throw new GateError(`publishable package "${p.name}" is at "${dir}" but PUBLISHABLE_PACKAGES says "${p.dir}" — manifest is stale`)
+    }
+    if (privateByName.get(p.name) === true) {
+      throw new GateError(`publishable package "${p.name}" is private:true — PUBLISHABLE_PACKAGES lists a non-publishable package`)
+    }
+    packages.push({ name: p.name, dir: p.dir, tagPrefix: p.tagPrefix, registry: p.registry, lockstepMajor: p.lockstepMajor === true })
   }
+
+  if (reconcile) {
+    const manifestNames = new Set(npmManifest.map((p) => p.name))
+    const separate = new Set(knownSeparate)
+    for (const [name, isPrivate] of privateByName) {
+      if (isPrivate || manifestNames.has(name) || separate.has(name)) continue
+      throw new GateError(
+        `workspace package "${name}" is publishable (private!==true) but is in neither PUBLISHABLE_PACKAGES nor ` +
+        `KNOWN_SEPARATE_PUBLISHABLE — add it explicitly to the release manifest, mark it private, or list it as ` +
+        `a known-separate publishable`,
+      )
+    }
+  }
+
   packages.sort((a, b) => a.name.localeCompare(b.name))
   return { packages, expectedCount: packages.length }
+}
+
+export function assertPublishTagNamespaceParity(packages, opts = {}) {
+  const wfPath = opts.publishWorkflowPath || join(REPO_ROOT, 'public-repo-template/.github/workflows/publish.yml')
+  let text
+  try {
+    text = readFileSync(wfPath, 'utf8')
+  } catch (e) {
+    throw new GateError(`cannot read publish workflow for the tag-namespace oracle (${wfPath}): ${e.message}`)
+  }
+  const namespaces = new Set()
+  for (const m of text.matchAll(/^\s*-\s*["']?([a-z][a-z0-9-]*)\/v\[0-9\]/gim)) {
+    namespaces.add(m[1])
+  }
+  if (namespaces.size === 0) {
+    throw new GateError(`publish workflow ${wfPath} declares zero per-package tag namespaces — parse target moved or workflow corrupt`)
+  }
+  const manifestPrefixes = new Set(packages.map((p) => p.tagPrefix))
+  const manifestOnly = [...manifestPrefixes].filter((x) => !namespaces.has(x)).sort()
+  const workflowOnly = [...namespaces].filter((x) => !manifestPrefixes.has(x)).sort()
+  if (manifestOnly.length || workflowOnly.length) {
+    throw new GateError(
+      `tag-namespace parity mismatch (poison-ride guard, AC15a): manifest-only=[${manifestOnly.join(', ')}] ` +
+      `publish.yml-only=[${workflowOnly.join(', ')}] — the publishable set and publish.yml namespaces MUST be an identical SET`,
+    )
+  }
+  return { namespaces: [...namespaces].sort() }
 }
 
 const sh = (cmd, args, opts = {}) =>

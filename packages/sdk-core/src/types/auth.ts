@@ -86,6 +86,7 @@ export type AuthMachineState =
   | 'offline_stale'
   | 'error';
 
+/** Not to be confused with `OrgMembershipClaim` (the JWT-claim-shaped org membership entry). */
 export interface OrgMembership {
   orgId: string;
   role: string;
@@ -112,9 +113,14 @@ export interface BrandingConfig {
   tenantName: string;
 }
 
+export interface SocialProviderFlags {
+  signIn: boolean;
+  signUp: boolean;
+}
+
 export interface AuthConfig {
   methods: string[];
-  socialProviders: string[];
+  socialProviders: Record<string, SocialProviderFlags>;
   mfaEnforced: boolean;
   mfaGracePeriodHours?: number;
   branding?: BrandingConfig;

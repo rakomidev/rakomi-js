@@ -26,9 +26,18 @@ export class JwksCache {
   private readonly jwksUrl: string;
   private readonly baseUrl: string;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, fullJwksUrl?: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
-    this.jwksUrl = `${this.baseUrl}/.well-known/jwks.json`;
+    this.jwksUrl = fullJwksUrl ?? `${this.baseUrl}/.well-known/jwks.json`;
+  }
+
+  /**
+   * Build a cache from an already-full JWKS document URL (used by the
+   * standalone resource-server verify path, where the caller supplies the
+   * complete URL instead of a deployment baseUrl).
+   */
+  static fromJwksUrl(jwksUrl: string): JwksCache {
+    return new JwksCache(new URL(jwksUrl).origin, jwksUrl);
   }
 
   /**

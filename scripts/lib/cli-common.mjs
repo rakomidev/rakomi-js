@@ -33,8 +33,12 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(0, ms))
 }
 
-export function fetchAttestations(pkg, version = 'latest', { retries = 5, backoffMs = 2000, fetchText } = {}) {
-  const getUrl = () => run('npm', ['view', `${pkg}@${version}`, 'dist.attestations.url']).trim()
+export function fetchAttestations(
+  pkg,
+  version = 'latest',
+  { retries = 20, backoffMs = 3000, maxBackoffMs = 20000, fetchText, resolveUrl, sleep = sleepSync } = {},
+) {
+  const getUrl = resolveUrl || (() => run('npm', ['view', `${pkg}@${version}`, 'dist.attestations.url']).trim())
   const httpGet = fetchText || ((url) => run('curl', ['-sSf', '--max-time', '30', url]))
   let lastErr
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -47,7 +51,7 @@ export function fetchAttestations(pkg, version = 'latest', { retries = 5, backof
     } catch (e) {
       lastErr = e
     }
-    if (attempt < retries) sleepSync(backoffMs * attempt)
+    if (attempt < retries) sleep(Math.min(backoffMs * attempt, maxBackoffMs))
   }
   throw new CliError(`could not fetch a non-empty attestation bundle for ${pkg}@${version} after ${retries} attempts: ${lastErr && lastErr.message ? lastErr.message : lastErr}`)
 }

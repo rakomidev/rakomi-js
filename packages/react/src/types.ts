@@ -240,13 +240,18 @@ export interface BrandingConfig {
   tenantName: string;
 }
 
+export interface SocialProviderFlags {
+  signIn: boolean;
+  signUp: boolean;
+}
+
 /**
  * Tenant auth configuration returned by GET /v1/auth/config.
  * Used by pre-built components to auto-discover available auth methods.
  */
 export interface AuthConfig {
   methods: string[];
-  socialProviders: string[];
+  socialProviders: Record<string, SocialProviderFlags>;
   mfaEnforced: boolean;
   mfaGracePeriodHours?: number;
   branding?: BrandingConfig;

@@ -1,8 +1,8 @@
 {
-  "issuer": "https://rakomi.com",
-  "audience": "https://rakomi.com",
+  "issuer": "https://api.rakomi.com",
+  "audience": "https://api.rakomi.com",
   "endpoints": {
-    "authorization_endpoint": "https://accounts.rakomi.com/oauth/authorize",
+    "authorization_endpoint": "https://accounts.rakomi.com/authorize",
     "token_endpoint": "https://api.rakomi.com/oauth/token",
     "jwks_uri": "https://api.rakomi.com/.well-known/jwks.json",
     "userinfo_endpoint": "https://api.rakomi.com/oauth/userinfo"

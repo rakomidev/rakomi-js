@@ -68,11 +68,15 @@ export {
   type CreateDefaultExpoAdapterOptions,
   createNativeDpopProver,
   type CreateNativeDpopProverOptions,
+  createNativePasskeyAdapter,
+  type CreateNativePasskeyAdapterOptions,
   type DeepLinkProvider,
   type DpopProofInput,
   type DpopProver,
   type NativeAuthAdapter,
   type NativeDpopModuleSpec,
+  type NativePasskeyCeremonyAdapter,
+  type NativePasskeyModuleSpec,
   type ParClient,
   type SystemBrowser,
   type TokenCache,
@@ -103,25 +107,47 @@ export {
 export type { SocialSignInOutcome, StartSocialSignInInput } from './oauth/social-auth.js';
 export { startSocialSignIn } from './oauth/social-auth.js';
 
+export type {
+  DeletePasskeyHookInput,
+  ListPasskeysHookInput,
+  RegisterPasskeyHookInput,
+  RenamePasskeyHookInput,
+  SignInWithPasskeyInput,
+  UsePasskeysOptions,
+  UsePasskeysResult,
+} from './hooks/use-passkeys.js';
+export { usePasskeys } from './hooks/use-passkeys.js';
 export { useSubmitOAuthTokens } from './hooks/use-submit-oauth-tokens.js';
 
 export type { UseEmailOtpResult, UseMagicLinkResult, UseMfaResult, UseRegisterResult } from './hooks/use-auth-flows.js';
 export { useEmailOtp, useMagicLink, useMfa, useRegister } from './hooks/use-auth-flows.js';
 
 export type {
+  AssertPasskeyResult,
   AuthError,
   AuthEvent,
   AuthMachineState,
   CryptoProvider,
+  DeletePasskeyResult,
   HasParams,
   HttpClient,
   KeyValueStore,
+  ListPasskeysResult,
   Locale,
+  OpaqueUserHandle,
+  PasskeyCeremonyAdapter,
+  PasskeyError,
+  PasskeyErrorCode,
+  PasskeySummary,
+  PasskeySummaryResult,
+  PasskeyTokens,
   PkceChallenge,
+  RegisterPasskeyResult,
   RegisterResult,
   SessionResource,
   SignInOptions,
   SignInResult,
+  StepUpWithPasskeyResult,
   SwitchOrgResult,
   TokenResult,
   Translations,

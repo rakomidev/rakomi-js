@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
+import { isCliEntry } from './lib/cli-entry.mjs'
 import { extractBundledModules } from './lib/sdk-bundle-common.mjs'
 import {
   enumeratePublishablePackages,
@@ -237,7 +237,7 @@ function main() {
   }
 }
 
-if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isCliEntry(import.meta.url)) {
   try {
     main()
   } catch (e) {

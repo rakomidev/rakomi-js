@@ -10,7 +10,8 @@
  * - Types: AuthState, AuthError, UserResource, SessionResource, etc.
  *
  * All types are included — no separate @types package required.
- * Zero runtime dependencies beyond React peer dependency.
+ * No data-fetching or state library is pulled in; the WebAuthn helper the passkey ceremony needs is
+ * loaded lazily, so an app that never calls a passkey function ships none of it.
  *
  * @example
  * import { RakomiProvider, useAuth, SignedIn } from '@rakomi/react';
@@ -34,8 +35,58 @@ export type {
 export { useLinkedAccounts } from './hooks/use-linked-accounts.js';
 export { useOrganization } from './hooks/use-organization.js';
 export { useOrganizationList } from './hooks/use-organization-list.js';
+export type {
+  DeletePasskeyHookInput,
+  ListPasskeysHookInput,
+  RegisterPasskeyHookInput,
+  RenamePasskeyHookInput,
+  SignInWithPasskeyInput,
+  UsePasskeysOptions,
+  UsePasskeysResult,
+} from './hooks/use-passkeys.js';
+export { usePasskeys } from './hooks/use-passkeys.js';
 export { useSession } from './hooks/use-session.js';
 export { useUser } from './hooks/use-user.js';
+
+export { createSdkHttpClient } from './lib/http-client-adapter.js';
+export {
+  createBrowserPasskeyAdapter,
+  isPlatformAuthenticatorAvailable,
+  isWebAuthnSupported,
+} from './passkeys/browser-adapter.js';
+/**
+ * The passkey error and result vocabulary is owned by `@rakomi/sdk-core` and re-exported here, so a
+ * React consumer never has to add a second package just to type a failure branch. The codes are a
+ * closed set — the SDK never invents one outside it.
+ */
+export type {
+  AssertPasskeyResult,
+  AuthenticationResponseJSON,
+  DeletePasskeyResult,
+  ListPasskeysResult,
+  OpaqueUserHandle,
+  PasskeyCeremonyAdapter,
+  PasskeyCeremonyErrorKind,
+  PasskeyCeremonyOptions,
+  PasskeyError,
+  PasskeyErrorCode,
+  PasskeyNextAction,
+  PasskeySummary,
+  PasskeySummaryResult,
+  PasskeyTokens,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegisterPasskeyResult,
+  RegistrationResponseJSON,
+  StepUpWithPasskeyResult,
+} from '@rakomi/sdk-core';
+/**
+ * `PasskeyCeremonyError` is exported as a VALUE, not just a type: a custom adapter (the documented
+ * `UsePasskeysOptions.adapter` seam) has to THROW it to signal a cancel or an unsupported platform.
+ * Without it — and without the W3C option/response types above — the seam is documented but not
+ * implementable from this package alone, which is the same as not offering it.
+ */
+export { asOpaqueUserHandle, PasskeyCeremonyError } from '@rakomi/sdk-core';
 
 export { CustomerPortal, PricingTable, SubscriptionManager } from './components/billing/index.js';
 export { Feature } from './components/Feature.js';

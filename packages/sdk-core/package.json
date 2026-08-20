@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/sdk-core",
-  "version": "0.0.1-rc.4",
+  "version": "0.2.0",
   "description": "Framework-agnostic core for the Rakomi authentication SDKs.",
   "keywords": [
     "rakomi",
@@ -57,6 +57,16 @@
       "require": {
         "types": "./dist/oauth/pkce.d.cts",
         "default": "./dist/oauth/pkce.cjs"
+      }
+    },
+    "./passkeys/testing": {
+      "import": {
+        "types": "./dist/passkeys/testing.d.ts",
+        "default": "./dist/passkeys/testing.js"
+      },
+      "require": {
+        "types": "./dist/passkeys/testing.d.cts",
+        "default": "./dist/passkeys/testing.cjs"
       }
     },
     "./types/adapters": {

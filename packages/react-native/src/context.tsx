@@ -46,6 +46,7 @@ import {
   reduce,
 } from '@rakomi/sdk-core';
 
+import { type CeremonyLock, createCeremonyLock } from './internal/ceremony-lock.js';
 import { createDpopSession, type DpopSession } from './internal/dpop-session.js';
 import { createRnHttpClient } from './internal/http-client.js';
 import { TokenRuntime } from './internal/token-runtime.js';
@@ -127,6 +128,7 @@ interface RakomiContextValue {
  * re-presents the bound key. `undefined` when the adapter has no native prover.
  */
   dpopSession?: DpopSession;
+  passkeyCeremonyLock: CeremonyLock;
 }
 
 const RakomiContext = createContext<RakomiContextValue | null>(null);
@@ -144,6 +146,8 @@ export function RakomiProvider(props: RakomiProviderProps): ReactNode {
   const events = useMemo(() => new EventLog(props.onEvent), [props.onEvent]);
 
   const [snapshot, dispatch] = useReducer(reduce, INITIAL_SNAPSHOT);
+
+  const passkeyCeremonyLock = useRef<CeremonyLock>(createCeremonyLock()).current;
 
   const translate = useMemo(
     () => createTranslator(props.locale ?? 'en', props.translations),
@@ -301,10 +305,11 @@ export function RakomiProvider(props: RakomiProviderProps): ReactNode {
       signOut,
       getToken,
       submitOAuthTokens,
+      passkeyCeremonyLock,
       beginAuthFlow,
       dpopSession,
     }),
-    [adapter, http, snapshot, events, props.publishableKey, props.baseUrl, props.redirectUri, props.locale, translate, signOut, getToken, submitOAuthTokens, beginAuthFlow, dpopSession],
+    [adapter, http, snapshot, events, props.publishableKey, props.baseUrl, props.redirectUri, props.locale, translate, signOut, getToken, submitOAuthTokens, beginAuthFlow, dpopSession, passkeyCeremonyLock],
   );
 
   return <RakomiContext.Provider value={value}>{props.children}</RakomiContext.Provider>;

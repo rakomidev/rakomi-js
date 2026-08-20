@@ -47,6 +47,13 @@ export const ERROR_CODES = {
   TOKEN_INVALID_ISSUER: 'token/invalid_issuer',
   TOKEN_INVALID_AUDIENCE: 'token/invalid_audience',
   TOKEN_NOT_YET_VALID: 'token/not_yet_valid',
+  TOKEN_TENANT_MISMATCH: 'token/tenant_mismatch',
+  TOKEN_CLIENT_MISMATCH: 'token/client_mismatch',
+  CONFIG_MISSING_PIN: 'config/missing_pin',
+  CONFIG_INVALID_URL: 'config/invalid_url',
+  CONFIG_INVALID_OPTION: 'config/invalid_option',
+  CONFIG_INVALID_RESOURCE: 'config/invalid_resource',
+  CONFIG_INVALID_CHALLENGE_PARAM: 'config/invalid_challenge_param',
   AUTH_ENVIRONMENT_MISMATCH: 'auth/environment_mismatch',
   AUTH_DPOP_PROVER_UNAVAILABLE: 'auth/dpop_prover_unavailable',
   AUTH_INVALID_DPOP_PROOF: 'auth/invalid_dpop_proof',
@@ -113,7 +120,7 @@ export const TOKEN_INVALID_ISSUER = () =>
   createError(
     'token/invalid_issuer',
     'Token issuer mismatch',
-    'Token must be issued by rakomi.com. Verify you are using the correct environment',
+    'Token must be issued by api.rakomi.com. Verify you are using the correct environment',
   );
 
 export const TOKEN_INVALID_AUDIENCE = () =>
@@ -129,6 +136,31 @@ export const TOKEN_NOT_YET_VALID = () =>
     'Token nbf (not before) is in the future',
     'Check system clock synchronization or increase clockTolerance in SDK config',
     'new Rakomi({ apiKey: "...", clockTolerance: 60 })',
+  );
+
+/**
+ * Resource-server tenant pin mismatch: the token is a validly signed Rakomi
+ * token, but its `tenant_id` claim does not match `requiredTenantId` (or the
+ * claim is absent while a pin is set). Distinct from `token/malformed` so a
+ * resource server can tell "another tenant's token" apart from garbage input.
+ */
+export const TOKEN_TENANT_MISMATCH = () =>
+  createError(
+    'token/tenant_mismatch',
+    'Token tenant_id does not match the required tenant pin',
+    'The token belongs to a different tenant (or carries no tenant claim). Verify requiredTenantId matches the tenant this resource server serves.',
+  );
+
+/**
+ * Resource-server client pin mismatch: the token's `client_id` claim does not
+ * match `requiredClientId` (or the claim is absent — session-issued tokens
+ * carry no `client_id` and cannot satisfy a client pin).
+ */
+export const TOKEN_CLIENT_MISMATCH = () =>
+  createError(
+    'token/client_mismatch',
+    'Token client_id does not match the required client pin',
+    'The token was issued to a different OAuth client, or was issued without a client_id (session flows). Verify requiredClientId, or drop the pin if session tokens should be accepted.',
   );
 
 export const AUTH_ENVIRONMENT_MISMATCH = () =>
@@ -322,6 +354,72 @@ export const CONFIG_MISSING_WEBHOOK_SECRET = () =>
     'webhookSecret is required for webhook verification',
     'Pass your webhook signing key in config',
     'new Rakomi({ apiKey: "...", webhookSecret: "rksec_xxx" })',
+  );
+
+/**
+ * `verifyRakomiToken()` was called with neither `audience` nor
+ * `requiredTenantId`. Accepting a platform-audience token with no tenant pin
+ * would let any Rakomi-issued token from ANY app pass verification here
+ * (cross-app token replay) — the insecure configuration is unrepresentable
+ * by default instead.
+ */
+export const CONFIG_MISSING_PIN = () =>
+  createError(
+    'config/missing_pin',
+    'verifyRakomiToken requires audience (resource-bound tokens) or requiredTenantId (platform-audience tokens)',
+    'Pass audience: "<your resource identifier>" when your clients send resource-bound tokens, or requiredTenantId: "<your tenant id>" otherwise. Verifying with neither would accept tokens issued to any application.',
+    'verifyRakomiToken(token, { requiredTenantId: "tenant_..." })',
+  );
+
+/**
+ * A URL option failed fail-closed validation (must parse as an https: URL).
+ * Returned BEFORE any network fetch — the JWKS URL is the key-trust anchor,
+ * so a malformed or non-https value must never reach the fetch layer.
+ */
+export const CONFIG_INVALID_URL = (option: 'jwksUrl' | 'issuer') =>
+  createError(
+    'config/invalid_url',
+    `${option} must be a valid HTTPS URL`,
+    'Use a full https:// URL. Overriding jwksUrl or issuer points token verification at a different trust anchor — only do this for values Rakomi documents.',
+  );
+
+/**
+ * A posture-determining string option (`audience`, `requiredTenantId`,
+ * `requiredClientId`) was PROVIDED but is empty, whitespace-only, or not a
+ * string. A set-but-empty value (e.g. an empty environment variable) is a
+ * malformed assertion, not a deliberate non-assertion: treating it as absent
+ * would silently change the verification mode, and using it verbatim would
+ * select a mode against an impossible value. Loud config error instead.
+ */
+export const CONFIG_INVALID_OPTION = (option: 'audience' | 'requiredTenantId' | 'requiredClientId') =>
+  createError(
+    'config/invalid_option',
+    `${option} must be a non-empty string when provided`,
+    'Pass a real value, or omit the option entirely. An empty value usually means an unset or empty environment variable — verify configuration at boot.',
+  );
+
+/**
+ * `buildProtectedResourceMetadata()` received an invalid input (thrown as
+ * `RakomiError` at build/boot time — a malformed discovery document must
+ * never be served).
+ */
+export const CONFIG_INVALID_RESOURCE = (detail?: string) =>
+  createError(
+    'config/invalid_resource',
+    detail || 'resource must be an https: URL without a fragment',
+    'Use your canonical resource identifier, e.g. https://api.example.com/mcp — https scheme, no #fragment.',
+  );
+
+/**
+ * `buildChallenge()` received an invalid parameter (thrown as `RakomiError`
+ * on first use — a WWW-Authenticate value must never carry control
+ * characters or illegal scope tokens).
+ */
+export const CONFIG_INVALID_CHALLENGE_PARAM = (detail?: string) =>
+  createError(
+    'config/invalid_challenge_param',
+    detail || 'Invalid WWW-Authenticate challenge parameter',
+    'Challenge parameters must be constants: no control characters, scope limited to RFC 6749 scope-token characters.',
   );
 
 export const OAUTH_INVALID_GRANT = (detail?: string) =>

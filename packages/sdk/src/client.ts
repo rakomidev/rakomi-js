@@ -102,7 +102,7 @@ export class RakomiClient {
         throw new RakomiError(CONFIG_INVALID_BASE_URL());
       }
       let end = config.baseUrl.length;
-      while (end > 0 && config.baseUrl.charCodeAt(end - 1) === 47 /* '/' */) end--;
+      while (end > 0 && config.baseUrl.charCodeAt(end - 1) === 47) end--;
       this.baseUrl = config.baseUrl.slice(0, end);
     } else {
       this.baseUrl = DEFAULT_BASE_URL;

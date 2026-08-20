@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { computeExpectedComponentSet } from './check-sbom-equals-lockfile.mjs'
+import { isCliEntry } from './lib/cli-entry.mjs'
+import { readLegalEntity } from './lib/legal-entity.mjs'
 import { spdxId } from './lib/sdk-bundle-common.mjs'
 import { loadDenylist, scanText } from './lib/sdk-public-denylist.mjs'
 import { enumeratePublishablePackages, GateError, REPO_ROOT } from './lib/sdk-supply-chain-common.mjs'
@@ -61,6 +63,11 @@ export function licenseEntryFor(name, version, repoRoot = REPO_ROOT) {
 
 const byCodepoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 
+function legalSupplier(repoRoot = REPO_ROOT) {
+  const { legalName, url } = readLegalEntity(repoRoot)
+  return { name: legalName, ...(url ? { url: [url] } : {}) }
+}
+
 export function buildSbomDoc(pkg, { repoRoot = REPO_ROOT } = {}) {
   const { expected, manifest } = computeExpectedComponentSet(pkg, { repoRoot })
   const selfPurl = `pkg:npm/${manifest.name.startsWith('@') ? '%40' + manifest.name.slice(1).replace(/\//g, '%2F') : manifest.name}@${manifest.version}`
@@ -83,7 +90,8 @@ export function buildSbomDoc(pkg, { repoRoot = REPO_ROOT } = {}) {
     specVersion: CDX_SPEC_VERSION,
     version: 1,
     metadata: {
-      authors: [{ name: 'CRE8EVE' }],
+      supplier: legalSupplier(repoRoot),
+      authors: [{ name: readLegalEntity(repoRoot).legalName }],
       tools: { components: [{ type: 'application', group: 'rakomi', name: 'generate-sbom', version: generatorVersion() }] },
       component: {
         type: 'library',
@@ -181,7 +189,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isCliEntry(import.meta.url)) {
   main().catch((e) => {
     if (e instanceof GateError) { console.error(`\nGENERATE-SBOM: FAIL — ${e.message}`); process.exit(2) }
     console.error(`\nGENERATE-SBOM: FAIL — unexpected: ${e.stack || e.message}`); process.exit(2)

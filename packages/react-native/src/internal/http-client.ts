@@ -8,6 +8,8 @@
 
 import type { HttpClient, HttpClientInit } from '@rakomi/sdk-core';
 
+import { composeSignals } from './compose-signals.js';
+
 export interface CreateRnHttpClientOptions {
   /** Base URL prepended to relative paths (e.g. `https://api.rakomi.com`). */
   baseUrl?: string;
@@ -22,18 +24,49 @@ export function createRnHttpClient(options: CreateRnHttpClientOptions = {}): Htt
     fetch: async (url: string, init: HttpClientInit = {}) => {
       const fullUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeout);
+      const timedOut = Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
+      const timer = setTimeout(() => controller.abort(timedOut), timeout);
+      const composed = composeSignals(init.signal, controller.signal);
+      let response: Response;
       try {
-        return await fetch(fullUrl, {
+        response = await fetch(fullUrl, {
           method: init.method ?? 'GET',
           headers: init.headers,
           body: init.body,
           redirect: 'error',
-          signal: init.signal ?? controller.signal,
+          signal: composed.signal,
         });
-      } finally {
+      } catch (err) {
         clearTimeout(timer);
+        composed.dispose();
+        throw err;
       }
+
+      clearTimeout(timer);
+
+      const body: unknown = (response as { body?: unknown }).body;
+      const streaming =
+        body !== null &&
+        body !== undefined &&
+        typeof (body as ReadableStream<Uint8Array>).pipeThrough === 'function' &&
+        typeof TransformStream !== 'undefined';
+
+      if (!streaming) {
+        composed.dispose();
+        return response;
+      }
+
+      const release = new TransformStream<Uint8Array, Uint8Array>({
+        flush: () => composed.dispose(),
+      });
+      const piped = (body as ReadableStream<Uint8Array>).pipeThrough(release);
+      const wrapped = new Response(piped, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+      composed.signal.addEventListener('abort', () => composed.dispose(), { once: true });
+      return wrapped;
     },
   };
 }

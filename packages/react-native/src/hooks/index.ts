@@ -11,7 +11,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import type { AuthConfig, BrandingConfig, OrgContext, OrgMembership, TranslationFn } from '@rakomi/sdk-core';
+import type { AuthConfig, BrandingConfig, OrgMembershipClaim, TranslationFn } from '@rakomi/sdk-core';
+import { extractOrgClaims, parseAuthConfigResponse } from '@rakomi/sdk-core';
 
 import { useRakomiContext } from '../context.js';
 
@@ -46,6 +47,13 @@ export function useFlag<T = unknown>(flag: string, options?: UseFlagOptions): Us
   };
 }
 
+/** The active organization context, from the `org` scope's JWT claims. */
+export interface OrgContext {
+  orgId: string;
+  orgRole: string;
+  orgMemberships: OrgMembershipClaim[];
+}
+
 export interface UseOrganizationReturn {
   isLoaded: boolean;
   organization: OrgContext | null;
@@ -53,25 +61,26 @@ export interface UseOrganizationReturn {
 
 export function useOrganization(): UseOrganizationReturn {
   const { user } = useRakomiContext();
-  const orgId = user?.rawClaims['org_id'] as string | undefined;
-  const orgRole = user?.rawClaims['org_role'] as string | undefined;
-  const orgMemberships = (user?.rawClaims['org_memberships'] as OrgMembership[] | undefined) ?? [];
+  const { org_id: orgId, org_role: orgRole, org_memberships: orgMemberships } = extractOrgClaims(
+    user?.rawClaims ?? {},
+  );
   return {
     isLoaded: !!user,
-    organization: orgId && orgRole ? { orgId, orgRole, orgMemberships } : null,
+    organization: orgId && orgRole ? { orgId, orgRole, orgMemberships: orgMemberships ?? [] } : null,
   };
 }
 
 export interface UseOrganizationListReturn {
   isLoaded: boolean;
-  organizations: OrgMembership[];
+  organizations: OrgMembershipClaim[];
 }
 
 export function useOrganizationList(): UseOrganizationListReturn {
   const { user } = useRakomiContext();
+  const { org_memberships: organizations } = extractOrgClaims(user?.rawClaims ?? {});
   return {
     isLoaded: !!user,
-    organizations: (user?.rawClaims['org_memberships'] as OrgMembership[] | undefined) ?? [],
+    organizations: organizations ?? [],
   };
 }
 
@@ -135,7 +144,8 @@ export function useAuthConfig(): UseAuthConfigReturn {
             headers: { Accept: 'application/json', 'X-API-Key': publishableKey },
           });
           if (!response.ok) return null;
-          return (await response.json()) as AuthConfig;
+          const raw: unknown = await response.json();
+          return parseAuthConfigResponse(raw, baseUrl);
         } catch {
           return null;
         }

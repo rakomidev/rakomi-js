@@ -28,6 +28,7 @@ export type {
   SessionResource,
   SignInOptions,
   SignInResult,
+  SocialProviderFlags,
   SwitchOrgResult,
   TokenResult,
   UserResource,
@@ -35,6 +36,7 @@ export type {
 export type { AuthError } from './types/auth-error.js';
 export { getErrorMessage } from './types/auth-error.js';
 
+export { parseAuthConfigResponse } from './auth-config-parser.js';
 export type { MachineAction, MachineSnapshot } from './auth-machine.js';
 export { INITIAL_SNAPSHOT, isSignedIn, reduce, shouldRefresh } from './auth-machine.js';
 export { EventLog } from './event-log.js';
@@ -43,6 +45,8 @@ export { createTranslator, selectPluralForm } from './i18n.js';
 export type { JwksCache, JwksCacheOptions, JwksDocument } from './jwks-cache.js';
 export { createJwksCache } from './jwks-cache.js';
 export { decodeJwtPayload, decodeSession, decodeUser } from './jwt-decode.js';
+export type { OrgClaims, OrgMembershipClaim } from './org-claims.js';
+export { extractOrgClaims } from './org-claims.js';
 export { hasPermission, hasRole } from './rbac.js';
 export type { StorageKeyPurpose } from './storage-keys.js';
 export { deriveTenantStorageKey } from './storage-keys.js';
@@ -64,6 +68,53 @@ export {
   verifyEmailOtp,
   verifyMagicLink,
 } from './auth-flows.js';
+
+export type { AssertPasskeyInput } from './passkeys/assert.js';
+export { assertPasskey } from './passkeys/assert.js';
+export { isPasskeySupported,PASSKEY_CEREMONY_TIMEOUT_MS } from './passkeys/ceremony.js';
+export type { ApiErrorBody, PasskeySurface } from './passkeys/errors.js';
+export { mapPasskeyHttpError, parseRetryAfterMs, passkeyError } from './passkeys/errors.js';
+export type {
+  DeletePasskeyInput,
+  ListPasskeysInput,
+  RenamePasskeyInput,
+} from './passkeys/management.js';
+export { deletePasskey, listPasskeys, renamePasskey } from './passkeys/management.js';
+export type { RegisterPasskeyInput } from './passkeys/register.js';
+export { registerPasskey } from './passkeys/register.js';
+export type { StepUpWithPasskeyInput } from './passkeys/step-up.js';
+export { stepUpWithPasskey } from './passkeys/step-up.js';
+export type {
+  AssertPasskeyResult,
+  AttestationConveyancePreference,
+  AuthenticationResponseJSON,
+  AuthenticatorAttachment,
+  AuthenticatorSelectionCriteria,
+  AuthenticatorTransport,
+  Base64URLString,
+  DeletePasskeyResult,
+  ListPasskeysResult,
+  OpaqueUserHandle,
+  PasskeyCeremonyAdapter,
+  PasskeyCeremonyErrorKind,
+  PasskeyCeremonyOptions,
+  PasskeyError,
+  PasskeyErrorCause,
+  PasskeyErrorCode,
+  PasskeyNextAction,
+  PasskeySummary,
+  PasskeySummaryResult,
+  PasskeyTokens,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialDescriptorJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegisterPasskeyResult,
+  RegistrationResponseJSON,
+  ResidentKeyRequirement,
+  StepUpWithPasskeyResult,
+  UserVerificationRequirement,
+} from './passkeys/types.js';
+export { asOpaqueUserHandle,PasskeyCeremonyError } from './passkeys/types.js';
 
 export type { BuildAuthorizationUrlInput } from './oauth/authorize.js';
 export { buildAuthorizationUrl } from './oauth/authorize.js';

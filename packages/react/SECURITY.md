@@ -11,7 +11,7 @@ While these packages remain pre-1.0 (`0.x`), they carry **no stability or suppor
 From version **1.0** onward, Rakomi maintains the current (N) and previous (N-1) MAJOR in parallel, with N-1 receiving
 security-only fixes. The CRA support period for each MAJOR is determined in accordance with
 **CRA Art. 13(8)** — at least five years, or the product's expected use time where shorter. The authoritative, machine-readable support windows are published at
-[`https://rakomi.com/.well-known/sdk-support.json`](https://rakomi.com/.well-known/sdk-support.json)
+[`https://api.rakomi.com/.well-known/sdk-support.json`](https://api.rakomi.com/.well-known/sdk-support.json)
 and rendered for humans on the [SDK Support & Lifecycle page](https://rakomi.com/sdk-support). This
 document points at that single source rather than re-typing dated rows.
 
@@ -125,7 +125,8 @@ software** with cryptographic functionality the end user cannot readily modify.
 - **EU — Regulation (EU) 2021/821 (Dual-Use):** the SDKs qualify for the **mass-market** treatment
   under the Cryptography Note (Note 3) to Category 5, Part 2 of Annex I — generally available to the
   public, sold without restriction, and not designed for the user to alter the cryptographic
-  functionality. No export authorisation is required for their distribution within or from the EU.
+  functionality. No export authorisation is required for their distribution within or from the EU, and —
+  unlike the US path — the EU decontrol is **self-executing**, with no notification or filing step.
 - **US — Export Administration Regulations (EAR):** the cryptographic functionality is classifiable
   under **ECCN 5D002**. As **publicly available** open-source software the source code is **not
   subject to the EAR** (15 CFR §734.7(a)), and the corresponding object code is distributed under the

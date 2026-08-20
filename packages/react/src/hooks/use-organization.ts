@@ -1,7 +1,9 @@
 'use client';
 
+import { extractOrgClaims } from '@rakomi/sdk-core';
+
 import { useRakomiContext } from '../context.js';
-import type { OrgContext, OrgMembership } from '../types.js';
+import type { OrgContext } from '../types.js';
 
 export interface UseOrganizationReturn {
   isLoaded: boolean;
@@ -23,23 +25,13 @@ export function useOrganization(): UseOrganizationReturn {
     return { isLoaded: true, org: null };
   }
 
-  const rawClaims = state.user.rawClaims;
-  const orgId = typeof rawClaims['org_id'] === 'string' ? rawClaims['org_id'] : null;
-  const orgRole = typeof rawClaims['org_role'] === 'string' ? rawClaims['org_role'] : null;
+  const { org_id: orgId, org_role: orgRole, org_memberships: orgMemberships } = extractOrgClaims(
+    state.user.rawClaims,
+  );
 
   if (!orgId || !orgRole) {
     return { isLoaded: true, org: null };
   }
 
-  const rawMemberships = Array.isArray(rawClaims['org_memberships']) ? rawClaims['org_memberships'] : [];
-  const orgMemberships = rawMemberships.filter(
-    (m): m is OrgMembership =>
-      m != null &&
-      typeof m === 'object' &&
-      typeof (m as Record<string, unknown>)['org_id'] === 'string' &&
-      typeof (m as Record<string, unknown>)['org_slug'] === 'string' &&
-      typeof (m as Record<string, unknown>)['org_role'] === 'string',
-  );
-
-  return { isLoaded: true, org: { orgId, orgRole, orgMemberships } };
+  return { isLoaded: true, org: { orgId, orgRole, orgMemberships: orgMemberships ?? [] } };
 }

@@ -42,7 +42,12 @@ export {
   AUTH_REFRESH_SUPERSEDED_BY_ROTATION,
   CannotUnlinkLastMethodError,
   CONFIG_INVALID_BASE_URL,
+  CONFIG_INVALID_CHALLENGE_PARAM,
+  CONFIG_INVALID_OPTION,
+  CONFIG_INVALID_RESOURCE,
+  CONFIG_INVALID_URL,
   CONFIG_MISSING_API_KEY,
+  CONFIG_MISSING_PIN,
   CONFIG_MISSING_WEBHOOK_SECRET,
   CooldownActiveError,
   ERROR_CODES,
@@ -61,6 +66,7 @@ export {
   OAUTH_NETWORK_ERROR,
   OAUTH_UNSUPPORTED_GRANT_TYPE,
   RakomiError,
+  TOKEN_CLIENT_MISMATCH,
   TOKEN_EXPIRED,
   TOKEN_INVALID_ALGORITHM,
   TOKEN_INVALID_AUDIENCE,
@@ -70,6 +76,7 @@ export {
   TOKEN_MISSING_CLAIMS,
   TOKEN_NOT_YET_VALID,
   TOKEN_REVOKED,
+  TOKEN_TENANT_MISMATCH,
   WEBHOOK_INVALID_BODY,
   WEBHOOK_INVALID_SECRET,
   WEBHOOK_INVALID_SIGNATURE,
@@ -118,6 +125,11 @@ export {
   rotateRefreshKey,
 } from './oauth.js';
 export { hasPermission, hasRole } from './rbac.js';
+export {
+  buildChallenge,
+  buildProtectedResourceMetadata,
+  verifyRakomiToken,
+} from './resource-server.js';
 export type {
   TokenExchangeOptions,
   TokenExchangeResponse,
@@ -157,6 +169,8 @@ export {
 } from './ciba.js';
 export type {
   AuthorizeUrlOptions,
+  ChallengeErrorCode,
+  ChallengeOptions,
   MiddlewareOptions,
   OAuthExchangeOptions,
   OAuthRefreshOptions,
@@ -164,6 +178,8 @@ export type {
   OAuthTokenResponse,
   OrgMembership,
   PkceChallenge,
+  ProtectedResourceMetadata,
+  ProtectedResourceMetadataOptions,
   PublisherEventType,
   PublisherWebhookEvent,
   PublisherWebhookEventType,
@@ -173,6 +189,10 @@ export type {
   SdkEnvironment,
   SdkError,
   TokenPayload,
+  VerifyRakomiTokenAudienceOptions,
+  VerifyRakomiTokenBaseOptions,
+  VerifyRakomiTokenOptions,
+  VerifyRakomiTokenTenantPinOptions,
   VerifyResult,
   WebhookEvent,
   WebhookHeaders,

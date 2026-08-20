@@ -162,7 +162,7 @@ function SignInInner(props: SignInProps): React.ReactElement {
   }, [state.loading]);
 
   const methods = methodsProp ?? config?.methods ?? ['password'];
-  const socialProviders = socialProp ?? config?.socialProviders ?? [];
+  const socialProviders = socialProp ?? (config?.socialProviders ? Object.keys(config.socialProviders) : []);
 
   useEffect(() => {
     if (auth.isSignedIn && redirectIfAuthenticated && state.step !== 'complete' && typeof window !== 'undefined') {

@@ -19,7 +19,7 @@ import { RakomiProvider, SignIn } from '@rakomi/react';
 
 export function App() {
   return (
-    <RakomiProvider publishableKey="pk_...">
+    <RakomiProvider clientId="pk_...">
       <SignIn />
     </RakomiProvider>
   );
@@ -34,7 +34,7 @@ The SDK ships with 5 GA locales: **English (`en`)**, **Polish (`pl`)**, **German
 ### Explicit locale
 
 ```tsx
-<RakomiProvider publishableKey="pk_..." locale="de">
+<RakomiProvider clientId="pk_..." locale="de">
   <SignIn />
 </RakomiProvider>
 ```
@@ -46,7 +46,7 @@ locale (`GET /v1/public/tenant-config`), then the browser's `navigator.language`
 then `'en'`.
 
 ```tsx
-<RakomiProvider publishableKey="pk_...">
+<RakomiProvider clientId="pk_...">
   <SignIn />
 </RakomiProvider>
 ```
@@ -65,7 +65,7 @@ const overrides: Partial<Translations> = {
   'signIn.submitButton': 'Let me in',
 };
 
-<RakomiProvider publishableKey="pk_..." locale="en" translations={overrides}>
+<RakomiProvider clientId="pk_..." locale="en" translations={overrides}>
   <SignIn />
 </RakomiProvider>;
 ```
