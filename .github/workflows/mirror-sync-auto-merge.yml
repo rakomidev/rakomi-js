@@ -1,0 +1,76 @@
+name: Sync PR auto-merge (after a maintainer approval)
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: mirror-sync-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Gather the pull request's current state and the reviewer's permission
+        id: ctx
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEWER_LOGIN: ${{ github.event.review.user.login }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          MERGEABLE="null"
+          MERGEABLE_STATE="unknown"
+          for _ in 1 2 3 4 5; do
+            PR_JSON=$(command gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+            MERGEABLE=$(printf '%s' "$PR_JSON" | jq -r '.mergeable')
+            MERGEABLE_STATE=$(printf '%s' "$PR_JSON" | jq -r '.mergeable_state')
+            if [ "$MERGEABLE" != "null" ]; then
+              break
+            fi
+            sleep 5
+          done
+          AUTHOR=$(printf '%s' "$PR_JSON" | jq -r '.user.login')
+          HEAD_REF=$(printf '%s' "$PR_JSON" | jq -r '.head.ref')
+          BASE_REF=$(printf '%s' "$PR_JSON" | jq -r '.base.ref')
+          REVIEWER_PERMISSION=$(command gh api "repos/${REPO}/collaborators/${REVIEWER_LOGIN}/permission" --jq '.permission')
+          {
+            echo "AUTHOR=${AUTHOR}"
+            echo "HEAD_REF=${HEAD_REF}"
+            echo "BASE_REF=${BASE_REF}"
+            echo "MERGEABLE=${MERGEABLE}"
+            echo "MERGEABLE_STATE=${MERGEABLE_STATE}"
+            echo "REVIEWER_PERMISSION=${REVIEWER_PERMISSION}"
+          } >> "$GITHUB_ENV"
+
+      - name: Evaluate the merge-eligibility guards
+        id: guard
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+        run: node scripts/check-mirror-sync-auto-merge-guards.mjs
+
+      - name: Merge the sync pull request
+        if: steps.guard.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          command gh pr merge "${PR_NUMBER}" --repo "${REPO}" --merge --delete-branch

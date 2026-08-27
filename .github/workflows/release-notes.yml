@@ -1,39 +1,5 @@
 name: Create GitHub Release (Notes + SBOM + SECURITY.md)
 
-# ─────────────────────────────────────────────────────────────────────────────────────────────
-# STAGED TEMPLATE. Authored in the private monorepo under `public-repo-template/` and copied
-# verbatim into `rakomidev/rakomi-js` at cutover, same as publish.yml (see that file's own header).
-# It NEVER runs in the monorepo.
-#
-# WHY A SEPARATE WORKFLOW, NOT A STEP APPENDED TO publish.yml: the publish job's `permissions:` is
-# statically pinned to EXACTLY `{contents: read, id-token: write}` by `check-public-publish-workflow.mjs`
-# ("job-scoped, exactly two keys" — and that gate bounds EVERY permissions block in the file, not
-# only the id-token one). Creating a GitHub Release + uploading assets needs `contents: write`, which
-# that gate correctly refuses to allow anywhere near the OIDC-publish job — widening the blast radius of
-# the job holding the npm trusted-publishing identity is exactly the invariant that gate exists to prevent.
-# This workflow is therefore a genuinely separate file: `contents: write`, NO `id-token` at all — it
-# never touches the npm publish credential and cannot widen its blast radius.
-#
-# DIAGNOSIS this closes: no workflow anywhere in this pipeline ever created a GitHub Release.
-# v0.1.0's four releases (with Notes) were created by hand from a laptop after the fact; v0.2.0 got
-# none at all — zero assets on any of the earlier rows. This workflow makes release creation part
-# of the SAME tag-triggered pipeline that already publishes to npm, so it happens the same way
-# every time instead of depending on a human remembering a follow-up step.
-#
-# ORDERING / INDEPENDENCE: this workflow is triggered by the SAME tag push as publish.yml and runs in
-# PARALLEL with it — there is no `needs:` (cross-workflow dependencies need `workflow_run`, which this
-# story avoids to keep the trigger identical + auditable). Instead this job waits for npm itself to
-# confirm the version is live (bounded poll) before doing anything — so it never creates a release for a
-# publish that is still in flight or that failed. A publish failure means this workflow's poll times out
-# and the job fails LOUD (visible red run) without touching GitHub Releases — it never fabricates a
-# release for a version that never actually shipped.
-#
-# IDEMPOTENT BY CONSTRUCTION: `gh release view` decides create-vs-edit; asset upload always uses
-# `--clobber`. Re-running this workflow for a tag that already has a release (a manual re-dispatch, or a
-# second delivery of the same tag-push webhook) can only ever converge on the SAME state, never duplicate
-# a release or fail on "already exists".
-# ─────────────────────────────────────────────────────────────────────────────────────────────
-
 on:
   push:
     tags:
@@ -42,12 +8,6 @@ on:
       - "react/v[0-9]*.[0-9]*.[0-9]*"
       - "react-native/v[0-9]*.[0-9]*.[0-9]*"
       - "create-rakomi-app/v[0-9]*.[0-9]*.[0-9]*"
-  # SAFE here, unlike publish.yml (which forbids workflow_dispatch to protect the OIDC publish
-  # identity): this workflow holds NO OIDC/npm credential, only `contents: write`. Re-dispatching
-  # against an ALREADY-published tag (`gh workflow run release-notes.yml --ref <tag>`) is the sanctioned
-  # backfill path for a tag whose original push predates this workflow existing on the mirror (the exact
-  # 0.2.0 gap) — idempotent by construction (see the create-or-update + --clobber steps below), so a
-  # re-run against a tag that already has a release converges, never duplicates.
   workflow_dispatch: {}
 
 concurrency:
@@ -61,9 +21,9 @@ jobs:
   release-notes:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # gh release create/upload — the ONLY write this workflow ever needs; no id-token anywhere in this file
+      contents: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
 
@@ -87,10 +47,6 @@ jobs:
             echo "TAG_NAME=${REF#refs/tags/}"
           } >> "$GITHUB_ENV"
 
-      # Independent of publish.yml's own run: this job asks npm directly whether the bytes are live
-      # before doing anything else, so a slow/failed publish never produces a release for nothing.
-      # Bounded (10 min) — matches the retry window publish.yml's own post-publish checks use for npm's
-      # attestation-indexing lag.
       - name: Wait for npm to confirm this version is published
         run: |
           set -euo pipefail
@@ -127,8 +83,6 @@ jobs:
             printf '## Docs\nhttps://docs.rakomi.dev/sdk/\n'
           } > /tmp/release-notes.md
 
-      # The AUTHORITATIVE published bytes — extracted from the exact tarball npm serves, never
-      # re-generated locally (a local re-run of generate-sbom.mjs could drift from what actually shipped).
       - name: Fetch the published tarball's SBOM + collect SECURITY.md
         run: |
           set -euo pipefail
@@ -141,8 +95,6 @@ jobs:
           cp "$TMPDIR_PACK/package/sbom.cdx.json" /tmp/release-assets/sbom.cdx.json
           cp SECURITY.md /tmp/release-assets/SECURITY.md
 
-      # Idempotent create-or-update: a re-run (manual re-dispatch, duplicate tag-push delivery) converges
-      # on the SAME release rather than erroring "already exists" or leaving stale Notes.
       - name: Create or update the GitHub Release (idempotent)
         env:
           GH_TOKEN: ${{ github.token }}
