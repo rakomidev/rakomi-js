@@ -1,0 +1,130 @@
+name: Sync PR auto-merge (after a maintainer approval)
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# STAGED TEMPLATE. Authored in the private source repository under `public-repo-template/` and
+# copied verbatim into this repository at cutover, same as `publish.yml` and `release-notes.yml`
+# (see those files' own headers). It NEVER runs in the private repository.
+#
+# WHAT THIS DOES: the automated `.github/**` sync opens a pull request here from a dedicated bot
+# identity, never from a person. Historically, landing that pull request still meant a maintainer
+# clicked "Merge" — which put a personal identity on the merge commit of an otherwise bot-authored
+# change. This workflow removes that last manual step *without* removing the human judgment: it
+# fires only after a maintainer has already submitted an APPROVING review on the exact kind of pull
+# request this sync produces, re-checks every one of that pull request's properties independently
+# (never trusting the review event alone), and only then merges — as the repository's own automation
+# identity, not as the approving maintainer and not as any other person.
+#
+# WHY THIS IS SAFE: this workflow can only ever act on ONE narrow, mechanically-checked shape of
+# pull request (bot-authored, sync-branch-named, targeting the default branch), only after a real
+# approval from an account holding admin/maintain permission on this repository, and only when the
+# platform itself reports every required check green with no conflict. Anything outside that shape
+# is left completely alone — a maintainer still merges everything else by hand. The decision logic
+# lives in `scripts/check-mirror-sync-auto-merge-guards.mjs` (pure functions, unit-tested with both a
+# should-PASS and a should-FAIL case for every guard) so the rule this workflow enforces is reviewable
+# independently of the YAML that calls it.
+#
+# WHY A SEPARATE WORKFLOW, NOT A STEP ON THE PUBLISH PATH: this has nothing to do with publishing a
+# package. It never touches the OIDC publish identity, never runs on a tag, and carries no permission
+# beyond writing to pull requests and branches — deliberately the smallest possible token for the one
+# irreversible action it takes (merging a pull request into the default branch).
+#
+# NO `pull_request_target`: this reacts to a review event, not to pull-request content, and every
+# dynamic value below flows through an `env:` block before a shell ever sees it — never interpolated
+# straight into a `run:` body — so nothing here executes attacker-influenced text.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: mirror-sync-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    # Only an APPROVING review is worth a look at all — everything else (a comment, a
+    # changes-requested review, or a review on some unrelated pull request) exits here for free,
+    # before the job even starts, so this workflow adds no noise to the run history of an ordinary
+    # review.
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # merge the pull request + delete its branch — the one write this job ever needs
+      pull-requests: write # read the pull request's own state and act on it via `gh pr merge`
+
+    steps:
+      # A shallow checkout is enough — this job only needs the guard script's bytes, never the
+      # history or the working tree of the pull request under review.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Read every fact the guard needs directly from the platform (never from the review event's own
+      # payload, which describes the review, not the current, possibly-since-changed state of the
+      # pull request or of the reviewer's account) and hand each one to the next step through
+      # `$GITHUB_ENV` — so no value ever needs to be embedded in a later `run:` body.
+      - name: Gather the pull request's current state and the reviewer's permission
+        id: ctx
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEWER_LOGIN: ${{ github.event.review.user.login }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          # `mergeable` starts out null while the platform still computes it — a short bounded poll
+          # avoids treating "not computed yet" the same as "not mergeable" on an otherwise-eligible
+          # pull request.
+          MERGEABLE="null"
+          MERGEABLE_STATE="unknown"
+          for _ in 1 2 3 4 5; do
+            PR_JSON=$(command gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+            MERGEABLE=$(printf '%s' "$PR_JSON" | jq -r '.mergeable')
+            MERGEABLE_STATE=$(printf '%s' "$PR_JSON" | jq -r '.mergeable_state')
+            if [ "$MERGEABLE" != "null" ]; then
+              break
+            fi
+            sleep 5
+          done
+          AUTHOR=$(printf '%s' "$PR_JSON" | jq -r '.user.login')
+          HEAD_REF=$(printf '%s' "$PR_JSON" | jq -r '.head.ref')
+          BASE_REF=$(printf '%s' "$PR_JSON" | jq -r '.base.ref')
+          REVIEWER_PERMISSION=$(command gh api "repos/${REPO}/collaborators/${REVIEWER_LOGIN}/permission" --jq '.permission')
+          {
+            echo "AUTHOR=${AUTHOR}"
+            echo "HEAD_REF=${HEAD_REF}"
+            echo "BASE_REF=${BASE_REF}"
+            echo "MERGEABLE=${MERGEABLE}"
+            echo "MERGEABLE_STATE=${MERGEABLE_STATE}"
+            echo "REVIEWER_PERMISSION=${REVIEWER_PERMISSION}"
+          } >> "$GITHUB_ENV"
+
+      # The reviewable decision core (scripts/check-mirror-sync-auto-merge-guards.mjs): every guard is
+      # checked independently and the step's own $GITHUB_OUTPUT `eligible` value — never a step outcome
+      # or exit code — drives the merge step below. This step itself always exits 0 (an ordinary review
+      # on an ordinary pull request is expected to land here as "not eligible", which must never fail
+      # the run) unless the gather step above failed to populate its environment, which is a wiring
+      # defect and is reported as CANNOT-EVALUATE (exit 2).
+      - name: Evaluate the merge-eligibility guards
+        id: guard
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+        run: node scripts/check-mirror-sync-auto-merge-guards.mjs
+
+      # Merge as the repository automation identity — never as the approving maintainer, and never as
+      # any other person. `--delete-branch` keeps a sync branch from lingering once it has landed.
+      - name: Merge the sync pull request
+        if: steps.guard.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          command gh pr merge "${PR_NUMBER}" --repo "${REPO}" --merge --delete-branch

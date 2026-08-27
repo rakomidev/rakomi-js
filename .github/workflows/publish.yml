@@ -30,6 +30,9 @@ on:
       # create-rakomi-app joined this publish path (operator decision 2026-08-24) rather than
       # getting a bespoke pipeline.
       - "create-rakomi-app/v[0-9]*.[0-9]*.[0-9]*"
+      # rakomi (the CLI) joined this publish path (operator decision 2026-08-27) — same shape as
+      # create-rakomi-app immediately above.
+      - "cli/v[0-9]*.[0-9]*.[0-9]*"
 
 # In-flight publish safety: the `cancel-in-progress` flag is kept false — the load-bearing
 # property — so a publish is NEVER killed mid-transaction (a cancelled publish could leave a
@@ -140,6 +143,7 @@ jobs:
             refs/tags/react/v*)             PKG_DIR=packages/react;             PKG_NAME=@rakomi/react;        PREFIX=react/v ;;
             refs/tags/react-native/v*)      PKG_DIR=packages/react-native;      PKG_NAME=@rakomi/react-native; PREFIX=react-native/v ;;
             refs/tags/create-rakomi-app/v*) PKG_DIR=packages/create-rakomi-app; PKG_NAME=create-rakomi-app;    PREFIX=create-rakomi-app/v ;;
+            refs/tags/cli/v*)               PKG_DIR=packages/cli;               PKG_NAME=rakomi;               PREFIX=cli/v ;;
             *) echo "ERROR: tag $REF is not a recognized per-package release namespace"; exit 1 ;;
           esac
           {
