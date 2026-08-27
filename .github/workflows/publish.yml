@@ -1,32 +1,25 @@
 name: Publish @rakomi/* (OIDC trusted publishing + SLSA provenance)
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
-# STAGED TEMPLATE — story `sdk-publish-topology-public-repo-split`, Task 4 (public-repo publish
-# workflow). This file is AUTHORED in the private monorepo under `public-repo-template/` and is
-# COPIED verbatim into the PUBLIC repo `rakomidev/rakomi-js` at cutover (Task 1/10, director-gated).
-# It NEVER runs in the monorepo (the monorepo has no SDK orphan tree to publish, and runs no
-# publish workflow — AC-DISABLE-MONOREPO-PUBLISH). Its STATIC hardening invariants are verified in
-# the monorepo by `scripts/check-public-publish-workflow.mjs` (a pure-function gate over this text),
-# so the irreversible publish path is reviewer-proof BEFORE the public repo exists.
+# STAGED TEMPLATE. This file is AUTHORED in the private monorepo under `public-repo-template/` and
+# is COPIED verbatim into the PUBLIC repo `rakomidev/rakomi-js` at cutover. It NEVER runs in the
+# monorepo (the monorepo has no SDK orphan tree to publish, and runs no publish workflow). Its
+# STATIC hardening invariants are verified in the monorepo by
+# `scripts/check-public-publish-workflow.mjs` (a pure-function gate over this text), so the
+# irreversible publish path is reviewer-proof BEFORE the public repo exists.
 #
-# Honesty model (decisions-brief §2a): npm derives provenance from THIS workflow's OIDC identity +
-# the tarball SHA-512 only. The public repo therefore holds REAL inspectable source (orphan
-# clean-room snapshot) and publishes the exact verified bytes. There is NO long-lived publish
-# credential anywhere (N5 / AC-9): publishing authenticates via the workflow's short-lived OIDC
-# identity (npm Trusted Publishing GA 2025-07-31; needs npm >= 11.5.1; provenance auto-generates).
-#
-# AC map (this file): N5(9) · N6(10) · N8(12) · AC-EXTERNAL-DEPS-RESOLVABLE(14) · AC-G1(19) ·
-#   AC-G2(20) · AC-PRED-SCRUB(36) · AC-PROV-ORDER/PUBLIC(46) · AC-NPM-ORG token(51) ·
-#   AC-PUBLISH-TRIGGER-LOCK(76) · AC-PERMISSIONS-TWO-KEY(77) · AC-OIDC-ENV-BOUND(78) ·
-#   AC-OIDC-PREFLIGHT(79) · AC-2FA-OIDC-INTERACTION(80) · AC-PLACEHOLDER-PROVENANCE(81) ·
-#   AC-NEVER-PUBLISH-FROM-LAPTOP(82) · AC-PRED-SCRUB-FIELDS(83) · AC-REKOR-ISSUER-PROOF(84).
+# Honesty model: npm derives provenance from THIS workflow's OIDC identity + the tarball SHA-512
+# only. The public repo therefore holds REAL inspectable source (orphan clean-room snapshot) and
+# publishes the exact verified bytes. There is NO long-lived publish credential anywhere:
+# publishing authenticates via the workflow's short-lived OIDC identity (npm Trusted Publishing GA
+# 2025-07-31; needs npm >= 11.5.1; provenance auto-generates).
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
-# AC-76 / AC-PUBLISH-TRIGGER-LOCK: the publish job triggers ONLY on a protected per-package tag push.
-# NEVER workflow_dispatch / repository_dispatch / pull_request* — those would let a non-tag actor (or a
-# fork PR) reach the OIDC publish identity. Retry = a NEW patch tag, never a force-move (N4 + tag
-# protection). Per-package namespaces: @rakomi/node → sdk/v*; @rakomi/sdk-core → sdk-core/v*;
-# @rakomi/react → react/v*; @rakomi/react-native → react-native/v*.
+# The publish job triggers ONLY on a protected per-package tag push. NEVER workflow_dispatch /
+# repository_dispatch / pull_request* — those would let a non-tag actor (or a fork PR) reach the
+# OIDC publish identity. Retry = a NEW patch tag, never a force-move (tag protection). Per-package
+# namespaces: @rakomi/node → sdk/v*; @rakomi/sdk-core → sdk-core/v*; @rakomi/react → react/v*;
+# @rakomi/react-native → react-native/v*.
 on:
   push:
     tags:
@@ -34,46 +27,47 @@ on:
       - "sdk-core/v[0-9]*.[0-9]*.[0-9]*"
       - "react/v[0-9]*.[0-9]*.[0-9]*"
       - "react-native/v[0-9]*.[0-9]*.[0-9]*"
-      # create-rakomi-app joined this publish path (story create-rakomi-app-npm-publish-path, operator
-      # decision 2026-08-24) rather than getting a bespoke pipeline.
+      # create-rakomi-app joined this publish path (operator decision 2026-08-24) rather than
+      # getting a bespoke pipeline.
       - "create-rakomi-app/v[0-9]*.[0-9]*.[0-9]*"
 
-# In-flight publish safety (N8 / AC-CONT-CADENCE / AC-114): the `cancel-in-progress` flag is kept false —
-# the load-bearing property — so a publish is NEVER killed mid-transaction (a cancelled publish could
-# leave a half-minted provenance/tag state). The group keys on the (unique-per-release) tag ref, so it
-# serializes only re-runs of the SAME immutable tag — NOT distinct releases, and that is sufficient:
-# distinct releases share no mutable cross-release state (each is its own export→publish transaction keyed
-# to its own immutable tag — the durable mutex of record; SemVer §3 / N4 — so two releases can never
-# collide on a version). A single global `group: sdk-release` lock (serializing ALL releases) is warranted
-# ONLY if a future fork adds shared mutable cross-release state. CI pins this no-cancel flag.
+# In-flight publish safety: the `cancel-in-progress` flag is kept false — the load-bearing
+# property — so a publish is NEVER killed mid-transaction (a cancelled publish could leave a
+# half-minted provenance/tag state). The group keys on the (unique-per-release) tag ref, so it
+# serializes only re-runs of the SAME immutable tag — NOT distinct releases, and that is
+# sufficient: distinct releases share no mutable cross-release state (each is its own
+# export→publish transaction keyed to its own immutable tag — the durable mutex of record; SemVer
+# §3 — so two releases can never collide on a version). A single global `group: sdk-release` lock
+# (serializing ALL releases) is warranted ONLY if a future fork adds shared mutable cross-release
+# state. CI pins this no-cancel flag.
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
-# AC-FLIP-SECRETS: workflow-level default is read-only. id-token:write is granted ONLY on the publish
-# job (job-scoped, AC-77) so the OIDC token's blast radius is the single intentional write exception.
+# Workflow-level default is read-only. id-token:write is granted ONLY on the publish job
+# (job-scoped) so the OIDC token's blast radius is the single intentional write exception.
 permissions:
   contents: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # AC-78 / AC-OIDC-ENV-BOUND: bind to a named Environment so the OIDC `sub` is
-    # `repo:rakomidev/rakomi-js:environment:release` (tighter than `:ref:`) AND the Environment is the
-    # required-reviewer gate (AC-AUDIT-SOD-PUBLISH: reviewer != release trigger actor).
+    # Bind to a named Environment so the OIDC `sub` is
+    # `repo:rakomidev/rakomi-js:environment:release` (tighter than `:ref:`) AND the Environment is
+    # the required-reviewer gate (reviewer != release trigger actor).
     environment: release
-    # AC-77 / AC-PERMISSIONS-TWO-KEY: EXACTLY two keys, job-scoped. `id-token: write` is the single
-    # intentional write (OIDC → npm trusted publishing + SLSA provenance). A third key here widens the
-    # OIDC token's blast radius — `check-public-publish-workflow.mjs` fails CI on any third permission key.
+    # EXACTLY two keys, job-scoped. `id-token: write` is the single intentional write (OIDC → npm
+    # trusted publishing + SLSA provenance). A third key here widens the OIDC token's blast radius
+    # — `check-public-publish-workflow.mjs` fails CI on any third permission key.
     permissions:
       contents: read
       id-token: write
 
     steps:
-      # AC-46 / AC-PROV-ORDER / AC-PROV-PUBLIC — FIRST step. OIDC mints provenance even from a PRIVATE
-      # repo → "green in CI, dead public link". Refuse to publish unless the repo is PUBLIC on a durable
-      # commit SHA. This is the irreversible-path tripwire that gates everything below.
-      - name: Assert repository is PUBLIC on a durable SHA (AC-46)
+      # FIRST step. OIDC mints provenance even from a PRIVATE repo → "green in CI, dead public
+      # link". Refuse to publish unless the repo is PUBLIC on a durable commit SHA. This is the
+      # irreversible-path tripwire that gates everything below.
+      - name: Assert repository is PUBLIC on a durable SHA
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_REPO: rakomidev/rakomi-js
@@ -81,11 +75,11 @@ jobs:
           set -euo pipefail
           VIS=$(gh repo view "$EXPECTED_REPO" --json visibility --jq '.visibility')
           if [ "$VIS" != "PUBLIC" ]; then
-            echo "ERROR: repository visibility is '$VIS', not PUBLIC — publishing while private mints provenance that resolves to a dead public link (AC-46)"
+            echo "ERROR: repository visibility is '$VIS', not PUBLIC — publishing while private mints provenance that resolves to a dead public link"
             exit 1
           fi
           if [ -z "${GITHUB_SHA:-}" ] || [ "${#GITHUB_SHA}" -ne 40 ]; then
-            echo "ERROR: no durable 40-hex commit SHA for this publish (AC-46)"
+            echo "ERROR: no durable 40-hex commit SHA for this publish"
             exit 1
           fi
           echo "repo is PUBLIC at $GITHUB_SHA"
@@ -94,24 +88,25 @@ jobs:
         with:
           fetch-depth: 0 # full history: tag→commit reachability for provenance (N3)
 
-      # AC10 — legal-reconciliation fence (first CONTENT-based gate, before any build/publish step). The
+      # Legal-reconciliation fence (first CONTENT-based gate, before any build/publish step). The
       # private monorepo's export refuses to assemble this orphan tree unless every legal-blocker
-      # determination (CRA citation renumber, export-control basis) is CONFIRMED + director-cleared in the
-      # governance log, and ships a LEAK-SAFE `legal-clearance.json` marker (roles + public CELEX only —
-      # no names/story ids). This step re-asserts it from the runner so the OIDC publish literally cannot
-      # execute on an uncleared tree. No secret, no permission change (static workflow gate unaffected).
+      # determination (CRA citation renumber, export-control basis) is CONFIRMED + director-cleared
+      # in the governance log, and ships a LEAK-SAFE `legal-clearance.json` marker (roles + public
+      # CELEX only — no names/story ids). This step re-asserts it from the runner so the OIDC
+      # publish literally cannot execute on an uncleared tree. No secret, no permission change
+      # (static workflow gate unaffected).
       - name: Assert legal reconciliation cleared
         run: |
           set -euo pipefail
           test -f legal-clearance.json || { echo "ERROR: legal-clearance.json missing — the export did not clear the legal-blockers gate"; exit 1; }
           node -e 'const c=require("./legal-clearance.json"); if(c.cleared!==true){console.error("ERROR: legal reconciliation NOT cleared");process.exit(1)}; console.log("legal reconciliation cleared as of "+c.as_of+" (CELEX "+c.celex+")")'
 
-      # AC-118 / AC-AUDIT-GDPR-BOT-IDENTITY: the tagged release commit's author/committer + any
-      # Co-authored-by/Signed-off-by trailer MUST be a role mailbox — never a personal email (a personal
-      # address is permanent + un-erasable once anchored in the public Rekor record). Runs BEFORE the
-      # irreversible publish (fail-fast). The provenance-builder identity is the twin post-publish check
-      # in check-provenance-predicate.mjs (runDetails.builder.id).
-      - name: Build/commit identity scan — no personal email (AC-118)
+      # The tagged release commit's author/committer + any Co-authored-by/Signed-off-by trailer
+      # MUST be a role mailbox — never a personal email (a personal address is permanent +
+      # un-erasable once anchored in the public Rekor record). Runs BEFORE the irreversible
+      # publish (fail-fast). The provenance-builder identity is the twin post-publish check in
+      # check-provenance-predicate.mjs (runDetails.builder.id).
+      - name: Build/commit identity scan — no personal email
         run: node scripts/check-build-identity.mjs
 
       - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
@@ -122,19 +117,19 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: pnpm
 
-      # AC-NPM-VERSION-PIN / AC-D2-TOOLCHAIN: pin npm to the trusted-publishing floor (>= 11.5.1). The
-      # OIDC token-exchange + provenance auto-generation are npm-CLI-version-gated; a too-old bundled npm
-      # 401s only at the irreversible publish. NPM_FLOOR is the single named constant (mirrors the
-      # monorepo's sdk-toolchain-pin.json `npmPublishFloor`).
-      - name: Pin npm CLI to the trusted-publishing floor (AC-86)
+      # Pin npm to the trusted-publishing floor (>= 11.5.1). The OIDC token-exchange + provenance
+      # auto-generation are npm-CLI-version-gated; a too-old bundled npm 401s only at the
+      # irreversible publish. NPM_FLOOR is the single named constant (mirrors the monorepo's
+      # sdk-toolchain-pin.json `npmPublishFloor`).
+      - name: Pin npm CLI to the trusted-publishing floor
         env:
           NPM_FLOOR: "11.5.1"
         run: npm install -g "npm@${NPM_FLOOR}"
 
-      # Resolve which package this tag publishes (N-package-generic, AC-FP-1: driven by the tag prefix,
-      # never a per-package workflow). NPM_TAG_PREFIX is the protected namespace; PKG_DIR/PKG_NAME flow
-      # to the steps below via $GITHUB_ENV.
-      - name: Resolve package from the protected tag (AC-FP-1)
+      # Resolve which package this tag publishes (N-package-generic: driven by the tag prefix,
+      # never a per-package workflow). NPM_TAG_PREFIX is the protected namespace; PKG_DIR/PKG_NAME
+      # flow to the steps below via $GITHUB_ENV.
+      - name: Resolve package from the protected tag
         env:
           REF: ${{ github.ref }}
         run: |
@@ -145,7 +140,7 @@ jobs:
             refs/tags/react/v*)             PKG_DIR=packages/react;             PKG_NAME=@rakomi/react;        PREFIX=react/v ;;
             refs/tags/react-native/v*)      PKG_DIR=packages/react-native;      PKG_NAME=@rakomi/react-native; PREFIX=react-native/v ;;
             refs/tags/create-rakomi-app/v*) PKG_DIR=packages/create-rakomi-app; PKG_NAME=create-rakomi-app;    PREFIX=create-rakomi-app/v ;;
-            *) echo "ERROR: tag $REF is not a recognized per-package release namespace (AC-76)"; exit 1 ;;
+            *) echo "ERROR: tag $REF is not a recognized per-package release namespace"; exit 1 ;;
           esac
           {
             echo "PKG_DIR=$PKG_DIR"
@@ -157,30 +152,29 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      # NOTE (AC-79/AC-80 retired): the in-CI npm trusted-publisher read-back preflight was removed. Its
-      # design (`npm access get trusted-publisher …`) rested on an npm CLI/registry command that does not
+      # NOTE (retired): the in-CI npm trusted-publisher read-back preflight was removed. Its design
+      # (`npm access get trusted-publisher …`) rested on an npm CLI/registry command that does not
       # exist, and the real read-back path (`npm trust list` → `GET /-/package/<pkg>/trust`) is an
-      # AUTHENTICATED call — impossible in this deliberately tokenless OIDC-only job (AC-82). A misconfigured
-      # or absent trusted publisher is caught FAIL-CLOSED at the publish step itself: OIDC token exchange
-      # 404s and no bytes are published (a 404 mints nothing). The trusted-publisher config is instead
-      # verified OUT-OF-BAND by the release authorizer before tagging (`npm trust list @rakomi/<pkg>`), and
-      # the post-publish provenance gates (subject-digest / predicate-scrub / Rekor-issuer) remain the
-      # cryptographic net. See story sdk-publish-topology-public-repo-split (cutover diagnosis, run 28543586419).
+      # AUTHENTICATED call — impossible in this deliberately tokenless OIDC-only job. A
+      # misconfigured or absent trusted publisher is caught FAIL-CLOSED at the publish step itself:
+      # OIDC token exchange 404s and no bytes are published (a 404 mints nothing). The
+      # trusted-publisher config is instead verified OUT-OF-BAND by the release authorizer before
+      # tagging (`npm trust list @rakomi/<pkg>`), and the post-publish provenance gates
+      # (subject-digest / predicate-scrub / Rekor-issuer) remain the cryptographic net.
 
-      # AC-11 (pack-once, FULL publishable set): the release-gates below enforce anti-vacuous
+      # Pack-once, FULL publishable set: the release-gates below enforce anti-vacuous
       # count-equality over the FULL publishable set, so build + SBOM + pack ALL publishable packages here
       # even though only the tag's package is published. The published bytes are still the EXACT gated bytes
-      # (AC-G1 — the tagged package's tarball IS in the gated set). A per-package pack of only PKG_NAME left
-      # the gates under-covered ("expected N, inspected 1"). (Fixed at cutover — run 28545315844 diagnosis.)
-      - name: Build all publishable packages (AC-11 full set)
+      # (the tagged package's tarball IS in the gated set). A per-package pack of only PKG_NAME left
+      # the gates under-covered ("expected N, inspected 1").
+      - name: Build all publishable packages (full set)
         run: pnpm exec turbo run build --force
 
-      # NOTE: no `run test` here. Per AC-67 (ratified 2026-06-20) the PUBLIC repo verifies the
+      # NOTE: no `run test` here. The PUBLIC repo verifies the
       # self-contained orphan tree ONLY (build + pack + release-gates + provenance); the package unit
       # tests run in the MONOREPO CI before cutover. The clean-room orphan ships `src/**` only — no test
       # files and no vitest devDep — so `pnpm run test` (`vitest run`) has nothing to execute and fails
       # `vitest: not found`. The build → pack → gates → provenance chain is the artifact-level proof.
-      # (Retired at cutover — run 28545315844 diagnosis.)
 
       # Generate the sbom.cdx.json + THIRD-PARTY-NOTICES that each package's files[] ships, from the freshly
       # built dist, BEFORE pack — for EVERY publishable package (the full-set pack below ships each one's sbom
@@ -203,13 +197,12 @@ jobs:
                 [ -n "$DIR" ] && node scripts/metafile-to-notices.mjs --pkg "$DIR"
               done
 
-      # AC-G1 (build-once, publish-the-verified-bytes): pack ONCE here; the gates below inspect THIS tarball
+      # Build-once, publish-the-verified-bytes: pack ONCE here; the gates below inspect THIS tarball
       # SET; `npm publish ./<tgz>` ships the EXACT same bytes (no re-build, no prepublishOnly mutation).
       # pnpm `pack` does NOT accept `--filter` (that flag flips pnpm into recursive mode and `pack` rejects
       # `--recursive` → "Unknown option: 'recursive'"), so pack from INSIDE each package dir. Pack the FULL
-      # publishable set (AC-11); publish only the tagged package's bytes ($TGZ, matched by exact
-      # name-version). (Fixed at cutover — run 28545315844 diagnosis, local publish-pipeline sim.)
-      - name: Pack the verified tarballs — full set (AC-G1/AC-11)
+      # publishable set; publish only the tagged package's bytes ($TGZ, matched by exact name-version).
+      - name: Pack the verified tarballs — full set
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/tgz"
@@ -224,14 +217,14 @@ jobs:
           echo "GATE_SHA512=$GATE_SHA512" >> "$GITHUB_ENV"
           echo "packed full set; publishing $TGZ ($GATE_SHA512)"
 
-      # N6 / AC-10 (provenance-repo-match): the published package's repository.url MUST byte-equal
-      # github.com/rakomidev/rakomi-js (npm rejects a mismatch with HTTP 422, and an exact match is the
-      # honesty requirement). Checked against the PACKED tarball's manifest (the bytes that ship).
-      - name: Provenance repo-match (N6 — byte-string, not a regex)
+      # The published package's repository.url MUST byte-equal github.com/rakomidev/rakomi-js
+      # (npm rejects a mismatch with HTTP 422, and an exact match is the honesty requirement).
+      # Checked against the PACKED tarball's manifest (the bytes that ship).
+      - name: Provenance repo-match (byte-string, not a regex)
         run: node scripts/check-provenance-repo-match.mjs --tarball "$TGZ"
 
-      # P6: the git tag must match package.json version (cannot publish wrong version under a tag).
-      - name: Validate tag matches package.json version (N4/N8)
+      # The git tag must match package.json version (cannot publish wrong version under a tag).
+      - name: Validate tag matches package.json version
         run: |
           set -euo pipefail
           PKG_VERSION=$(node -p "require('./package.json').version")
@@ -241,18 +234,18 @@ jobs:
           fi
         working-directory: ${{ env.PKG_DIR }}
 
-      # AC-14 / AC-EXTERNAL-DEPS-RESOLVABLE + publish order: @rakomi/sdk-core MUST already exist on the
-      # registry before any dependent (@rakomi/node / react / react-native) publishes a `^0.x` range to
-      # it. sdk-core publishing itself skips the guard. AC-CARET-0X-RANGE: `^0.x` pins the MINOR.
-      - name: Publish-order guard — sdk-core resolvable first (AC-14)
+      # @rakomi/sdk-core MUST already exist on the registry before any dependent (@rakomi/node /
+      # react / react-native) publishes a `^0.x` range to it. sdk-core publishing itself skips the
+      # guard. `^0.x` pins the MINOR.
+      - name: Publish-order guard — sdk-core resolvable first
         run: node scripts/check-publish-order.mjs --package "$PKG_NAME"
 
-      # gitleaks for the KEPT no-secrets-in-tarball gate's gitleaks limb (story orphan-functional, D2) —
-      # version-pinned + checksum-verified against the gitleaks project's own checksums.txt (no new
-      # third-party action). The gate reads the ported gitleaks.toml (PORT-MANIFEST copyVerbatim); WITHOUT
-      # this binary a clean tarball's gitleaks limb ENOENTs → CANNOT-EVALUATE → aggregate exit 2 (the D2
-      # orphan-unrunnability class). Mirrors the monorepo ci.yml install block.
-      - name: Install gitleaks (pinned, checksum-verified) for the no-secrets gate (D2)
+      # gitleaks for the KEPT no-secrets-in-tarball gate's gitleaks limb — version-pinned +
+      # checksum-verified against the gitleaks project's own checksums.txt (no new third-party
+      # action). The gate reads the ported gitleaks.toml. WITHOUT this binary a clean tarball's
+      # gitleaks limb ENOENTs → CANNOT-EVALUATE → aggregate exit 2. Mirrors the monorepo ci.yml
+      # install block.
+      - name: Install gitleaks (pinned, checksum-verified) for the no-secrets gate
         env:
           GITLEAKS_VERSION: "8.30.1"
         run: |
@@ -265,30 +258,30 @@ jobs:
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
-      # ── RELEASE-GATE FLOOR — ported registry (AC-REUSE-GATES / AC-FP-3). Runs immediately before the
-      # irreversible publish, over the SAME packed tarball, with NO manifest-mutating step between. The
-      # orchestrator is exit-2-dominates-exit-1 (no-vacuous-green); a red here MUST block the publish.
-      - name: Release gates — supply-chain floor (AC-REUSE-GATES) [DANGER]
+      # ── RELEASE-GATE FLOOR — ported registry. Runs immediately before the irreversible publish,
+      # over the SAME packed tarball, with NO manifest-mutating step between. The orchestrator is
+      # exit-2-dominates-exit-1 (no-vacuous-green); a red here MUST block the publish.
+      - name: Release gates — supply-chain floor [DANGER]
         run: node scripts/run-release-gates.mjs --tarball "$RUNNER_TEMP/tgz" --no-build
       - name: Pack-install gate (zero workspace:* leak + sdk-core-as-real-dep) [DANGER]
         run: node scripts/sdk-pack-install-gate.mjs --tarball "$RUNNER_TEMP/tgz"
 
-      # ── PONR: the irreversible publish. OIDC-only (no NODE_AUTH_TOKEN / no stored npm token, N5/AC-9).
-      # Publishes the EXACT packed bytes (AC-G1). --provenance auto-attaches the SLSA Build L2 predicate
-      # from THIS workflow's OIDC identity. AC-82: NEVER replace this with a manual laptop `npm publish`
+      # ── The irreversible publish. OIDC-only (no NODE_AUTH_TOKEN / no stored npm token).
+      # Publishes the EXACT packed bytes. --provenance auto-attaches the SLSA Build L2 predicate
+      # from THIS workflow's OIDC identity. NEVER replace this with a manual laptop `npm publish`
       # on a CI-red — that mints laptop/personal-identity provenance permanently into Fulcio/Rekor.
-      - name: Publish the verified bytes to npm with provenance (PONR — AC-G1/AC-PONR)
+      - name: Publish the verified bytes to npm with provenance
         run: npm publish "$TGZ" --provenance --access public --tag latest
 
-      # ── POST-PUBLISH assertions (AC-G2/AC-PRED-SCRUB/AC-REKOR-ISSUER-PROOF). The npm page is immutable;
-      # these prove the just-published provenance is honest. A failure here is a roll-FORWARD signal
-      # (publish 0.0.2), NEVER an unpublish/flip-back (AC-PONR).
+      # ── POST-PUBLISH assertions. The npm page is immutable; these prove the just-published
+      # provenance is honest. A failure here is a roll-FORWARD signal (publish 0.0.2), NEVER an
+      # unpublish/flip-back.
       # --version pins the just-published version (not @latest) so a concurrent publish cannot race the
       # post-publish verifiers onto the wrong bytes. The verifiers fetch the real attestation BUNDLE
       # (dist.attestations.url) with a bounded retry for npm's post-publish attestation-indexing lag.
-      - name: Provenance subject digest == gate digest (AC-G2/AC-20)
+      - name: Provenance subject digest == gate digest
         run: node scripts/check-provenance-subject.mjs --package "$PKG_NAME" --version "$TAG_VERSION" --expect-digest "$GATE_SHA512"
-      - name: Provenance predicate scrub — field-aware (AC-36/AC-83)
+      - name: Provenance predicate scrub — field-aware
         run: node scripts/check-provenance-predicate.mjs --package "$PKG_NAME" --version "$TAG_VERSION"
-      - name: Rekor inclusion-proof issuer assertion (AC-84)
+      - name: Rekor inclusion-proof issuer assertion
         run: node scripts/check-rekor-issuer.mjs --package "$PKG_NAME" --version "$TAG_VERSION" --expect-digest "$GATE_SHA512"
