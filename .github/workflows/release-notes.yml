@@ -8,6 +8,7 @@ on:
       - "react/v[0-9]*.[0-9]*.[0-9]*"
       - "react-native/v[0-9]*.[0-9]*.[0-9]*"
       - "create-rakomi-app/v[0-9]*.[0-9]*.[0-9]*"
+      - "cli/v[0-9]*.[0-9]*.[0-9]*"
   workflow_dispatch: {}
 
 concurrency:
@@ -38,6 +39,7 @@ jobs:
             refs/tags/react/v*)             PKG_DIR=packages/react;             PKG_NAME=@rakomi/react;        PREFIX=react/v ;;
             refs/tags/react-native/v*)      PKG_DIR=packages/react-native;      PKG_NAME=@rakomi/react-native; PREFIX=react-native/v ;;
             refs/tags/create-rakomi-app/v*) PKG_DIR=packages/create-rakomi-app; PKG_NAME=create-rakomi-app;    PREFIX=create-rakomi-app/v ;;
+            refs/tags/cli/v*)               PKG_DIR=packages/cli;               PKG_NAME=rakomi;               PREFIX=cli/v ;;
             *) echo "ERROR: tag $REF is not a recognized per-package release namespace"; exit 1 ;;
           esac
           {
