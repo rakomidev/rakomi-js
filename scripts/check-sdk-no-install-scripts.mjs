@@ -28,7 +28,7 @@ const ok = (m) => console.error(`  ✓ ${m}`)
 function main() {
   console.error('## no-install-scripts gate')
   const { packages, expectedCount } = enumeratePublishablePackages(REPO_ROOT)
-  console.error(`## enumerated ${expectedCount} publishable package(s) from .changeset/config.json fixed[0] ∪ {@rakomi/node}: ${packages.map((p) => p.name).join(', ')}`)
+  console.error(`## enumerated ${expectedCount} publishable package(s) from PUBLISHABLE_PACKAGES: ${packages.map((p) => p.name).join(', ')}`)
 
   let packDest = null
   const tarballs = new Map()

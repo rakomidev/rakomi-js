@@ -1,5 +1,7 @@
 'use client';
 
+import { extractOrgClaims } from '@rakomi/sdk-core';
+
 import { useRakomiContext } from '../context.js';
 import type { OrgMembership } from '../types.js';
 
@@ -23,17 +25,7 @@ export function useOrganizationList(): UseOrganizationListReturn {
     return { isLoaded: true, organizations: [] };
   }
 
-  const rawClaims = state.user.rawClaims;
-  const rawMemberships = Array.isArray(rawClaims['org_memberships']) ? rawClaims['org_memberships'] : [];
+  const { org_memberships: organizations } = extractOrgClaims(state.user.rawClaims);
 
-  const organizations = rawMemberships.filter(
-    (m): m is OrgMembership =>
-      m != null &&
-      typeof m === 'object' &&
-      typeof (m as Record<string, unknown>)['org_id'] === 'string' &&
-      typeof (m as Record<string, unknown>)['org_slug'] === 'string' &&
-      typeof (m as Record<string, unknown>)['org_role'] === 'string',
-  );
-
-  return { isLoaded: true, organizations };
+  return { isLoaded: true, organizations: organizations ?? [] };
 }

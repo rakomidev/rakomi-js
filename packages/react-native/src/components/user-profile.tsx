@@ -1,8 +1,8 @@
 /**
  * `<UserProfile />` — RN port (PREVIEW).
  *
- * Marked `'preview'` until 0.2.0; on first mount in `__DEV__` builds we log a
- * warning so consumers don't accidentally ship it to production.
+ * In preview — on first mount in `__DEV__` builds we log a warning so consumers don't accidentally
+ * ship it to production ahead of graduation.
  */
 
 'use client';
@@ -22,7 +22,7 @@ export function UserProfile(props: UserProfileProps): ReactNode {
   useEffect(() => {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
 
-      console.warn('[@rakomi/react-native] <UserProfile /> is in preview until 0.2.0 — feedback welcome.');
+      console.warn('[@rakomi/react-native] <UserProfile /> is in preview — feedback welcome.');
     }
   }, []);
   const ctx = useRakomiContext();

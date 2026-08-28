@@ -46,8 +46,8 @@ export async function sendEmailOtp(options: {
   }
 
   if (!response.ok) {
-    const body = json as { error?: { message?: string } };
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.error?.message ?? 'Email OTP request failed' } };
+    const body = json as { detail?: string };
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Email OTP request failed' } };
   }
 
   const r = json as Record<string, unknown>;
@@ -91,8 +91,8 @@ export async function verifyEmailOtpCode(options: {
   }
 
   if (!response.ok) {
-    const body = json as { error?: { message?: string } };
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.error?.message ?? 'Email OTP verification failed' } };
+    const body = json as { detail?: string };
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Email OTP verification failed' } };
   }
 
   const r = json as Record<string, unknown>;

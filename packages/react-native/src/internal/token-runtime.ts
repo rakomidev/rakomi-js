@@ -68,7 +68,7 @@ function deriveDefaultJwksUri(tokenEndpoint: string): string {
 
 /**
  * Default expected `iss` and `aud` claims — frozen platform identifiers.
- * Rakomi-issued user-flow tokens carry `iss = aud = https://rakomi.com`
+ * Rakomi-issued user-flow tokens carry `iss = aud = https://api.rakomi.com`
  * regardless of which subdomain or custom domain the request was routed
  * through (custom domain is routing only, not identity).
  *
@@ -76,8 +76,8 @@ function deriveDefaultJwksUri(tokenEndpoint: string): string {
  * through a bypass; consumer-supplied override is for legitimate multi-issuer
  * test harnesses only.
  */
-const RAKOMI_PLATFORM_ISSUER_DEFAULT = 'https://rakomi.com';
-const RAKOMI_PLATFORM_AUDIENCE_DEFAULT = 'https://rakomi.com';
+const RAKOMI_PLATFORM_ISSUER_DEFAULT = 'https://api.rakomi.com';
+const RAKOMI_PLATFORM_AUDIENCE_DEFAULT = 'https://api.rakomi.com';
 function deriveDefaultIssuer(_tokenEndpoint: string): string {
   return RAKOMI_PLATFORM_ISSUER_DEFAULT;
 }

@@ -42,8 +42,8 @@ async function authFetch(url: string, token: string, options?: RequestInit): Pro
 }
 
 function parseError(json: unknown, fallback: string): AuthError {
-  const body = json as { error?: { message?: string } } | undefined;
-  return { code: 'PROVIDER_ERROR' as const, message: body?.error?.message ?? fallback };
+  const body = json as { detail?: string } | undefined;
+  return { code: 'PROVIDER_ERROR' as const, message: body?.detail ?? fallback };
 }
 
 export async function changePassword(options: {

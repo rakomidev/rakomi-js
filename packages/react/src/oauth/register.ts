@@ -38,8 +38,8 @@ export async function registerUser(options: {
   if (!response.ok) {
     let json: unknown;
     try { json = await response.json(); } catch { }
-    const body = json as { error?: { message?: string } } | undefined;
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.error?.message ?? 'Registration failed' } };
+    const body = json as { detail?: string } | undefined;
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Registration failed' } };
   }
 
   return { ok: true };

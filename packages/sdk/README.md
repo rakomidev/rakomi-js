@@ -17,7 +17,7 @@ signatures in a trusted Node.js runtime.
 pnpm add @rakomi/node
 ```
 
-Requires **Node.js 22+**.
+Requires **Node.js 20+** (global `fetch` and Web Crypto — no polyfills, no runtime detection).
 
 ## Quick start
 

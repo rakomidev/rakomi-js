@@ -14,7 +14,7 @@ import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
 import { PasswordInput } from '../../internal/password-input.js';
-import { useColorScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
+import { useColorScheme, usePrefersDarkScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
 import {
   changePassword,
   disableMfa,
@@ -49,6 +49,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
   const t = useTranslation(locale, undefined, translations);
   const globalAppearance = useGlobalAppearance();
   const colorScheme = useColorScheme();
+  const prefersDarkScheme = usePrefersDarkScheme();
   const cls = (element: string) => resolveClassName(element, props.appearance, globalAppearance);
   const idPrefix = useId();
 
@@ -528,7 +529,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
   };
 
   return (
-    <div data-rakomi-user-profile-root data-rakomi-card data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding), ...style }}>
+    <div data-rakomi-user-profile-root data-rakomi-card data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding, { explicitScheme: colorScheme, prefersDark: prefersDarkScheme }), ...style }}>
       {typeof title === 'string' ? (
         <h2 data-rakomi-user-profile-title>{title}</h2>
       ) : title ? (

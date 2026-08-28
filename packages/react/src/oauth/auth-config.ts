@@ -5,8 +5,12 @@
  * Components read via useAuthConfig() hook — uses useSyncExternalStore.
  */
 
+import { parseAuthConfigResponse } from '@rakomi/sdk-core';
+
 import { normalizeNetworkError, sdkFetch } from '../lib/fetch-client.js';
-import type { AuthConfig, AuthError, BrandingConfig } from '../types.js';
+import type { AuthConfig, AuthError } from '../types.js';
+
+const UNSAFE_PROVIDER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 type ConfigState =
   | { status: 'idle' }
@@ -30,7 +34,7 @@ export class AuthConfigManager {
     this.clientId = clientId;
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
-    this.cacheKey = `rakomi:config:v2:${clientId}:${encodeURIComponent(baseUrl)}`;
+    this.cacheKey = `rakomi:config:v4:${clientId}:${encodeURIComponent(baseUrl)}`;
   }
 
   /** Public method to check if this manager matches given config */
@@ -98,52 +102,7 @@ export class AuthConfigManager {
 
       if (gen !== this.generation) return;
 
-      const r = json as Record<string, unknown>;
-
-      let branding: BrandingConfig | undefined;
-      const rawBranding = r['branding'] as Record<string, unknown> | undefined;
-      if (rawBranding && typeof rawBranding === 'object') {
-        const HEX_RE = /^#[0-9a-fA-F]{6}$/;
-        const safeStr = (key: string) => {
-          const v = rawBranding[key];
-          return typeof v === 'string' ? v : undefined;
-        };
-        const safeColor = (key: string) => {
-          const v = safeStr(key);
-          return v && HEX_RE.test(v) ? v : undefined;
-        };
-
-        const rawLogoUrl = safeStr('logo_url');
-        let logoUrl: string | undefined;
-        if (rawLogoUrl) {
-          try {
-            const logoOrigin = new URL(rawLogoUrl).origin;
-            const baseOrigin = new URL(this.baseUrl).origin;
-            if (logoOrigin === baseOrigin) logoUrl = rawLogoUrl;
-          } catch { }
-        }
-
-        const tenantName = safeStr('tenant_name');
-        if (tenantName) {
-          branding = {
-            ...(logoUrl ? { logoUrl } : {}),
-            ...(safeColor('primary_color') ? { primaryColor: safeColor('primary_color') } : {}),
-            ...(safeColor('background_color') ? { backgroundColor: safeColor('background_color') } : {}),
-            ...(safeColor('button_color') ? { buttonColor: safeColor('button_color') } : {}),
-            ...(safeColor('text_color') ? { textColor: safeColor('text_color') } : {}),
-            ...(safeStr('border_radius') ? { borderRadius: safeStr('border_radius') } : {}),
-            tenantName,
-          };
-        }
-      }
-
-      const config: AuthConfig = {
-        methods: Array.isArray(r['methods']) ? (r['methods'] as unknown[]).filter((m): m is string => typeof m === 'string') : [],
-        socialProviders: Array.isArray(r['social_providers']) ? (r['social_providers'] as unknown[]).filter((p): p is string => typeof p === 'string') : [],
-        mfaEnforced: typeof r['mfa_enforced'] === 'boolean' ? r['mfa_enforced'] : false,
-        ...(typeof r['mfa_grace_period_hours'] === 'number' ? { mfaGracePeriodHours: r['mfa_grace_period_hours'] } : {}),
-        ...(branding ? { branding } : {}),
-      };
+      const config: AuthConfig = parseAuthConfigResponse(json, this.baseUrl);
 
       this.writeCache(config);
       this.state = { status: 'loaded', config };
@@ -177,7 +136,10 @@ export class AuthConfigManager {
       if (this.state.status === 'loaded') {
         Object.freeze(this.state.config.methods);
         Object.freeze(this.state.config.socialProviders);
-        if (this.state.config.branding) Object.freeze(this.state.config.branding);
+        if (this.state.config.branding) {
+          if (this.state.config.branding.dark) Object.freeze(this.state.config.branding.dark);
+          Object.freeze(this.state.config.branding);
+        }
         Object.freeze(this.state.config);
       } else if (this.state.status === 'error') {
         Object.freeze(this.state.error);
@@ -212,23 +174,48 @@ export class AuthConfigManager {
       const config = parsed['config'] as Record<string, unknown> | undefined;
       if (!config || typeof config !== 'object') return null;
       if (!Array.isArray(config['methods'])) return null;
-      if (!Array.isArray(config['socialProviders'])) return null;
+      const cachedSocialProviders = config['socialProviders'];
+      if (cachedSocialProviders === null || typeof cachedSocialProviders !== 'object' || Array.isArray(cachedSocialProviders)) return null;
+      for (const [key, value] of Object.entries(cachedSocialProviders as Record<string, unknown>)) {
+        if (UNSAFE_PROVIDER_KEYS.has(key)) return null;
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+        const flags = value as Record<string, unknown>;
+        if (typeof flags['signIn'] !== 'boolean' || typeof flags['signUp'] !== 'boolean') return null;
+      }
       if (typeof config['mfaEnforced'] !== 'boolean') return null;
 
       const cachedBranding = config['branding'] as Record<string, unknown> | undefined;
       if (cachedBranding && typeof cachedBranding === 'object') {
         const HEX_RE = /^#[0-9a-fA-F]{6}$/;
-        for (const key of ['primaryColor', 'backgroundColor', 'buttonColor', 'textColor']) {
+        const BORDER_RADIUS_RE = /^(0(rem)?|0?\.\d{1,3}rem|1(\.0{1,3})?rem)$/;
+        const COLOR_KEYS = ['primaryColor', 'backgroundColor', 'buttonColor', 'buttonTextColor', 'textColor', 'headingColor'];
+        const sameOrigin = (v: unknown): boolean => {
+          if (v === undefined) return true;
+          if (typeof v !== 'string') return false;
+          try {
+            return new URL(v).origin === new URL(this.baseUrl).origin;
+          } catch { return false; }
+        };
+        for (const key of COLOR_KEYS) {
           const v = cachedBranding[key];
           if (v !== undefined && (typeof v !== 'string' || !HEX_RE.test(v))) return null;
         }
-        const logoUrl = cachedBranding['logoUrl'];
-        if (logoUrl !== undefined && typeof logoUrl === 'string') {
-          try {
-            if (new URL(logoUrl).origin !== new URL(this.baseUrl).origin) return null;
-          } catch { return null; }
-        }
+        if (!sameOrigin(cachedBranding['logoUrl'])) return null;
         if (typeof cachedBranding['tenantName'] !== 'string') return null;
+        const cachedRadius = cachedBranding['borderRadius'];
+        if (cachedRadius !== undefined && (typeof cachedRadius !== 'string' || !BORDER_RADIUS_RE.test(cachedRadius))) return null;
+        const themeMode = cachedBranding['themeMode'];
+        if (themeMode !== undefined && themeMode !== 'light' && themeMode !== 'dark' && themeMode !== 'both') return null;
+        const cachedDark = cachedBranding['dark'];
+        if (cachedDark !== undefined) {
+          if (typeof cachedDark !== 'object' || cachedDark === null || Array.isArray(cachedDark)) return null;
+          const dark = cachedDark as Record<string, unknown>;
+          for (const key of COLOR_KEYS) {
+            const v = dark[key];
+            if (v !== undefined && (typeof v !== 'string' || !HEX_RE.test(v))) return null;
+          }
+          if (!sameOrigin(dark['logoUrl'])) return null;
+        }
       }
 
       return config as unknown as AuthConfig;

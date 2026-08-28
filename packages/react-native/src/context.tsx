@@ -29,6 +29,7 @@ import {
 import type {
   AuthEvent,
   AuthMachineState,
+  AuthorizationEndpointCache,
   HttpClient,
   Locale,
   MachineAction,
@@ -39,6 +40,7 @@ import type {
   UserResource,
 } from '@rakomi/sdk-core';
 import {
+  createAuthorizationEndpointCache,
   createTranslator,
   EventLog,
   INITIAL_SNAPSHOT,
@@ -46,6 +48,7 @@ import {
   reduce,
 } from '@rakomi/sdk-core';
 
+import { type CeremonyLock, createCeremonyLock } from './internal/ceremony-lock.js';
 import { createDpopSession, type DpopSession } from './internal/dpop-session.js';
 import { createRnHttpClient } from './internal/http-client.js';
 import { TokenRuntime } from './internal/token-runtime.js';
@@ -94,6 +97,13 @@ interface RakomiContextValue {
   redirectUri: string;
   adapter: NativeAuthAdapter;
   http: HttpClient;
+  /**
+   * Resolves the REAL `authorization_endpoint` a top-level browser navigation must target — the
+   * issuer's routing host (`baseUrl`) is not always the host that renders the hosted login UI.
+   * `<SignIn>`/`startSocialSignIn` callers MUST resolve this before building the authorize URL; a
+   * plain `${baseUrl}/oauth/authorize` string is a JSON API response, not a login form.
+   */
+  authorizationEndpointCache: AuthorizationEndpointCache;
   snapshot: MachineSnapshot;
   state: AuthMachineState;
   isSignedIn: boolean;
@@ -127,6 +137,7 @@ interface RakomiContextValue {
  * re-presents the bound key. `undefined` when the adapter has no native prover.
  */
   dpopSession?: DpopSession;
+  passkeyCeremonyLock: CeremonyLock;
 }
 
 const RakomiContext = createContext<RakomiContextValue | null>(null);
@@ -141,9 +152,28 @@ export function RakomiProvider(props: RakomiProviderProps): ReactNode {
 
   const http = useMemo(() => createRnHttpClient({ baseUrl: props.baseUrl }), [props.baseUrl]);
 
+  const authorizationEndpointCache = useMemo(
+    () =>
+      createAuthorizationEndpointCache({
+        fetchDiscoveryDocument: async () => {
+          const response = await http.fetch('/.well-known/openid-configuration', {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+          });
+          if (!response.ok) {
+            throw new Error(`discovery fetch failed: HTTP ${response.status}`);
+          }
+          return response.json();
+        },
+      }),
+    [http],
+  );
+
   const events = useMemo(() => new EventLog(props.onEvent), [props.onEvent]);
 
   const [snapshot, dispatch] = useReducer(reduce, INITIAL_SNAPSHOT);
+
+  const passkeyCeremonyLock = useRef<CeremonyLock>(createCeremonyLock()).current;
 
   const translate = useMemo(
     () => createTranslator(props.locale ?? 'en', props.translations),
@@ -290,6 +320,7 @@ export function RakomiProvider(props: RakomiProviderProps): ReactNode {
       redirectUri: props.redirectUri,
       adapter,
       http,
+      authorizationEndpointCache,
       snapshot,
       state: snapshot.state,
       isSignedIn: projectionIsSignedIn(snapshot),
@@ -301,10 +332,11 @@ export function RakomiProvider(props: RakomiProviderProps): ReactNode {
       signOut,
       getToken,
       submitOAuthTokens,
+      passkeyCeremonyLock,
       beginAuthFlow,
       dpopSession,
     }),
-    [adapter, http, snapshot, events, props.publishableKey, props.baseUrl, props.redirectUri, props.locale, translate, signOut, getToken, submitOAuthTokens, beginAuthFlow, dpopSession],
+    [adapter, http, authorizationEndpointCache, snapshot, events, props.publishableKey, props.baseUrl, props.redirectUri, props.locale, translate, signOut, getToken, submitOAuthTokens, beginAuthFlow, dpopSession, passkeyCeremonyLock],
   );
 
   return <RakomiContext.Provider value={value}>{props.children}</RakomiContext.Provider>;

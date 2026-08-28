@@ -1,0 +1,45 @@
+{
+  "name": "rakomi",
+  "version": "0.1.0",
+  "description": "The Rakomi CLI — sign in, connect an AI agent (Claude Code, Claude Desktop) to your tenant, and provision tenants. EU-native auth-as-a-service.",
+  "keywords": [
+    "rakomi",
+    "cli",
+    "auth",
+    "authentication",
+    "mcp",
+    "oauth",
+    "ai-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rakomidev/rakomi-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rakomidev/rakomi-js/issues"
+  },
+  "homepage": "https://github.com/rakomidev/rakomi-js#readme",
+  "license": "MIT",
+  "publishConfig": {
+    "provenance": true
+  },
+  "type": "module",
+  "bin": {
+    "rakomi": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "author": "CRE8EVE Sp. z o.o.",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ test/ --max-warnings=0",
+    "test": "vitest run"
+  }
+}

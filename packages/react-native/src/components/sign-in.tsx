@@ -1,12 +1,16 @@
 /**
- * `<SignIn />` — RN port.
+ * `<SignIn />` — RN port. **Preview:** `@rakomi/react-native` is a pre-1.0 preview package — see the
+ * package README for the full "what's wired today" boundary.
  *
  * Renders a sign-in flow using ONLY RN primitives (`<View>`, `<Text>`,
  * `<TextInput>`, `<Pressable>`) — no HTML. Supports:
- * - Password (direct) sign-in.
  * - Social provider list (Google, GitHub, …) via `startSocialSignIn`.
  * - MFA TOTP code entry view (`keyboardType="number-pad"`,
  * `textContentType="oneTimeCode"`, `autoComplete="sms-otp"`).
+ *
+ * There is no email/password field in this component — direct email+password sign-in is not wired in
+ * the current release. Use `useRegister()` for account creation, or one of the other working sign-in
+ * paths (magic link, email OTP, passkeys).
  *
  * Accessibility:
  * - Every interactive element has `accessibilityLabel` + `accessibilityRole`.
@@ -25,7 +29,12 @@ import { loadRnPrimitives as loadRn } from '../internal/rn-primitives.js';
 import { startSocialSignIn } from '../oauth/social-auth.js';
 
 export interface SignInProps {
-  /** Authorization endpoint, default `${baseUrl}/oauth/authorize`. */
+  /**
+   * Full authorization-endpoint URL to open the system browser to. Default: resolved via OIDC
+   * discovery against `baseUrl` (cached, with a host-naming fallback) — see `useRakomiContext()`'s
+   * `authorizationEndpointCache`. A bare `${baseUrl}/oauth/authorize` is NOT a valid default: that
+   * path on the API host returns JSON, not the hosted login UI.
+   */
   authorizationEndpoint?: string;
   /** Token endpoint, default `${baseUrl}/v1/auth/oauth/callback`. */
   tokenEndpoint?: string;
@@ -55,7 +64,6 @@ export function SignIn(props: SignInProps): ReactNode {
   const [busy, setBusy] = useState(false);
 
   const tokenEndpoint = props.tokenEndpoint ?? '/v1/auth/oauth/callback';
-  const authorizationEndpoint = props.authorizationEndpoint ?? '/oauth/authorize';
   const totpVerifyEndpoint = props.totpVerifyEndpoint ?? '/v1/auth/mfa/totp/verify';
   const providers = props.providers ?? ['google'];
 
@@ -63,6 +71,19 @@ export function SignIn(props: SignInProps): ReactNode {
     if (busy) return;
     setBusy(true);
     ctx.events.push({ type: 'sign_in_attempted', severity: 'info', metadata: { provider } });
+
+    let authorizationEndpoint = props.authorizationEndpoint;
+    if (!authorizationEndpoint) {
+      const resolved = await ctx.authorizationEndpointCache.resolve(ctx.baseUrl);
+      if (!resolved.ok) {
+        ctx.events.push({ type: 'sign_in_failed', severity: 'warning', error: resolved.error });
+        setStep({ kind: 'error', error: resolved.error });
+        setBusy(false);
+        return;
+      }
+      authorizationEndpoint = resolved.authorizationEndpoint;
+    }
+
     const outcome = await startSocialSignIn({
       adapter: ctx.adapter,
       http: ctx.http,

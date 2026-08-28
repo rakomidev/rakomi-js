@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/node",
-  "version": "0.20.0",
+  "version": "0.3.0",
   "description": "Server-side Node.js SDK for Rakomi — verify access tokens and webhook signatures. EU-native auth-as-a-service.",
   "keywords": [
     "rakomi",
@@ -29,6 +29,7 @@
     "provenance": true
   },
   "type": "module",
+  "license": "MIT",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -40,7 +41,7 @@
     "rakomi-doctor": "./dist/doctor.js"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=20"
   },
   "author": "CRE8EVE Sp. z o.o.",
   "files": [
@@ -58,6 +59,5 @@
   },
   "dependencies": {
     "jose": "^6.2.3"
-  },
-  "license": "MIT"
+  }
 }

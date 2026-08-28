@@ -4,10 +4,10 @@ import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const FORBIDDEN_BARE_IMPORTS = ["@rakomi/shared","zod","libphonenumber-js"]
-const REQUIRED_EXTERNALS = {"@rakomi/sdk-core":["jose"],"@rakomi/react":["@rakomi/sdk-core","react"],"@rakomi/react-native":["@rakomi/sdk-core","jose","react","react-native"]}
+const REQUIRED_EXTERNALS = {"@rakomi/sdk-core":["jose"],"@rakomi/react":["@rakomi/sdk-core","react","@simplewebauthn/browser"],"@rakomi/react-native":["@rakomi/sdk-core","jose","react","react-native"]}
 import { extractBundledModules } from './lib/sdk-bundle-common.mjs'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -20,6 +20,9 @@ const CONSUMERS = [
   { name: '@rakomi/react', dir: 'packages/react', isCore: false },
   { name: '@rakomi/react-native', dir: 'packages/react-native', isCore: false },
 ]
+
+const FORBIDDEN_IN_RN = /(passkey|webauthn|fido)/i
+const RN_ALLOWED = /^(@rakomi\/(?!sdk-core\/passkeys\/testing)|expo-local-authentication)/
 
 function inlinesThirdParty(dir) {
   const metafiles = readMetafiles(dir)
@@ -34,6 +37,7 @@ const failures = []
 const notes = []
 const fail = (m) => { failures.push(m); console.error(`  ✗ ${m}`) }
 const ok = (m) => console.error(`  ✓ ${m}`)
+const info = (m) => console.error(`  · ${m}`)
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts })
 const buildErr = (e) => `${String(e.stdout || '').slice(-700)} ${String(e.stderr || e.message || '').slice(-700)}`.replace(/\s+/g, ' ').trim()
 
@@ -64,6 +68,10 @@ for (const c of CONSUMERS) {
 console.error('## externals two-oracle check')
 for (const c of CONSUMERS) externalsOracle(c)
 mutationTest()
+lazyWebAuthnOracle()
+ssrImportOracle()
+nativePasskeyIsolationOracle()
+reactNativeBundleReport()
 
 console.error('## pack (sdk-core first)')
 const tarballs = {}
@@ -130,6 +138,101 @@ function staticBareRoots(dir) {
   return roots
 }
 
+function webauthnImportKinds(metafiles) {
+  const LIB = '@simplewebauthn/browser'
+  const kinds = { dynamicExternal: false, staticAny: false }
+  for (const m of metafiles) for (const o of Object.values(m.outputs || {})) for (const i of o.imports || []) {
+    if (i.path !== LIB) continue
+    if (i.kind === 'dynamic-import' && i.external === true) kinds.dynamicExternal = true
+    if (i.kind === 'import-statement' || i.kind === 'require-call') kinds.staticAny = true
+  }
+  return kinds
+}
+
+function lazyWebAuthnOracle() {
+  const LIB = '@simplewebauthn/browser'
+  const react = CONSUMERS.find((c) => c.name === '@rakomi/react')
+  if (!react) { fail('lazy-webauthn oracle: @rakomi/react not among the packed consumers'); return }
+
+  const metafiles = readMetafiles(react.dir)
+  if (!metafiles.length) { fail(`@rakomi/react: no metafile for the lazy-webauthn oracle`); return }
+  const { dynamicExternal, staticAny } = webauthnImportKinds(metafiles)
+
+  if (!dynamicExternal) {
+    fail(`@rakomi/react: '${LIB}' is not a {kind: dynamic-import, external: true} import in the metafile — it was INLINED into the bundle (bundle isolation lost; every consumer now pays for it)`)
+  } else if (staticAny) {
+    fail(`@rakomi/react: '${LIB}' appears as a STATIC import in the metafile — the lazy boundary is gone even though the package stayed external`)
+  } else {
+    ok(`@rakomi/react: '${LIB}' is a lazy external import in the metafile (dynamic-import + external — zero bytes for non-passkey consumers)`)
+  }
+}
+
+function nativePasskeyHits(metafiles) {
+  const hits = new Set()
+  for (const m of metafiles) {
+    for (const o of Object.values(m.outputs || {})) for (const i of o.imports || []) {
+      if (FORBIDDEN_IN_RN.test(i.path) && !RN_ALLOWED.test(i.path)) hits.add(`${i.path} (import, external: ${String(i.external === true)})`)
+    }
+    for (const input of Object.keys(m.inputs || {})) {
+      if (!input.includes('node_modules/')) continue
+      const bare = input.replace(/^.*node_modules\//, '')
+      if (FORBIDDEN_IN_RN.test(bare) && !RN_ALLOWED.test(bare)) hits.add(`${bare} (INLINED input ${input})`)
+    }
+  }
+  return hits
+}
+
+function nativePasskeyIsolationOracle() {
+  const rn = CONSUMERS.find((c) => c.name === '@rakomi/react-native')
+  if (!rn) { fail('native-passkey isolation oracle: @rakomi/react-native not among the packed consumers'); return }
+
+  const metafiles = readMetafiles(rn.dir)
+  if (!metafiles.length) { fail('@rakomi/react-native: no metafile for the native-passkey isolation oracle'); return }
+
+  const hits = nativePasskeyHits(metafiles)
+  if (hits.size) {
+    fail(`@rakomi/react-native: a passkey/biometric library is present in the built artifact — the bridge must be host-injected, never bundled: ${[...hits].join(', ')}`)
+  } else {
+    ok('@rakomi/react-native: no passkey/biometric library in the metafile (neither external nor inlined) — the native module stays host-injected')
+  }
+}
+
+function reactNativeBundleReport() {
+  const rn = CONSUMERS.find((c) => c.name === '@rakomi/react-native')
+  if (!rn) return
+  const metafiles = readMetafiles(rn.dir)
+  if (!metafiles.length) return
+
+  const outputs = []
+  for (const m of metafiles) for (const [file, o] of Object.entries(m.outputs || {})) {
+    if (typeof o.bytes === 'number' && !file.endsWith('.map')) outputs.push([file, o.bytes])
+  }
+  outputs.sort((a, b) => b[1] - a[1])
+  const total = outputs.reduce((n, [, b]) => n + b, 0)
+  const kib = (n) => `${(n / 1024).toFixed(1)} KiB`
+  info(`@rakomi/react-native bundle weight (report only, no baseline): ${kib(total)} across ${outputs.length} outputs`)
+  for (const [file, bytes] of outputs.slice(0, 6)) info(`    ${file} — ${kib(bytes)}`)
+}
+
+function ssrImportOracle() {
+  const react = CONSUMERS.find((c) => c.name === '@rakomi/react')
+  if (!react) { fail('ssr-import oracle: @rakomi/react not among the packed consumers'); return }
+  const entry = join(REPO_ROOT, react.dir, 'dist', 'index.js')
+  if (!existsSync(entry)) { fail('@rakomi/react: dist/index.js missing — cannot run the SSR import probe'); return }
+
+  const probe = [
+    'delete globalThis.window; delete globalThis.document; delete globalThis.navigator;',
+    `await import(${JSON.stringify(pathToFileURL(entry).href)});`,
+  ].join('\n')
+
+  try {
+    sh('node', ['--input-type=module', '-e', probe], { stdio: ['ignore', 'ignore', 'pipe'] })
+    ok('@rakomi/react: built dist imports cleanly with no window/document/navigator (SSR-safe)')
+  } catch (e) {
+    fail(`@rakomi/react: built dist throws when imported without browser globals: ${String(e.stderr || e.message).slice(-300)}`)
+  }
+}
+
 function externalsOracle(c) {
   const metafiles = readMetafiles(c.dir)
   if (!metafiles.length) { fail(`${c.name}: no metafile for externals oracle`); return }
@@ -156,6 +259,49 @@ function mutationTest() {
   const bad = [{ outputs: { 'd.js': { imports: [{ path: '@rakomi/shared', external: true }], inputs: {} } } }]
   const leaked = metafileExternals(bad).has('@rakomi/shared')
   if (!leaked) fail('mutation test broken: oracle did not flag a wrongly-external @rakomi/shared'); else ok('mutation test: oracle rejects wrongly-external @rakomi/shared')
+
+  const LIB = '@simplewebauthn/browser'
+  const mf = (imports) => [{ outputs: { 'd.js': { imports, inputs: {} } } }]
+
+  const inlined = webauthnImportKinds(mf([{ path: 'react', external: true, kind: 'import-statement' }]))
+  if (inlined.dynamicExternal) fail('mutation test broken: lazy-webauthn oracle did not flag an INLINED library')
+  else ok('mutation test: lazy-webauthn oracle rejects an inlined @simplewebauthn/browser')
+
+  const hoistedKinds = webauthnImportKinds(
+    mf([{ path: LIB, external: true, kind: 'dynamic-import' }, { path: LIB, external: true, kind: 'import-statement' }]),
+  )
+  if (!hoistedKinds.staticAny) fail('mutation test broken: lazy-webauthn oracle did not flag a STATIC import of the library')
+  else ok('mutation test: lazy-webauthn oracle rejects a statically-imported @simplewebauthn/browser')
+
+  const good = webauthnImportKinds(mf([{ path: LIB, external: true, kind: 'dynamic-import' }]))
+  if (!good.dynamicExternal || good.staticAny) fail('mutation test broken: lazy-webauthn oracle rejects the CORRECT lazy-external shape')
+  else ok('mutation test: lazy-webauthn oracle accepts the correct lazy-external shape')
+
+  const rnInlined = nativePasskeyHits([
+    { inputs: { 'node_modules/react-native-passkey/lib/index.js': { bytes: 10 } }, outputs: {} },
+  ])
+  if (!rnInlined.size) fail('mutation test broken: native-passkey oracle did not flag an INLINED react-native-passkey')
+  else ok('mutation test: native-passkey oracle rejects an inlined react-native-passkey')
+
+  const rnFake = nativePasskeyHits([
+    { inputs: {}, outputs: { 'd.js': { imports: [{ path: '@rakomi/sdk-core/passkeys/testing', external: true }] } } },
+  ])
+  for (const lib of ['expo-passkey', 'react-native-webauthn', '@github/webauthn-json', '@passwordless-id/webauthn']) {
+    const hit = nativePasskeyHits([{ inputs: { [`node_modules/${lib}/index.js`]: { bytes: 1 } }, outputs: {} }])
+    if (!hit.size) fail(`mutation test broken: native-passkey oracle missed '${lib}' (the deny-list is an enumeration again)`)
+  }
+  ok('mutation test: native-passkey oracle rejects the whole passkey/webauthn/fido CLASS, not a list of names')
+  if (!rnFake.size) fail('mutation test broken: native-passkey oracle did not flag the sdk-core testing subpath')
+  else ok('mutation test: native-passkey oracle rejects the sdk-core passkeys/testing subpath')
+
+  const rnClean = nativePasskeyHits([
+    {
+      inputs: { 'src/hooks/use-passkeys.ts': { bytes: 100 } },
+      outputs: { 'd.js': { imports: [{ path: '@rakomi/sdk-core', external: true }, { path: 'react-native', external: true }] } },
+    },
+  ])
+  if (rnClean.size) fail('mutation test broken: native-passkey oracle rejects the CORRECT host-injected shape')
+  else ok('mutation test: native-passkey oracle accepts the correct host-injected shape')
 }
 
 function tarballAssertions(c, tgz) {

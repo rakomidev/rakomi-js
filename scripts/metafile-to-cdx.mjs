@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(__dirname, '..')
 const GENERATOR = 'metafile-to-cdx.mjs'
 
-const TOOLCHAIN = { tsup: '8.5.1', esbuild: '0.27.7' }
+const TOOLCHAIN = { tsup: '8.5.1', esbuild: '0.28.2' }
 
 const argv = process.argv.slice(2)
 const flag = (n) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : null)

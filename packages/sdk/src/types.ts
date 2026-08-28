@@ -62,12 +62,19 @@ export interface TokenMetadata {
   expiresIn: number;
 }
 
-/** A single org membership entry from the org_memberships JWT claim. */
+/**
+ * A single org membership entry from the org_memberships JWT claim.
+ * An entry of unexpected shape is dropped from the array, never returned malformed.
+ * `membership_public_metadata` accepts `null` as an explicit "no metadata" state, distinct from the
+ * field being absent — mirroring `org_id`/`org_role`'s own null-acceptance below.
+ * Not to be confused with `@rakomi/sdk-core`'s `OrgMembership` — a separate, structurally
+ * different type used by that package's own session/context surface.
+ */
 export interface OrgMembership {
   org_id: string;
   org_slug: string;
   org_role: string;
-  membership_public_metadata?: Record<string, unknown>;
+  membership_public_metadata?: Record<string, unknown> | null;
 }
 
 /**
@@ -90,10 +97,16 @@ export interface TokenPayload {
   mfaVerified?: boolean;
   /** ISO 8601 timestamp of the MFA verification. Preserved across token refreshes. */
   mfaVerifiedAt?: string;
-  /** Authentication Method Reference (RFC 8176). e.g. ['pwd'], ['pwd', 'otp', 'mfa'] */
+  /**
+ * Authentication Method Reference (RFC 8176). e.g. ['pwd'], ['pwd', 'otp', 'mfa']
+ * A claim of unexpected shape is treated as absent, never returned malformed.
+ */
   amr?: string[];
-  /** Authentication Context Class Reference (OIDC Core). 'aal1' = single-factor, 'aal2' = multi-factor.
- * 'eidas_high' when the user authenticated via an EU Digital Identity Wallet. */
+  /**
+ * Authentication Context Class Reference (OIDC Core). 'aal1' = single-factor, 'aal2' = multi-factor.
+ * 'eidas_high' when the user authenticated via an EU Digital Identity Wallet.
+ * A claim of unexpected shape is treated as absent, never returned malformed.
+ */
   acr?: string;
   /** EU member-state issuer of the verified credential (EUDI Wallet login). */
   credential_issuer?: string;
@@ -101,9 +114,17 @@ export interface TokenPayload {
   assurance_level?: 'low' | 'substantial' | 'high';
   /** Unix timestamp of initial authentication. Stays constant across token refreshes (RFC 9470). */
   authTime?: number;
-  /** RBAC role keys assigned to the user (immutable slugs, e.g. ['editor', 'moderator']) */
+  /**
+ * RBAC role keys assigned to the user (immutable slugs, e.g. ['editor', 'moderator']).
+ * Never absent — an empty array when no roles are assigned or the claim is of unexpected shape,
+ * never returned malformed.
+ */
   roles: string[];
-  /** Deduplicated, sorted permission strings from all assigned roles (e.g. ['posts:read', 'posts:write']) */
+  /**
+ * Deduplicated, sorted permission strings from all assigned roles (e.g. ['posts:read', 'posts:write']).
+ * Never absent — an empty array when no permissions apply or the claim is of unexpected shape,
+ * never returned malformed.
+ */
   permissions: string[];
   /** Environment slug from rkm_env JWT claim ('live' or 'test'). Absent in pre-15.4 tokens. */
   environment?: string;
@@ -111,6 +132,7 @@ export interface TokenPayload {
  * Custom public metadata from the public_metadata JWT claim.
  * Present only when non-empty and under 1 KB. Absent from M2M tokens.
  * WARNING: Do not use for authorization decisions — informational only.
+ * A claim of unexpected shape is treated as absent, never returned malformed.
  */
   publicMetadata?: Record<string, unknown>;
   /**
@@ -134,6 +156,8 @@ export interface TokenPayload {
   /**
  * BaaS subscription claim. Present only for end-users with an active BaaS subscription.
  * Absent from M2M tokens and from user tokens when no active subscription exists.
+ * A claim missing any required field, or of unexpected shape, is treated as absent in its
+ * entirety, never returned malformed or partially populated.
  */
   subscription?: {
     plan_id: string;
@@ -141,11 +165,28 @@ export interface TokenPayload {
     status: string;
     current_period_end: string | null;
   };
-  /** Active organization context. Null = no active org (personal mode). Set in (org switching). */
+  /**
+ * Active organization context, from the `org` scope. A non-empty string when the caller has an
+ * active organization. ABSENT in every other case — the `org` scope was not granted, the user has
+ * no organization, or the membership payload was too large to embed — so absence is not a reliable
+ * signal for any single one of those. `null` is accepted for forward-compatibility but is not
+ * currently emitted. Absent from M2M tokens.
+ * A claim of unexpected shape is treated as absent, never returned malformed.
+ */
   org_id?: string | null;
-  /** Caller's role in the active org. Null when org_id is null. */
+  /**
+ * Caller's role in the active organization. `null` means an active org with no role resolved —
+ * distinct from the field being absent. Absent from M2M tokens.
+ * A claim of unexpected shape is treated as absent, never returned malformed.
+ */
   org_role?: string | null;
-  /** All org memberships for this user (present when serialized size < 1KB). */
+  /**
+ * All org memberships for this user. Present only when the serialized list fits the token's
+ * claim-size budget; absent when it does not, so an absent list does not mean "no memberships".
+ * Absent from M2M tokens.
+ * An individual entry of unexpected shape is dropped from the array; the array itself is treated
+ * as absent when it is not an array at all — never returned malformed.
+ */
   org_memberships?: OrgMembership[];
   /** True when this is an M2M token (client_credentials grant). Reliable marker — do not rely on absence of sessionId. */
   isM2M?: boolean;
@@ -191,6 +232,126 @@ export interface SdkError {
 export type VerifyResult<T = TokenPayload> =
   | { ok: true; data: T }
   | { ok: false; error: SdkError };
+
+/**
+ * Options shared by both `verifyRakomiToken()` verification modes.
+ *
+ * `issuer` and `jwksUrl` default to the Rakomi platform values and are
+ * support-window-guaranteed platform constants. Overriding them points token
+ * verification at a different trust anchor — intended for Rakomi-documented
+ * values only (test environments, Rakomi-designated custom domains). Both are
+ * validated fail-closed as https: URLs before any network fetch.
+ */
+export interface VerifyRakomiTokenBaseOptions {
+  /** Expected `iss` claim. Default: `https://api.rakomi.com`. Must be an https: URL. */
+  issuer?: string;
+  /**
+   * Full URL of the JWKS document used to verify signatures.
+   * Default: `https://api.rakomi.com/.well-known/jwks.json`. Must be an
+   * https: URL — this is the key-trust anchor, never derive it from a request.
+   */
+  jwksUrl?: string;
+  /**
+   * Clock skew tolerance in seconds. Default 30, clamped to [0, 120].
+   * Raising it widens the acceptance window for just-expired tokens.
+   */
+  clockTolerance?: number;
+  /**
+   * Pin the token's `client_id` claim (either mode). A token without a
+   * `client_id` claim (session-issued tokens) is REJECTED when this pin is
+   * set — fail-closed, never fail-open.
+   */
+  requiredClientId?: string;
+}
+
+/**
+ * Mode A — audience-bound verification (RFC 8707 resource-bound tokens):
+ * the token's `aud` must equal `audience` exactly (literal string equality,
+ * no URL normalization). The strongest replay defense — prefer it whenever
+ * your clients can send resource-bound tokens. A multi-tenant resource
+ * sharing one audience should additionally pin `requiredTenantId`.
+ */
+export interface VerifyRakomiTokenAudienceOptions extends VerifyRakomiTokenBaseOptions {
+  /** Your resource identifier — compared byte-for-byte against the token `aud`. */
+  audience: string;
+  /** Optional tenant pin on top of the audience binding (multi-tenant resources). */
+  requiredTenantId?: string;
+}
+
+/**
+ * Mode B — platform-audience verification with a mandatory tenant pin:
+ * used when clients send default platform-audience tokens. `requiredTenantId`
+ * is REQUIRED — accepting a platform-audience token without a tenant pin
+ * would accept tokens issued to any application (cross-app replay).
+ */
+export interface VerifyRakomiTokenTenantPinOptions extends VerifyRakomiTokenBaseOptions {
+  /**
+   * Absent in Mode B. NOTE: `{ audience: undefined, requiredTenantId }`
+   * (e.g. an unset env var) deliberately verifies as Mode B — verify at boot
+   * that an `audience` sourced from configuration is actually present.
+   */
+  audience?: undefined;
+  /** The tenant this resource server serves — compared against the token's `tenant_id` claim. */
+  requiredTenantId: string;
+}
+
+/**
+ * Options for `verifyRakomiToken()` — a discriminated union so the insecure
+ * configuration (neither `audience` nor `requiredTenantId`) is
+ * unrepresentable at the type level; JS callers get the equivalent runtime
+ * config error. Unknown extra keys are ignored at runtime (forward-compatible
+ * additive options).
+ */
+export type VerifyRakomiTokenOptions =
+  | VerifyRakomiTokenAudienceOptions
+  | VerifyRakomiTokenTenantPinOptions;
+
+/**
+ * Inputs for `buildProtectedResourceMetadata()` — caller-supplied boot-time
+ * constants, never request-derived values.
+ */
+export interface ProtectedResourceMetadataOptions {
+  /** Canonical resource identifier (https: URL, no fragment). */
+  resource: string;
+  /** Authorization servers trusted by this resource. Default: `['https://api.rakomi.com']`. */
+  authorizationServers?: readonly string[];
+  /** Scope values this resource understands (emitted only when provided). */
+  scopesSupported?: readonly string[];
+  /** How bearer tokens are accepted (RFC 6750). Default: `['header']`. */
+  bearerMethodsSupported?: ReadonlyArray<'header' | 'body' | 'query'>;
+  /** Human-readable display name for consent UIs (emitted only when provided). */
+  resourceName?: string;
+}
+
+/**
+ * RFC 9728 §2 protected resource metadata document (the deliberately minimal
+ * field set — see the IANA OAuth Protected Resource Metadata registry for
+ * other registered fields).
+ */
+export interface ProtectedResourceMetadata {
+  resource: string;
+  authorization_servers: string[];
+  scopes_supported?: string[];
+  bearer_methods_supported: string[];
+  resource_name?: string;
+}
+
+/**
+ * RFC 6750 §3.1 challenge error codes emittable by a resource server.
+ * `invalid_request` is deliberately excluded: a 400 response does not carry
+ * this challenge (see `buildChallenge()`).
+ */
+export type ChallengeErrorCode = 'invalid_token' | 'insufficient_scope';
+
+/** Inputs for `buildChallenge()` — caller-supplied constants. */
+export interface ChallengeOptions {
+  /** Absolute https: URL where YOUR protected resource metadata is served. */
+  resourceMetadataUrl: string;
+  /** Space-separated scope values to advertise (RFC 6749 §3.3 scope-token characters only). */
+  scope?: string;
+  /** Omit when no token was presented (RFC 6750 §3.1: error codes only accompany a presented token). */
+  error?: ChallengeErrorCode;
+}
 
 /**
  * Webhook event payload delivered by Rakomi.
@@ -365,6 +526,13 @@ export interface AuthorizeUrlOptions {
   state: string;
   scope?: string | string[];
   baseUrl?: string;
+  /**
+   * Full authorization-endpoint URL to navigate the browser to (e.g. resolved via
+   * {@link resolveAuthorizationEndpoint} or OIDC discovery's `authorization_endpoint`). When
+   * supplied, this exact URL is used as the base and `baseUrl`/`/oauth/authorize` is NOT applied.
+   * Omit to keep the previous `${baseUrl}/oauth/authorize` behavior unchanged.
+   */
+  authorizationEndpoint?: string;
 }
 
 /** Token response from OAuth token endpoint. */

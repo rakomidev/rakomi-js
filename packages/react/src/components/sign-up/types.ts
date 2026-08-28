@@ -1,4 +1,4 @@
-import type { Translations } from '../../i18n/types.js';
+import type { Locale, Translations } from '../../i18n/types.js';
 
 export interface SignUpElements {
   root: string;
@@ -20,7 +20,7 @@ export interface SignUpProps {
   logo?: { src: string; alt: string };
   fallback?: React.ReactNode;
   initialValues?: { email?: string };
-  locale?: 'en' | 'pl';
+  locale?: Locale;
   signInUrl?: string;
   privacyPolicyUrl?: string;
   termsOfServiceUrl?: string;

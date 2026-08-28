@@ -14,7 +14,7 @@ import { useBranding } from '../../hooks/use-branding.js';
 import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
-import { useColorScheme } from '../../internal/use-auth-internals.js';
+import { useColorScheme, usePrefersDarkScheme } from '../../internal/use-auth-internals.js';
 import { isSafeRedirectUrl } from '../../utils/safe-url.js';
 import type { UserButtonProps } from './types.js';
 
@@ -35,6 +35,7 @@ function UserButtonInner(props: UserButtonProps): React.ReactElement | null {
   const t = useTranslation(locale, undefined, translations);
   const globalAppearance = useGlobalAppearance();
   const colorScheme = useColorScheme();
+  const prefersDarkScheme = usePrefersDarkScheme();
   const cls = (element: string) => resolveClassName(element, props.appearance, globalAppearance);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -91,7 +92,7 @@ function UserButtonInner(props: UserButtonProps): React.ReactElement | null {
   const initial = email.charAt(0).toUpperCase();
 
   return (
-    <div data-rakomi-user-button-root data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding), ...style }}>
+    <div data-rakomi-user-button-root data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding, { explicitScheme: colorScheme, prefersDark: prefersDarkScheme }), ...style }}>
       <button
         ref={triggerRef}
         type="button"

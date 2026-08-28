@@ -1,4 +1,4 @@
-import type { Translations } from '../../i18n/types.js';
+import type { Locale, Translations } from '../../i18n/types.js';
 
 export type SignInStep =
   | 'idle'
@@ -78,7 +78,7 @@ export interface SignInProps {
   methods?: string[];
   socialProviders?: string[];
   socialPosition?: 'top' | 'bottom';
-  locale?: 'en' | 'pl';
+  locale?: Locale;
   signUpUrl?: string;
   forgotPasswordUrl?: string;
   showRememberMe?: boolean;

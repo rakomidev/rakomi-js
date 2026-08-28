@@ -16,14 +16,29 @@ export class DenylistError extends Error {
 }
 
 const ESCAPE_RE = /[.*+?^${}()|[\]\\]/g
-const escapeLiteral = (s) => s.replace(ESCAPE_RE, '\\$&')
+export const escapeLiteral = (s) => {
+  if (typeof s !== 'string') {
+    throw new TypeError(`escapeLiteral: expected a string, got ${s === null ? 'null' : typeof s} — coercing here would build a matcher for the literal text "${String(s)}" and report a confident wrong verdict`)
+  }
+  return s.replace(ESCAPE_RE, '\\$&')
+}
 
 const WORD_CHAR_RE = /\w/
 const CASE_VALUES = new Set(['sensitive', 'insensitive'])
 
 export function assertReDoSSafe(src) {
-  if (/\)[*+?]|\)\{|[*+]{2,}|[*+]\?[*+]|\([^)]*[*+][^)]*\)[*+?{]/.test(src)) {
-    throw new DenylistError(`deny-list regex rejected as ReDoS-risky (nested/adjacent quantifier): /${src}/`)
+  const s = String(src ?? '')
+  if (s.length > 512) {
+    throw new DenylistError(`deny-list regex source is over the 512-char cap — REFUSED UNEXAMINED (fail-closed): /${s.slice(0, 80)}…/`)
+  }
+  if (/(\\[sSwWdD]|\\[pP]\{[^}]{0,32}\}|\[[^\]]{0,512}\])(?:[*+]\??|\{\d{0,7}(?:,\d{0,7})?\}\??)\1(?:[*+]\??|\{\d{0,7}(?:,\d{0,7})?\}\??)|\.(?:[*+]\??|\{\d{0,7}(?:,\d{0,7})?\}\??)(?:\\[sSwWdD]|\\[pP]\{[^}]{0,32}\}|\[[^\]]{0,512}\]|\.)(?:[*+]\??|\{\d{0,7}(?:,\d{0,7})?\}\??)|(?:\\[sSwWdD]|\\[pP]\{[^}]{0,32}\}|\[[^\]]{0,512}\])(?:[*+]\??|\{\d{0,7}(?:,\d{0,7})?\}\??)\.(?:[*+]\??|\{\d{0,7}(?:,\d{0,7})?\}\??)/.test(s)) {
+    throw new DenylistError(`deny-list regex rejected as ReDoS-risky (adjacent overlapping quantified atoms — the polynomial class): /${s}/`)
+  }
+  const view = s
+    .replace(/\\[\s\S]/g, 'xx')
+    .replace(/\[[^\]]{0,512}\]/g, (m) => `[${'x'.repeat(Math.max(0, m.length - 2))}]`)
+  if (/\)[*+?]|\)\{|[*+]{2,}|[*+]\?[*+]|\([^)]*[*+][^)]*\)[*+?{]/.test(view)) {
+    throw new DenylistError(`deny-list regex rejected as ReDoS-risky (nested/adjacent quantifier): /${s}/`)
   }
 }
 
@@ -53,13 +68,27 @@ function normalizeLiteral(entry, catCase, catId) {
   return { value, caseInsensitive: termCase === 'insensitive', boundary }
 }
 
-function validateRegex(rx, catCase) {
+function validateRegex(rx) {
   assertReDoSSafe(rx)
   new RegExp(rx)
   if (new RegExp(`${rx}|`).exec('').length - 1 !== 0) {
     throw new DenylistError(`deny-list regex must use non-capturing groups only — a capturing group breaks the scanText category index: /${rx}/`)
   }
-  return catCase === 'insensitive'
+}
+
+function normalizeRegex(entry, catCase, catId) {
+  if (typeof entry === 'string') return { source: entry, caseInsensitive: catCase === 'insensitive' }
+  if (entry && typeof entry === 'object' && typeof entry.value === 'string') {
+    const termCase = entry.case ?? catCase
+    if (!CASE_VALUES.has(termCase)) {
+      throw new DenylistError(`deny-list regex '${entry.value}' (category '${catId}') has invalid case '${termCase}' — expected sensitive|insensitive`)
+    }
+    if ('boundary' in entry) {
+      throw new DenylistError(`deny-list regex '${entry.value}' (category '${catId}') must not set boundary — a regex carries its own anchors`)
+    }
+    return { source: entry.value, caseInsensitive: termCase === 'insensitive' }
+  }
+  throw new DenylistError(`deny-list regex in category '${catId}' must be a string or {value, case?}: ${JSON.stringify(entry)}`)
 }
 
 export function loadDenylist(repoRoot = REPO_ROOT) {
@@ -89,11 +118,12 @@ export function loadDenylist(repoRoot = REPO_ROOT) {
       flat.push({ category: cat.id, raw: value })
     }
     for (const rx of cat.regexes || []) {
-      const caseInsensitive = validateRegex(rx, catCase)
+      const { source, caseInsensitive } = normalizeRegex(rx, catCase, cat.id)
+      validateRegex(source)
       const bucket = caseInsensitive ? insensitive : sensitive
-      bucket.source.push({ category: cat.id, raw: rx })
-      bucket.parts.push(`(${rx})`)
-      flat.push({ category: cat.id, raw: rx })
+      bucket.source.push({ category: cat.id, raw: source })
+      bucket.parts.push(`(${source})`)
+      flat.push({ category: cat.id, raw: source })
     }
     for (const entry of cat.hashedLiterals || []) {
       if (!entry || typeof entry.len !== 'number' || !Number.isInteger(entry.len) || entry.len <= 0 || !/^[0-9a-f]{64}$/.test(entry.h || '')) {

@@ -73,8 +73,8 @@ export async function directSignIn(options: {
   }
 
   if (response.status === 401 || response.status === 400) {
-    const body = json as { error?: { message?: string } };
-    const message = body?.error?.message ?? 'Invalid email or password';
+    const body = json as { detail?: string };
+    const message = body?.detail ?? 'Invalid email or password';
     return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message } };
   }
 

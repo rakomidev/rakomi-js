@@ -88,9 +88,10 @@ export class AgentsRateLimitedError extends Error {
   }
 }
 
+/** RFC 9457 `application/problem+json` — `code`/`detail` at the top level. */
 interface ApiErrorBody {
   code?: string;
-  message?: string;
+  detail?: string;
 }
 
 async function safeJson<T>(res: Response): Promise<T | null> {
@@ -150,7 +151,7 @@ function rateLimitedError(retryAfter?: number): SdkError {
 function genericError(status: number, body: ApiErrorBody | null): SdkError {
   return {
     code: body?.code ?? `agents/http_${status}`,
-    message: body?.message ?? `HTTP ${status}`,
+    message: body?.detail ?? `HTTP ${status}`,
     suggestion: 'Inspect the response body and retry if appropriate.',
     docs_url: 'https://docs.rakomi.dev/guides/ai-agents',
   };

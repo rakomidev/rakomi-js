@@ -45,8 +45,8 @@ function CustomerPortalInner(props: CustomerPortalProps): React.ReactElement {
       );
 
       if (!resp.ok) {
-        const data = (await resp.json().catch(() => ({}))) as { error?: string };
-        if (data.error === 'STRIPE_ACCOUNT_INACTIVE' || resp.status === 503) {
+        const data = (await resp.json().catch(() => ({}))) as { code?: string };
+        if (data.code === 'STRIPE_ACCOUNT_INACTIVE' || resp.status === 503) {
           setErrorMsg('Payment provider unavailable');
         } else {
           setErrorMsg('Failed to open billing portal');

@@ -1,13 +1,14 @@
 import type React from 'react';
 
 import type { AppearanceConfig } from '../../appearance.js';
+import type { Locale } from '../../i18n/types.js';
 
 export interface PricingTableProps {
   tenantSlug: string;
   className?: string;
   style?: React.CSSProperties;
   appearance?: AppearanceConfig;
-  locale?: 'en' | 'pl';
+  locale?: Locale;
   currentPlanId?: string;
   recommendedPlanId?: string;
   emptyContent?: React.ReactNode;
@@ -25,7 +26,7 @@ export interface SubscriptionManagerProps {
   className?: string;
   style?: React.CSSProperties;
   appearance?: AppearanceConfig;
-  locale?: 'en' | 'pl';
+  locale?: Locale;
   onManage?: () => void;
   onSubscriptionChange?: () => void;
   fallback?: React.ReactNode;

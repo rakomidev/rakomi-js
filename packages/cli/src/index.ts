@@ -1,0 +1,232 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: MIT
+
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+
+import { systemBrowserOpener } from './browser.js';
+import { runConnect } from './commands/connect.js';
+import { runLogin } from './commands/login.js';
+import { runLogout } from './commands/logout.js';
+import { runTenantsCreate, runTenantsList } from './commands/tenants.js';
+import { runWhoami } from './commands/whoami.js';
+import { apiBaseUrl, type CliEnv, DEFAULT_MCP_URL } from './env.js';
+import { CliError, EXIT, type ExitCode, UsageError } from './errors.js';
+import type { FetchLike } from './http.js';
+import { startLoopbackListener } from './loopback-server.js';
+import { resolveStores, type SessionStore } from './session.js';
+import { helpText, type OutputStream, usageLine } from './usage.js';
+
+export interface RunDeps {
+  readonly stdout: OutputStream;
+  readonly stderr: OutputStream;
+  readonly env: CliEnv;
+  readonly cwd: string;
+  readonly version: string;
+  readonly isTTY: boolean;
+  readonly fetchImpl: FetchLike;
+  readonly session: SessionStore;
+  readonly detectClaudeCode: () => boolean;
+}
+
+const GLOBAL_OPTIONS = {
+  json: { type: 'boolean' },
+  yes: { type: 'boolean' },
+  ci: { type: 'boolean' },
+  'dry-run': { type: 'boolean' },
+  'no-browser': { type: 'boolean' },
+  'no-keychain': { type: 'boolean' },
+  client: { type: 'string' },
+  undo: { type: 'boolean' },
+  write: { type: 'boolean' },
+  owner: { type: 'string' },
+  slug: { type: 'string' },
+  'cimd-url': { type: 'string' },
+  status: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean', short: 'V' },
+} as const;
+
+export async function run(args: readonly string[], deps: RunDeps): Promise<ExitCode> {
+  try {
+    return await dispatch(args, deps);
+  } catch (e) {
+    if (e instanceof UsageError) {
+      deps.stderr.write(`${e.message}\n${usageLine()}\n`);
+      return e.exitCode;
+    }
+    if (e instanceof CliError) {
+      deps.stderr.write(`${e.message}\n`);
+      return e.exitCode;
+    }
+    deps.stderr.write('An unexpected error occurred.\n');
+    return EXIT.FAIL;
+  }
+}
+
+async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCode> {
+  let values: Record<string, string | boolean | undefined>;
+  let positionals: string[];
+  try {
+    const parsed = parseArgs({ args: [...args], allowPositionals: true, options: GLOBAL_OPTIONS });
+    values = parsed.values;
+    positionals = parsed.positionals;
+  } catch {
+    throw new UsageError('Unknown or malformed argument.');
+  }
+
+  if (values.help === true || args.length === 0) {
+    deps.stdout.write(helpText());
+    return EXIT.OK;
+  }
+  if (values.version === true) {
+    deps.stdout.write(`${deps.version}\n`);
+    return EXIT.OK;
+  }
+
+  const ci = values.ci === true || values.yes === true || Boolean(deps.env.CI);
+  const dryRun = values['dry-run'] === true;
+  const json = values.json === true;
+  const httpDeps = { fetchImpl: deps.fetchImpl };
+
+  const [command, ...rest] = positionals;
+  switch (command) {
+    case 'login':
+      await runLogin({
+        ...httpDeps,
+        env: deps.env,
+        session: deps.session,
+        noBrowser: values['no-browser'] === true || ci,
+        openBrowser: systemBrowserOpener(),
+        startLoopback: startLoopbackListener,
+        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+        stdout: deps.stdout,
+        now: () => Date.now(),
+      });
+      return EXIT.OK;
+
+    case 'logout':
+      runLogout({ session: deps.session, stdout: deps.stdout });
+      return EXIT.OK;
+
+    case 'whoami':
+      await runWhoami({ ...httpDeps, session: deps.session, json, stdout: deps.stdout });
+      return EXIT.OK;
+
+    case 'connect':
+      await runConnect({
+        ...httpDeps,
+        session: deps.session,
+        cwd: deps.cwd,
+        apiBaseUrl: apiBaseUrl(deps.env),
+        mcpUrl: deps.env.RAKOMI_API_URL ? `${apiBaseUrl(deps.env)}/mcp` : DEFAULT_MCP_URL,
+        detectClaudeCode: deps.detectClaudeCode,
+        stdout: deps.stdout,
+        write: values.write === true,
+        dryRun,
+        ci,
+        undo: values.undo === true,
+        explicitClient: typeof values.client === 'string' ? values.client : undefined,
+        cimdUrl: typeof values['cimd-url'] === 'string' ? values['cimd-url'] : undefined,
+        status: values.status === true,
+      });
+      return EXIT.OK;
+
+    case 'tenants': {
+      const [sub, ...tenantArgs] = rest;
+      if (sub === 'create') {
+        const name = tenantArgs[0];
+        if (!name) throw new UsageError('Usage: rakomi tenants create <name> [--owner me|<email>] [--slug <slug>]');
+        await runTenantsCreate(
+          { ...httpDeps, session: deps.session, json, dryRun, ci, stdout: deps.stdout },
+          { name, slug: typeof values.slug === 'string' ? values.slug : undefined, owner: typeof values.owner === 'string' ? values.owner : 'me' },
+        );
+        return EXIT.OK;
+      }
+      if (sub === 'list') {
+        await runTenantsList({ ...httpDeps, session: deps.session, json, stdout: deps.stdout });
+        return EXIT.OK;
+      }
+      throw new UsageError('Usage: rakomi tenants <create|list> ...');
+    }
+
+    default:
+      throw new UsageError(`Unknown command "${command ?? ''}".`);
+  }
+}
+
+async function main(): Promise<void> {
+  const major = Number(process.versions.node.split('.')[0]);
+  if (Number.isFinite(major) && major < 22) {
+    process.stderr.write('rakomi needs Node.js 22 or newer.\n');
+    process.exitCode = EXIT.FAIL;
+    return;
+  }
+  let version = '0.0.0';
+  try {
+    version = String(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+  } catch {
+  }
+  const env: CliEnv = {
+    RAKOMI_API_URL: process.env.RAKOMI_API_URL,
+    RAKOMI_ACCOUNTS_URL: process.env.RAKOMI_ACCOUNTS_URL,
+    RAKOMI_CLIENT_ID: process.env.RAKOMI_CLIENT_ID,
+    RAKOMI_CONFIG_DIR: process.env.RAKOMI_CONFIG_DIR,
+    CI: process.env.CI,
+    NO_COLOR: process.env.NO_COLOR,
+  };
+  const noKeychainEnv = process.env.RAKOMI_NO_KEYCHAIN;
+  const noKeychainFlag = process.argv.slice(2).includes('--no-keychain');
+  const resolved = resolveStores(env, { noKeychain: noKeychainFlag || Boolean(env.CI) || Boolean(noKeychainEnv) });
+  if (resolved.fallbackDisclosure) {
+    process.stderr.write(resolved.fallbackDisclosure + '\n');
+  }
+  process.exitCode = await run(process.argv.slice(2), {
+    stdout: { write: (text) => void process.stdout.write(text) },
+    stderr: { write: (text) => void process.stderr.write(text) },
+    env,
+    cwd: process.cwd(),
+    version,
+    isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    fetchImpl: fetch,
+    session: resolved.session,
+    detectClaudeCode: () => detectClaudeCodeCli(),
+  });
+}
+
+/** Presence-only, no version/behaviour probing — a `claude` binary error still counts as "detected". */
+function detectClaudeCodeCli(): boolean {
+  const pathEnv = process.env.PATH ?? '';
+  const binaryName = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+  return pathEnv.split(delimiter).some((dir) => dir.length > 0 && existsSync(join(dir, binaryName)));
+}
+
+/**
+ * True when this module is the process entry point. Compares REALPATHS, not path strings: `process.argv[1]`
+ * is the path as typed, `import.meta.url` is already realpath-resolved by Node, so a string compare is
+ * silently false behind any symlink (macOS `/tmp` → `/private/tmp`, a symlinked `node_modules/.bin`) and the
+ * CLI would exit 0 having done nothing.
+ */
+function isCliEntry(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  const real = (p: string): string => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return p;
+    }
+  };
+  try {
+    return real(argv1) === real(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isCliEntry()) {
+  void main();
+}
