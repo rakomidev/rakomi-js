@@ -1,18 +1,18 @@
 name: Create GitHub Release (Notes + SBOM + SECURITY.md)
 
+# Runs after the Publish workflow completes; workflow_dispatch creates the release for an already-published version.
 on:
-  push:
-    tags:
-      - "sdk/v[0-9]*.[0-9]*.[0-9]*"
-      - "sdk-core/v[0-9]*.[0-9]*.[0-9]*"
-      - "react/v[0-9]*.[0-9]*.[0-9]*"
-      - "react-native/v[0-9]*.[0-9]*.[0-9]*"
-      - "create-rakomi-app/v[0-9]*.[0-9]*.[0-9]*"
-      - "cli/v[0-9]*.[0-9]*.[0-9]*"
+  workflow_run:
+    workflows: ["Publish @rakomi/* (OIDC trusted publishing + SLSA provenance)"]
+    types: [completed]
   workflow_dispatch: {}
 
 concurrency:
-  group: release-notes-${{ github.ref }}
+  # workflow_run always carries github.ref == the default branch (it is not the tag's own ref) — the
+  # real per-package identity for this trigger is head_branch (the tag name GitHub reports for a run
+  # that was itself triggered by a tag push). Falling back to github.ref keeps workflow_dispatch's
+  # existing behavior (dispatched against a tag ref) unchanged.
+  group: release-notes-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -20,6 +20,10 @@ permissions:
 
 jobs:
   release-notes:
+    # A failed/cancelled Publish run must never produce a release for a version that never shipped.
+    # workflow_dispatch carries no workflow_run context at all, so it is admitted unconditionally (the
+    # existing backfill path — the dispatched ref is validated by the resolution step below, same as before).
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -28,11 +32,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve package from the protected tag (same map publish.yml uses)
+      # Resolve the trigger ref FIRST — workflow_dispatch keeps its existing github.ref (a tag ref,
+      # e.g. from the §11.4 backfill command); workflow_run has no tag ref of its own, so the tag name
+      # is read from head_branch (GitHub reports the tag's bare name there for a run a tag push
+      # triggered — verified against GitHub's own event semantics). head_branch is UNVALIDATED input at
+      # this point (any tag pusher's ref name flows through it) — it is turned into REF by plain string
+      # concatenation (never interpolated into an executed command) and immediately fed through the SAME
+      # case statement that resolves the package, which is therefore also the validator: an unrecognized
+      # value hits the existing `*) exit 1` branch before PKG_DIR/PKG_NAME/TAG_VERSION are ever set from
+      # it. One case statement, two jobs — reused, never a second regex.
+      - name: Resolve the trigger ref, then the package from the protected tag (same map publish.yml uses)
         env:
-          REF: ${{ github.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_REF: ${{ github.ref }}
+          WR_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            REF="refs/tags/${WR_HEAD_BRANCH}"
+          else
+            REF="$GH_REF"
+          fi
           case "$REF" in
             refs/tags/sdk/v*)               PKG_DIR=packages/sdk;               PKG_NAME=@rakomi/node;         PREFIX=sdk/v ;;
             refs/tags/sdk-core/v*)          PKG_DIR=packages/sdk-core;          PKG_NAME=@rakomi/sdk-core;     PREFIX=sdk-core/v ;;
@@ -49,17 +69,20 @@ jobs:
             echo "TAG_NAME=${REF#refs/tags/}"
           } >> "$GITHUB_ENV"
 
-      - name: Wait for npm to confirm this version is published
+      # No longer the race-avoidance mechanism (workflow_run already waited for Publish to finish
+      # successfully) — this is now belt-and-suspenders against npm registry read-replication lag only,
+      # so the bound shrinks from 10 minutes to ~1 minute.
+      - name: Wait for npm to confirm this version is published (registry replication lag only)
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 12); do
             if npm view "${PKG_NAME}@${TAG_VERSION}" version >/dev/null 2>&1; then
               echo "npm confirms ${PKG_NAME}@${TAG_VERSION} is published (attempt ${attempt})"
               exit 0
             fi
-            sleep 10
+            sleep 5
           done
-          echo "::error::npm never showed ${PKG_NAME}@${TAG_VERSION} as published after 10 minutes — publish.yml may still be running or may have failed. Refusing to create a release for an unconfirmed version."
+          echo "::error::npm never showed ${PKG_NAME}@${TAG_VERSION} as published after 60s of publish.yml reporting success — this points at registry replication lag or a publish that failed after this workflow's own trigger fired. Refusing to create a release for an unconfirmed version."
           exit 1
 
       - name: Extract this version's CHANGELOG entry (Keep-a-Changelog-style, generated by Layer 1)
