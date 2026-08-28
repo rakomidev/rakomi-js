@@ -36,9 +36,9 @@ export interface SignInProps {
    * path on the API host returns JSON, not the hosted login UI.
    */
   authorizationEndpoint?: string;
-  /** Token endpoint, default `${baseUrl}/v1/auth/oauth/callback`. */
+  /** RFC 6749 §3.2 token endpoint used for the PKCE code→token exchange, default `${baseUrl}/oauth/token`. */
   tokenEndpoint?: string;
-  /** MFA TOTP verify endpoint, default `${baseUrl}/v1/auth/mfa/totp/verify`. */
+  /** MFA TOTP verify endpoint, default `${baseUrl}/v1/auth/mfa/verify-login`. */
   totpVerifyEndpoint?: string;
   /** Social providers to render. Default: ['google']. */
   providers?: string[];
@@ -63,8 +63,8 @@ export function SignIn(props: SignInProps): ReactNode {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const tokenEndpoint = props.tokenEndpoint ?? '/v1/auth/oauth/callback';
-  const totpVerifyEndpoint = props.totpVerifyEndpoint ?? '/v1/auth/mfa/totp/verify';
+  const tokenEndpoint = props.tokenEndpoint ?? '/oauth/token';
+  const totpVerifyEndpoint = props.totpVerifyEndpoint ?? '/v1/auth/mfa/verify-login';
   const providers = props.providers ?? ['google'];
 
   async function onProviderPress(provider: string) {

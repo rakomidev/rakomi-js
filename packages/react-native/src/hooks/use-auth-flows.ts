@@ -110,7 +110,7 @@ export function useMfa(): UseMfaResult {
   const ctx = useRakomiContext();
   return {
     verifyTotp: async (challengeToken, code, endpoint) => {
-      const url = endpoint ?? `${ctx.baseUrl}/v1/auth/mfa/totp/verify`;
+      const url = endpoint ?? `${ctx.baseUrl}/v1/auth/mfa/verify-login`;
       const result = await coreVerifyTotp({ http: ctx.http, endpoint: url, challengeToken, code });
       if (result.ok) {
         const nonce = await ctx.beginAuthFlow();

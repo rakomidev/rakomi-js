@@ -1,3 +1,7 @@
+## 0.3.1 — 2026-08-28
+
+- MFA verification and recovery-code endpoints match the API.
+
 ## 0.3.0 — 2026-08-28
 
 - New webhook event types `agent_scope_elevation.requested`, `agent_scope_elevation.approved` and `agent_scope_elevation.denied` — emitted when an AI-agent client asks a tenant owner for write access and the owner decides. Additive: existing event handlers are unaffected; unknown events keep flowing through the generic webhook verifier as before.

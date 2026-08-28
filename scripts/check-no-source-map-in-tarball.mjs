@@ -45,8 +45,15 @@ export function parsePackFiles(stdout, pkgName) {
   return files
 }
 
-export function inspectPackedFiles(pkgName, version, files, manifest) {
+export function inspectPackedFiles(pkgName, version, files, manifest, opts = {}) {
   const fails = []
+  const requireShipped = Array.isArray(opts.requireShipped) ? opts.requireShipped : []
+  const packedRootBasenames = new Set(files.map((f) => f.replace(/^package\//, '')).filter((f) => !f.includes('/')))
+  for (const need of requireShipped) {
+    if (!packedRootBasenames.has(need)) {
+      fails.push(relGateMessage('REL-GATE-N804', 'FAIL', pkgName, version, `generated deliverable "${need}" is MISSING from the tarball root — the package.json "files" whitelist does not name it (CRA Annex I SBOM / release-notes input)`))
+    }
+  }
   for (const f of files) {
     if (SOURCE_MAP_RE.test(basename(f))) {
       fails.push(relGateMessage('REL-GATE-N801', 'FAIL', pkgName, version, `source map "${f}" ships in tarball (leaks sources/sourcesContent)`))
@@ -105,9 +112,12 @@ function main() {
     }
     inspected++
     const version = manifest.version || ''
-    const fails = inspectPackedFiles(pkg.name, version, files, manifest)
+    const sbomOnDisk = Boolean(tarballDir) && existsSync(join(REPO_ROOT, pkg.dir, 'sbom.cdx.json'))
+    const requireShipped = sbomOnDisk ? ['sbom.cdx.json'] : []
+    if (tarballDir && !sbomOnDisk) console.error(`  · ${pkg.name}: no generated sbom.cdx.json on disk — N804 presence check not applicable to this run`)
+    const fails = inspectPackedFiles(pkg.name, version, files, manifest, { requireShipped })
     if (fails.length === 0) {
-      console.error(`  ✓ ${pkg.name}@${version}: ${files.length} packed entries, no .map / no test artifact / no optionalDependencies`)
+      console.error(`  ✓ ${pkg.name}@${version}: ${files.length} packed entries, no .map / no test artifact / no optionalDependencies${sbomOnDisk ? ' / sbom.cdx.json shipped' : ''}`)
     } else {
       for (const f of fails) { violations.push(f); console.error(`  ✗ ${f}`) }
     }
