@@ -19,7 +19,7 @@ import { RakomiProvider, SignIn } from '@rakomi/react';
 
 export function App() {
   return (
-    <RakomiProvider publishableKey="pk_...">
+    <RakomiProvider clientId="01961234-5678-7abc-8def-0123456789ab">
       <SignIn />
     </RakomiProvider>
   );
@@ -34,10 +34,17 @@ The SDK ships with 5 GA locales: **English (`en`)**, **Polish (`pl`)**, **German
 ### Explicit locale
 
 ```tsx
-<RakomiProvider publishableKey="pk_..." locale="de">
+<RakomiProvider clientId="01961234-5678-7abc-8def-0123456789ab" locale="de">
   <SignIn />
 </RakomiProvider>
 ```
+
+### Per-component override
+
+Every pre-built component (`SignIn`, `SignUp`, `UserButton`, `UserProfile`, `PricingTable`,
+`SubscriptionManager`) also accepts its own optional `locale` prop, typed against the same 5-locale
+`Locale` union as `RakomiProvider`. A component-level `locale` overrides the provider's locale for that
+component only; omitted, it falls back to the provider's locale, then `'en'`.
 
 ### Tenant default (auto-detected)
 
@@ -46,7 +53,7 @@ locale (`GET /v1/public/tenant-config`), then the browser's `navigator.language`
 then `'en'`.
 
 ```tsx
-<RakomiProvider publishableKey="pk_...">
+<RakomiProvider clientId="01961234-5678-7abc-8def-0123456789ab">
   <SignIn />
 </RakomiProvider>
 ```
@@ -65,7 +72,7 @@ const overrides: Partial<Translations> = {
   'signIn.submitButton': 'Let me in',
 };
 
-<RakomiProvider publishableKey="pk_..." locale="en" translations={overrides}>
+<RakomiProvider clientId="01961234-5678-7abc-8def-0123456789ab" locale="en" translations={overrides}>
   <SignIn />
 </RakomiProvider>;
 ```
@@ -106,3 +113,12 @@ optional — never substitute one for the other.
 DE / FR / ES translations are AI-generated and glossary-enforced for terminology
 consistency. Report any end-user-facing translation bug via GitHub Issues —
 corrections are rolled into the next minor release.
+
+## Security & support
+
+- Vulnerability reporting and the coordinated-disclosure policy: [`SECURITY.md`](./SECURITY.md).
+- Dated support windows (CRA Art. 13(8)): [SDK Support & Lifecycle](https://rakomi.com/sdk-support).
+
+## License
+
+See [`LICENSE`](./LICENSE).

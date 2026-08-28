@@ -42,8 +42,8 @@ export async function verifyMfaLogin(options: {
   }
 
   if (!response.ok) {
-    const body = json as { error?: { message?: string; code?: string } };
-    const message = body?.error?.message ?? 'MFA verification failed';
+    const body = json as { detail?: string };
+    const message = body?.detail ?? 'MFA verification failed';
     return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message } };
   }
 

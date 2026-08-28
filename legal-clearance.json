@@ -1,0 +1,18 @@
+{
+  "cleared": true,
+  "as_of": "2026-07-02",
+  "celex": "32024R2847",
+  "authorized_by_role": "company-director",
+  "blockers": [
+    {
+      "id": "cra-citation-renumber",
+      "class": "cra-article",
+      "status": "CONFIRMED"
+    },
+    {
+      "id": "export-control-basis",
+      "class": "export-control",
+      "status": "CONFIRMED"
+    }
+  ]
+}

@@ -17,7 +17,7 @@ import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
 import { PasswordInput } from '../../internal/password-input.js';
-import { useColorScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
+import { useColorScheme, usePrefersDarkScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
 import { sdkFetch } from '../../lib/fetch-client.js';
 import { resendVerification } from '../../oauth/profile.js';
 import { registerUser } from '../../oauth/register.js';
@@ -53,6 +53,7 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
   const t = useTranslation(locale, undefined, translations);
   const globalAppearance = useGlobalAppearance();
   const colorScheme = useColorScheme();
+  const prefersDarkScheme = usePrefersDarkScheme();
   const cls = (element: string) => resolveClassName(element, props.appearance, globalAppearance);
   const [step, setStep] = useState<SignUpStep>('form');
   const [email, setEmail] = useState(initialValues?.email ?? '');
@@ -300,7 +301,7 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
   }
 
   return (
-    <div data-rakomi-sign-up-root data-rakomi-card data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding), ...style }}>
+    <div data-rakomi-sign-up-root data-rakomi-card data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding, { explicitScheme: colorScheme, prefersDark: prefersDarkScheme }), ...style }}>
       {logo && isSafeImageSrc(logo.src) ? (
         <img
           src={logo.src}

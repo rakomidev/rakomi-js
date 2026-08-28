@@ -16,7 +16,7 @@ import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
 import { PasswordInput } from '../../internal/password-input.js';
-import { useColorScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
+import { useColorScheme, usePrefersDarkScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
 import { sendEmailOtp, verifyEmailOtpCode } from '../../oauth/email-otp.js';
 import { sendMagicLink, verifyMagicLinkToken } from '../../oauth/magic-link.js';
 import { verifyMfaLogin } from '../../oauth/mfa.js';
@@ -121,6 +121,7 @@ function SignInInner(props: SignInProps): React.ReactElement {
   tRef.current = t;
   const globalAppearance = useGlobalAppearance();
   const colorScheme = useColorScheme();
+  const prefersDarkScheme = usePrefersDarkScheme();
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const cls = (element: string) => resolveClassName(element, props.appearance, globalAppearance);
@@ -162,7 +163,7 @@ function SignInInner(props: SignInProps): React.ReactElement {
   }, [state.loading]);
 
   const methods = methodsProp ?? config?.methods ?? ['password'];
-  const socialProviders = socialProp ?? config?.socialProviders ?? [];
+  const socialProviders = socialProp ?? (config?.socialProviders ? Object.keys(config.socialProviders) : []);
 
   useEffect(() => {
     if (auth.isSignedIn && redirectIfAuthenticated && state.step !== 'complete' && typeof window !== 'undefined') {
@@ -1329,7 +1330,7 @@ function SignInInner(props: SignInProps): React.ReactElement {
   };
 
   return (
-    <div data-rakomi-sign-in-root data-rakomi-card data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding), ...style }}>
+    <div data-rakomi-sign-in-root data-rakomi-card data-rakomi-theme={colorScheme !== 'auto' ? colorScheme : undefined} data-rakomi-branded={hasBrandingStyles(branding) || undefined} className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={{ ...applyBranding(branding, { explicitScheme: colorScheme, prefersDark: prefersDarkScheme }), ...style }}>
       {logo && isSafeImageSrc(logo.src) ? (
         <img
           src={logo.src}

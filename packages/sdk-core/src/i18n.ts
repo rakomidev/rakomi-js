@@ -1,12 +1,26 @@
 /**
  * Minimal i18n surface.
  *
- * Supports 5 locales (en/pl/de/fr/es). Ships the `Locale` and `Translations` types
- * + the `createTranslator` factory + plural-rule selection; full dictionaries are
- * supplied by the components that consume them.
+ * `Locale` covers the full set of officially supported EU languages. It stays a LOCAL literal
+ * union here, not a type import from an internal workspace package: a type import would leak an
+ * internal package reference into every published `.d.ts`. A compile-time guard (in this
+ * package's type tests) asserts this union stays identical to the platform's canonical locale
+ * set, so a future widening that forgets this file fails typecheck rather than drifting silently.
+ *
+ * Ships the `Locale` and `Translations` types + the `createTranslator` factory + plural-rule
+ * selection. This package ships its OWN minimal dictionaries — currently 5 (en/pl/de/fr/es) —
+ * independent of how many locales are translated elsewhere in the platform. Widening `Locale`
+ * therefore does NOT widen `DICTIONARIES`: it stays a partial map, and `createTranslator` falls
+ * back to English and reports the gap once per locale via `console.warn`, keyed off this
+ * package's OWN translated-locale set (`hasLocalTranslation`, below) — a locale can be
+ * structurally valid without this package shipping a dictionary for it yet.
  */
 
-export type Locale = 'en' | 'pl' | 'de' | 'fr' | 'es';
+import { isGaLocale } from './_inlined-symbols.js';
+
+export type Locale =
+  | 'en' | 'pl' | 'bg' | 'cs' | 'da' | 'de' | 'el' | 'es' | 'et' | 'fi' | 'fr' | 'ga'
+  | 'hr' | 'hu' | 'it' | 'lt' | 'lv' | 'mt' | 'nl' | 'pt' | 'ro' | 'sk' | 'sl' | 'sv';
 
 export type TranslationKey = string;
 
@@ -16,7 +30,10 @@ export type Translations = Record<TranslationKey, string>;
 export type TranslationFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 /**
- * CLDR plural rule selection. Currently exact-form for the 5 GA locales.
+ * CLDR plural rule selection. Exact-form for the 5 locales this package ships a dictionary for;
+ * every other locale (no dictionary yet, so its messages always render in English via the
+ * fallback below) falls through to the 2-form `en` rule as a reasonable default — no shipped
+ * string needs a locale-specific form for a locale that has no translated content anyway.
  * (Polish has 4 forms, others 2 — used by SignIn/SignUp resend countdowns etc.)
  */
 export function selectPluralForm(locale: Locale, n: number): 'one' | 'few' | 'many' | 'other' {
@@ -135,7 +152,7 @@ const ES: Translations = {
   'session.expiring': 'Tu sesión está a punto de expirar',
 };
 
-const DICTIONARIES: Record<Locale, Translations> = {
+const DICTIONARIES: Partial<Record<Locale, Translations>> = {
   en: FALLBACK,
   pl: PL,
   de: DE,
@@ -143,15 +160,35 @@ const DICTIONARIES: Record<Locale, Translations> = {
   es: ES,
 };
 
+/** True when this package ships an actual (non-fallback) dictionary for `locale`. */
+function hasLocalTranslation(locale: Locale): boolean {
+  return Object.prototype.hasOwnProperty.call(DICTIONARIES, locale);
+}
+
+const warnedFallbackLocales = new Set<string>();
+
+export function __resetLocaleFallbackWarningsForTest(): void {
+  warnedFallbackLocales.clear();
+}
+
 /**
  * Build a translator function that consults `overrides` first, then the
  * locale dictionary (when shipped), then English fallback.
  *
- * For 0.1.0 the locale dictionaries are pass-through to fallback unless
- * the consumer supplies `overrides` — keeps bundle small. Full dictionaries
- * land in a future release and the contract is the same shape.
+ * A locale outside this package's 5 shipped dictionaries falls back to English and reports the
+ * gap exactly once (never per call) via `console.warn` — the message distinguishes a
+ * structurally-valid locale with no dictionary yet from a value that is not a recognized locale
+ * at all. Full dictionaries for the remaining locales land incrementally; the contract is the
+ * same shape either way.
  */
 export function createTranslator(locale: Locale, overrides?: Partial<Translations>): TranslationFn {
+  if (!hasLocalTranslation(locale) && !warnedFallbackLocales.has(locale)) {
+    warnedFallbackLocales.add(locale);
+    const reason = isGaLocale(locale)
+      ? 'this is a supported locale, but this package has no dictionary for it yet'
+      : 'this is not a locale this package supports';
+    console.warn(`[@rakomi/sdk-core] no translations for locale "${locale}" — falling back to English (${reason}).`);
+  }
   const dict = DICTIONARIES[locale] ?? FALLBACK;
   return (key, params) => {
     const raw = overrides?.[key] ?? dict[key] ?? FALLBACK[key] ?? key;

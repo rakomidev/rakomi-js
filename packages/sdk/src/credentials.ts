@@ -157,9 +157,9 @@ export class CredentialsClient {
       let code = `vc/${op}_failed`;
       let message = `VC ${op} failed with HTTP ${res.status}`;
       try {
-        const body = (await res.json()) as { code?: string; message?: string };
+        const body = (await res.json()) as { code?: string; detail?: string };
         if (body.code) code = body.code;
-        if (body.message) message = body.message;
+        if (body.detail) message = body.detail;
       } catch {
       }
       throw new VcSdkError(code, message, res.status);

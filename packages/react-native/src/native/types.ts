@@ -17,7 +17,7 @@
  * - Adapter is the ONLY layer touching expo-* modules — keeps SDK core platform-neutral.
  */
 
-import type { CryptoProvider, KeyValueStore } from '@rakomi/sdk-core';
+import type { CryptoProvider, KeyValueStore, PasskeyCeremonyAdapter } from '@rakomi/sdk-core';
 
 export interface BrowserAuthSessionOptions {
   /**
@@ -209,6 +209,21 @@ export interface NativeAuthAdapter {
   readonly par?: ParClient;
   /** Optional best-effort background refresh hook. */
   readonly backgroundTask?: BackgroundTask;
+  /**
+   * The passkey ceremony, delegated to the platform.
+   *
+   * The contract is `@rakomi/sdk-core`'s `PasskeyCeremonyAdapter` — imported, never re-declared
+   * here. A second interface for the same thing would let the browser binding and the native
+   * binding drift, and the conformance suite both of them run could only ever test one of them.
+   *
+   * Build one with `createNativePasskeyAdapter({ module })` from `@rakomi/react-native/native`.
+   * On Expo web a host may put a browser adapter in this same slot — the slot is platform-agnostic.
+   *
+   * A future SECOND ceremony type (a device-bound key, a hybrid/CTAP flow) gets its OWN optional
+   * slot; this one never becomes a type union. A union would destroy the totality of the shared
+   * conformance suite, which validates exactly ONE contract.
+   */
+  readonly passkeys?: PasskeyCeremonyAdapter;
 }
 
 /**

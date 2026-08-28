@@ -18,7 +18,7 @@ export default defineConfig({
   splitting: false,
   sourcemap: false,
   clean: true,
-  external: ['@rakomi/sdk-core', 'react', 'react-dom', 'react/jsx-runtime'],
+  external: ['@rakomi/sdk-core', '@simplewebauthn/browser', 'react', 'react-dom', 'react/jsx-runtime'],
   noExternal: [],
   esbuildPlugins: [
     preserveDirectivesPlugin({

@@ -70,8 +70,8 @@ export async function submitResetPassword(options: {
   if (!response.ok) {
     let json: unknown;
     try { json = await response.json(); } catch { }
-    const body = json as { error?: { message?: string } } | undefined;
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.error?.message ?? 'Password reset failed' } };
+    const body = json as { detail?: string } | undefined;
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Password reset failed' } };
   }
 
   return { ok: true };

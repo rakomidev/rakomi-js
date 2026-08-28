@@ -7,14 +7,14 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter @rakomi/node run build && pnpm --filter @rakomi/react run build && pnpm --filter @rakomi/react-native run build && pnpm --filter @rakomi/sdk-core run build"
+    "build": "pnpm -r run build"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
     "tsup": "8.5.1",
     "esbuild": "0.28.1",
     "esbuild-plugin-preserve-directives": "0.0.11",
-    "turbo": "^2.8.12",
+    "turbo": "^2.9.14",
     "@types/node": "^22.19.13",
     "@types/react": "^19",
     "react": "^19",
@@ -33,7 +33,9 @@
     ],
     "overrides": {
       "uuid@<11.1.1": ">=11.1.1",
-      "esbuild@<0.28.1": ">=0.28.1"
+      "esbuild@<0.28.1": ">=0.28.1",
+      "fast-uri@<3.1.5": ">=3.1.5 <4",
+      "postcss@<8.5.18": ">=8.5.18 <9"
     }
   }
 }

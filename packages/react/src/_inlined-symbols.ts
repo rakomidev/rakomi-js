@@ -1,4 +1,60 @@
 
+export const GA_LOCALES = [
+  'en',
+  'pl',
+  'bg',
+  'cs',
+  'da',
+  'de',
+  'el',
+  'es',
+  'et',
+  'fi',
+  'fr',
+  'ga',
+  'hr',
+  'hu',
+  'it',
+  'lt',
+  'lv',
+  'mt',
+  'nl',
+  'pt',
+  'ro',
+  'sk',
+  'sl',
+  'sv',
+] as const;
+
+export type GaLocale = (typeof GA_LOCALES)[number];
+
+export const GA_LOCALES_TRANSLATED = [
+  'en',
+  'pl',
+  'de',
+  'fr',
+  'es',
+  'it',
+  'nl',
+  'pt',
+  'ro',
+  'cs',
+  'hu',
+  'el',
+  'sv',
+  'bg',
+  'da',
+  'fi',
+  'sk',
+  'sl',
+  'hr',
+  'lt',
+  'lv',
+  'et',
+  'mt',
+  'ga',
+] as const satisfies readonly GaLocale[];
+
 export const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 
 export const PASSWORD_MIN_LENGTH = 12;
@@ -60,6 +116,11 @@ export function darkenHex(hex: string, percent: number): string {
  * Parse hex color (#rrggbb) to HSL [h, s, l].
  * h: 0-360, s: 0-100, l: 0-100.
  * Returns [0, 0, 50] (neutral gray) for invalid input.
+ *
+ * ⚠ `s` IS LIGHTNESS-NORMALIZED, so it is NOT a measure of colourfulness: near the light and dark
+ * ends a tiny RGB range reads back as a large saturation (a chroma of ~0.03 at 96% lightness is
+ * "47% saturated"). For a perceived-colourfulness DECISION (does this page sit in the same family as
+ * a hue?), compute chroma — `(1 - |2l/100 - 1|) * s/100` — rather than reading `s` directly.
  */
 export function hexToHsl(hex: string): [number, number, number] {
   if (!HEX_COLOR_REGEX.test(hex)) return [0, 0, 50];
@@ -86,14 +147,11 @@ export function hexToHsl(hex: string): [number, number, number] {
   return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
 }
 
-/**
- * WCAG 2.1 relative luminance calculation.
- * @see https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
- */
 export function relativeLuminance(hex: string): number {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const safeHex = HEX_COLOR_REGEX.test(hex) ? hex : "#808080";
+  const r = parseInt(safeHex.slice(1, 3), 16) / 255;
+  const g = parseInt(safeHex.slice(3, 5), 16) / 255;
+  const b = parseInt(safeHex.slice(5, 7), 16) / 255;
 
   const linearize = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 
@@ -128,6 +186,12 @@ export function hslToHex(h: number, s: number, l: number): string {
 /**
  * Derive bg-secondary: slight luminance shift for cards/sections.
  * Light bg (luminance >= 0.5): darken by 3%. Dark bg: lighten by 5%.
+ *
+ * **The property these two numbers preserve:** a nested surface must be perceptibly distinct from the
+ * page behind it while remaining the same colour — never a second background. The shift is ASYMMETRIC
+ * (3% down on light, 5% up on dark) because the eye resolves luminance differences less readily at the
+ * dark end, so an equal shift would be invisible there. That asymmetry is the load-bearing part: an
+ * "obvious tidy-up" to one shared constant would make dark surfaces flat.
  */
 export function derivedBgSecondaryColor(bgHex: string): string {
   const [h, s, l] = hexToHsl(bgHex);
@@ -139,10 +203,22 @@ export function derivedBgSecondaryColor(bgHex: string): string {
 /**
  * Derive border color by blending primary over background.
  * Adaptive opacity: 0.25 for light backgrounds, 0.40 for dark.
+ *
+ * **The property these two numbers preserve:** the border must stay visible against its own background
+ * across the whole hue circle while never competing with the text. Like the secondary-background shift
+ * above, the opacity is ASYMMETRIC and for the same reason — a border needs more presence on a dark
+ * surface to register at all. Equalising them is the specific change that makes dark-theme borders
+ * disappear, which is why the two values are named separately rather than folded into one.
  */
 export function derivedBorderColor(primaryHex: string, bgHex: string): string {
   const opacity = relativeLuminance(bgHex) >= 0.5 ? 0.25 : 0.40;
   return blendColors(primaryHex, bgHex, opacity);
+}
+
+export type GaLocaleTranslated = (typeof GA_LOCALES_TRANSLATED)[number];
+
+export function hasGaLocaleTranslation(value: unknown): value is GaLocaleTranslated {
+  return typeof value === 'string' && (GA_LOCALES_TRANSLATED as readonly string[]).includes(value);
 }
 
 export function interpolate(
@@ -156,4 +232,41 @@ export function interpolate(
     if (v === undefined || v === null) return match;
     return String(v);
   });
+}
+
+export function isGaLocale(value: unknown): value is GaLocale {
+  return typeof value === 'string' && (GA_LOCALES as readonly string[]).includes(value);
+}
+
+/**
+ * WCAG 2.1 contrast ratio between two hex colors.
+ * @returns ratio >= 1 (e.g. 4.5 for AA normal text)
+ */
+export function contrastRatio(hex1: string, hex2: string): number {
+  const l1 = relativeLuminance(hex1);
+  const l2 = relativeLuminance(hex2);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Pick the more READABLE of the two standard text colours for a given surface, by MEASURED contrast.
+ *
+ * ⚠ Why this is not `derivedTextColor`: that function splits on `relativeLuminance >= 0.5`, and a
+ * threshold picks the WRONG candidate through the middle of the scale. Measured: `#8ab4f8` has
+ * luminance 0.448, so the threshold calls it "dark" and suggests light text at ~2:1 — while dark text
+ * on the same surface measures ~8:1. Comparing the two candidates cannot make that mistake, because it
+ * asks the question the caller actually has ("which of these two can be read?") instead of a proxy for
+ * it.
+ *
+ * Used for the button TEXT suggestion, where the surface is the button FILL rather than the page.
+ * `derivedTextColor` is deliberately left alone: changing it would alter an already-published value for
+ * every tenant that never set a text colour, which is a visible change needing its own decision.
+ */
+export function readableTextOn(surfaceHex: string): string {
+  const dark = '#111827';
+  const light = '#f9fafb';
+  if (!HEX_COLOR_REGEX.test(surfaceHex)) return dark;
+  return contrastRatio(dark, surfaceHex) >= contrastRatio(light, surfaceHex) ? dark : light;
 }

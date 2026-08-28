@@ -3,7 +3,18 @@
  * All translatable string keys organized by component.
  */
 
-export type Locale = 'en' | 'pl' | 'de' | 'fr' | 'es';
+/**
+ * The set of locales this SDK can route/negotiate for — the 24 official EU languages. A member without
+ * a translated dictionary falls back to English in `createTranslator` (see `index.ts`).
+ *
+ * A LOCAL mirror of the platform's locale set, deliberately not a type import: a type imported from an
+ * internal workspace package rides into the published `.d.ts` as an internal package reference (this
+ * package's dist scan rejects that). `test/type-mirror-drift.test-d.ts` asserts this union stays
+ * identical to the platform source of truth at typecheck time.
+ */
+export type Locale =
+  | 'en' | 'pl' | 'bg' | 'cs' | 'da' | 'de' | 'el' | 'es' | 'et' | 'fi' | 'fr' | 'ga'
+  | 'hr' | 'hu' | 'it' | 'lt' | 'lv' | 'mt' | 'nl' | 'pt' | 'ro' | 'sk' | 'sl' | 'sv';
 
 /** All translation keys — organized by component namespace. */
 export interface Translations {

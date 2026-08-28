@@ -46,8 +46,8 @@ export async function sendMagicLink(options: {
   }
 
   if (!response.ok) {
-    const body = json as { error?: { message?: string } };
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.error?.message ?? 'Magic link request failed' } };
+    const body = json as { detail?: string };
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Magic link request failed' } };
   }
 
   const r = json as Record<string, unknown>;
@@ -84,8 +84,8 @@ export async function verifyMagicLinkToken(options: {
   }
 
   if (!response.ok) {
-    const body = json as { error?: { message?: string } };
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.error?.message ?? 'Magic link verification failed' } };
+    const body = json as { detail?: string };
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Magic link verification failed' } };
   }
 
   const r = json as Record<string, unknown>;

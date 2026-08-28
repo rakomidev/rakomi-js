@@ -5,6 +5,7 @@ export default defineConfig({
     index: 'src/index.ts',
     'oauth/errors': 'src/oauth/errors.ts',
     'oauth/pkce': 'src/oauth/pkce.ts',
+    'passkeys/testing': 'src/passkeys/testing.ts',
     'types/adapters': 'src/types/adapters.ts',
   },
   outDir: 'dist',

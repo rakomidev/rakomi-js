@@ -10,6 +10,11 @@
  * Typed error classes (AccountLinkingDisabledError, IdentityOwnedByOtherUserError,
  * CannotUnlinkLastMethodError) are also exported for callers that prefer
  * pattern-matching via `instanceof` over inspecting `error.code`.
+ *
+ * `/v1/*` errors are RFC 9457 `application/problem+json` — `code`/`detail` at the top level of the
+ * response body, `details.*` as a nested extension object for endpoint-specific fields
+ * (`next_action`, `mfa_challenge_token`, `available_methods`, `remaining_methods`, `unlock_at`,
+ * `reason`). `ApiErrorBody.detail` is the field to read for the human-readable message.
  */
 
 import {
@@ -84,7 +89,7 @@ export interface LinkClientContext {
 
 interface ApiErrorBody {
   code?: string;
-  message?: string;
+  detail?: string;
   next_action?: string;
   mfa_challenge_token?: string;
   available_methods?: string[];
@@ -260,7 +265,7 @@ export class LinkClient {
     switch (res.status) {
       case 400:
         if (code === 'account_linking/link_state_expired_or_missing') {
-          const err = new LinkStateExpiredError(body.message);
+          const err = new LinkStateExpiredError(body.detail);
           return sdkErrorFromClass(err);
         }
         break;
@@ -268,7 +273,7 @@ export class LinkClient {
         if (code === 'account_linking/mfa_step_up_unavailable') {
           const err = new MfaStepUpUnavailableError(
             'passwordless_user_no_step_up_route',
-            body.message,
+            body.detail,
           );
           return sdkErrorFromClass(err, { reason: err.reason });
         }
@@ -290,7 +295,7 @@ export class LinkClient {
             : undefined;
           const err = new MfaStepUpRequiredError(
             challenge,
-            body.message,
+            body.detail,
             availableMethods,
           );
           return sdkErrorFromClass(err, {
@@ -300,18 +305,18 @@ export class LinkClient {
         }
         return {
           code: 'account_linking/unauthorized',
-          message: body.message || 'User token is missing, expired, or invalid.',
+          message: body.detail || 'User token is missing, expired, or invalid.',
           suggestion: 'Re-authenticate the end user and retry with a fresh access token.',
           docs_url: 'https://docs.rakomi.dev/sdk/errors#account_linking-unauthorized',
         } as SdkError;
       case 403:
         if (code === 'account_linking/disabled_for_tenant') {
-          const err = new AccountLinkingDisabledError(body.message);
+          const err = new AccountLinkingDisabledError(body.detail);
           return sdkErrorFromClass(err);
         }
         return {
           code: code || 'account_linking/forbidden',
-          message: body.message || 'Forbidden',
+          message: body.detail || 'Forbidden',
           suggestion: 'The end user is not permitted to perform this account-linking operation.',
           docs_url: 'https://docs.rakomi.dev/sdk/errors#account_linking-forbidden',
         } as SdkError;
@@ -321,7 +326,7 @@ export class LinkClient {
         }
         return {
           code: code || 'account_linking/not_found',
-          message: body.message || `HTTP 404`,
+          message: body.detail || `HTTP 404`,
           suggestion: 'The requested resource was not found.',
           docs_url: 'https://docs.rakomi.dev/sdk/errors#account_linking-not_found',
         } as SdkError;
@@ -329,12 +334,12 @@ export class LinkClient {
         if (code === 'account_linking/cannot_unlink_last_method') {
           const err = new CannotUnlinkLastMethodError(
             body.details?.remaining_methods ?? [],
-            body.message,
+            body.detail,
           );
           return sdkErrorFromClass(err, { remaining_methods: err.remaining_methods });
         }
         if (code === 'account_linking/identity_owned_by_other_user') {
-          const err = new IdentityOwnedByOtherUserError(body.message);
+          const err = new IdentityOwnedByOtherUserError(body.detail);
           return sdkErrorFromClass(err);
         }
         break;
@@ -346,7 +351,7 @@ export class LinkClient {
           const reason = body.details?.reason === 'account_recently_linked'
             ? 'account_recently_linked'
             : 'unknown';
-          const err = new CooldownActiveError(unlockAt, reason, body.message);
+          const err = new CooldownActiveError(unlockAt, reason, body.detail);
           return sdkErrorFromClass(err, {
             unlock_at: err.unlockAtIso,
             reason: err.reason,
@@ -355,7 +360,7 @@ export class LinkClient {
         return ACCOUNT_LINKING_RATE_LIMITED(parseRetryAfter(res));
     }
 
-    const truncated = (body.message ?? '').slice(0, 200);
+    const truncated = (body.detail ?? '').slice(0, 200);
     return ACCOUNT_LINKING_NETWORK_ERROR(truncated || `HTTP ${res.status}`);
   }
 }

@@ -14,6 +14,11 @@ import { useRakomiContext } from '../context.js';
  * Discriminated-union AuthState — identical to `@rakomi/react`'s `AuthState`.
  *
  * `state: AuthMachineState` is the addition.
+ *
+ * @experimental Preview — `signIn()` and `switchOrganization()` are present for type parity with
+ * `@rakomi/react` but always resolve `{ status: 'error', error: { code: 'INVALID_CONFIG', … } }` in the
+ * current release; nothing is wired to the network yet. Use one of the working sign-in paths instead
+ * (social, magic link, email OTP, passkeys — see the package README / docs).
  */
 export type AuthState =
   | {

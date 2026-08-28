@@ -3,8 +3,8 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
+import { isCliEntry } from './lib/cli-entry.mjs'
 import {
   enumeratePublishablePackages,
   GateError,
@@ -40,13 +40,14 @@ function hasNonAscii(s) {
 
 export function parseBlessed(platformSrc, jwtSrc) {
   const constRe = (name) =>
-    new RegExp(`export\\s+const\\s+${name}\\s*=\\s*['"]([^'"]+)['"]`)
+    new RegExp(`export\\s+const\\s+${name}(?![A-Z0-9_])\\s*=\\s*['"]([^'"]+)['"]`)
 
   const grab = (name) => {
     const m = constRe(name).exec(platformSrc)
     if (!m) throw new GateError(relGateMessage('REL-GATE-N3E', 'CANNOT-EVALUATE', PLATFORM_SRC, '', `cannot parse blessed export ${name} from ground-truth source`))
     return m[1]
   }
+  const grabOptional = (name) => constRe(name).exec(platformSrc)?.[1] ?? null
 
   const issuer = grab('RAKOMI_PLATFORM_ISSUER')
   const audience = grab('RAKOMI_PLATFORM_AUDIENCE')
@@ -57,15 +58,19 @@ export function parseBlessed(platformSrc, jwtSrc) {
     userinfo_endpoint: grab('RAKOMI_PLATFORM_USERINFO_ENDPOINT'),
   }
 
+  const authCompat = grabOptional('RAKOMI_PLATFORM_AUTHORIZATION_ENDPOINT_COMPAT')
+  const alternates = authCompat ? { authorization_endpoint: [authCompat] } : {}
+
   const algM = /const\s+ALG\s*=\s*['"]([^'"]+)['"]/.exec(jwtSrc)
   if (!algM) throw new GateError(relGateMessage('REL-GATE-N3E', 'CANNOT-EVALUATE', JWT_SRC, '', 'cannot parse `const ALG` from ground-truth source'))
 
-  return finalizeBlessed({ issuer, audience, endpoints, alg: algM[1] }, PLATFORM_SRC)
+  return finalizeBlessed({ issuer, audience, endpoints, alg: algM[1], alternates }, PLATFORM_SRC)
 }
 
-export function finalizeBlessed({ issuer, audience, endpoints, alg }, srcLabel) {
+export function finalizeBlessed({ issuer, audience, endpoints, alg, alternates = {} }, srcLabel) {
+  const altUrls = Object.values(alternates).flat()
   const hosts = new Set()
-  for (const url of [issuer, audience, ...Object.values(endpoints)]) {
+  for (const url of [issuer, audience, ...Object.values(endpoints), ...altUrls]) {
     const h = hostOf(url)
     if (!h) throw new GateError(relGateMessage('REL-GATE-N3E', 'CANNOT-EVALUATE', srcLabel, '', `blessed value "${url}" is not a parseable https:// URL`))
     hosts.add(h)
@@ -76,7 +81,7 @@ export function finalizeBlessed({ issuer, audience, endpoints, alg }, srcLabel) 
     }
   }
   if (alg !== 'RS256') throw new GateError(relGateMessage('REL-GATE-N3E', 'CANNOT-EVALUATE', srcLabel, '', `blessed ALG is "${alg}", expected RS256 — ground-truth invariant violated`))
-  return { issuer, audience, endpoints, hosts, alg }
+  return { issuer, audience, endpoints, hosts, alg, alternates }
 }
 
 export function parseBlessedJson(jsonText) {
@@ -95,7 +100,13 @@ export function parseBlessedJson(jsonText) {
     jwks_uri: req(ep.jwks_uri, 'endpoints.jwks_uri'),
     userinfo_endpoint: req(ep.userinfo_endpoint, 'endpoints.userinfo_endpoint'),
   }
-  return finalizeBlessed({ issuer: req(raw.issuer, 'issuer'), audience: req(raw.audience, 'audience'), endpoints, alg: req(raw.alg, 'alg') }, BLESSED_SNAPSHOT)
+  const rawAlt = raw.endpoint_alternates && typeof raw.endpoint_alternates === 'object' ? raw.endpoint_alternates : {}
+  const alternates = {}
+  for (const [name, list] of Object.entries(rawAlt)) {
+    if (!Array.isArray(list)) throw new GateError(relGateMessage('REL-GATE-N3E', 'CANNOT-EVALUATE', BLESSED_SNAPSHOT, '', `endpoint_alternates.${name} must be an array of strings`))
+    alternates[name] = list.map((v, i) => req(v, `endpoint_alternates.${name}[${i}]`))
+  }
+  return finalizeBlessed({ issuer: req(raw.issuer, 'issuer'), audience: req(raw.audience, 'audience'), endpoints, alg: req(raw.alg, 'alg'), alternates }, BLESSED_SNAPSHOT)
 }
 
 export function normalizeBundle(text) {
@@ -177,13 +188,23 @@ export function inspectBundle({ blessed, bundleText, pkgName, version = '', isOw
 
   const issuerLit = normalizeBundle(blessed.issuer)
   const escLit = issuerLit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const sawIssuerLit = norm.includes(issuerLit)
+  const issuerLitPresentRaw = norm.includes(issuerLit)
   let sawIssuerAssigned = false
-  if (sawIssuerLit) {
+  let sawIssuerLit = false
+  if (issuerLitPresentRaw) {
     sawIssuerAssigned = new RegExp(`(?:\\biss\\b|issuer|\\baud\\b|audience)[^=:]{0,40}[=:]\\s*"?${escLit}`, 'i').test(norm)
+
+    const baseUrlSafeRe = /\w*url\w*\s*(?:\?\?|[=:])\s*"$/i
+    const litRe = new RegExp(escLit, 'g')
+    for (let m; (m = litRe.exec(norm)); ) {
+      const lo = Math.max(0, m.index - 60)
+      if (!baseUrlSafeRe.test(norm.slice(lo, m.index))) { sawIssuerLit = true; break }
+    }
   }
-  const presentEndpointUrls = Object.values(blessed.endpoints).filter((u) => norm.includes(normalizeBundle(u)))
-  const NON_KEY_ENDPOINTS = [blessed.endpoints.authorization_endpoint, blessed.endpoints.token_endpoint, blessed.endpoints.userinfo_endpoint]
+  const altUrls = Object.values(blessed.alternates ?? {}).flat()
+  const presentEndpointUrls = [...Object.values(blessed.endpoints), ...altUrls].filter((u) => norm.includes(normalizeBundle(u)))
+  const NON_KEY_ENDPOINTS = [blessed.endpoints.authorization_endpoint, blessed.endpoints.token_endpoint, blessed.endpoints.userinfo_endpoint,
+    ...(blessed.alternates?.authorization_endpoint ?? [])]
   const shipsEndpointMetadata = NON_KEY_ENDPOINTS.some((u) => norm.includes(normalizeBundle(u)))
   return {
     violations,
@@ -224,8 +245,10 @@ export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, 
   if (shipsMetadata) {
     const presentUrls = new Set(fileReports.flatMap((r) => r.presentEndpointUrls))
     for (const [name, url] of Object.entries(blessed.endpoints)) {
-      if (!presentUrls.has(url)) {
-        fail('REL-GATE-N32', `FROZEN-MISSING-BLESSED: blessed ${name} "${url}" absent from a metadata-bearing dist (host/endpoint swapped or dropped)`)
+      const accepted = [url, ...(blessed.alternates?.[name] ?? [])]
+      if (!accepted.some((u) => presentUrls.has(u))) {
+        const alt = accepted.length > 1 ? ` (nor any blessed alternate: ${accepted.slice(1).join(', ')})` : ''
+        fail('REL-GATE-N32', `FROZEN-MISSING-BLESSED: blessed ${name} "${url}"${alt} absent from a metadata-bearing dist (host/endpoint swapped or dropped)`)
       }
     }
     if (!fileReports.some((r) => r.sawWellKnownPath)) {
@@ -365,7 +388,7 @@ function main() {
   }
 }
 
-if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isCliEntry(import.meta.url)) {
   try {
     main()
   } catch (e) {

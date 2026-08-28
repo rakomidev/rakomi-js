@@ -569,8 +569,8 @@ export class TokenManager {
       }
 
       if (response.status === 403) {
-        const body = await response.json().catch(() => null) as { error?: { code?: string } } | null;
-        const code = body?.error?.code;
+        const body = await response.json().catch(() => null) as { code?: string } | null;
+        const code = body?.code;
         if (code === 'organization/mfa_required') return { status: 'mfa_required' };
         if (code === 'organization/sso_required') return { status: 'sso_required' };
       }

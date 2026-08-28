@@ -113,15 +113,22 @@ export function generateState(): string {
 }
 
 /**
- * Build a full /oauth/authorize URL with all required parameters.
+ * Build a full authorize URL with all required parameters.
  * Pure function — no config dependency, usable without RakomiClient instance.
+ *
+ * Defaults to `${baseUrl}/oauth/authorize` when no `authorizationEndpoint` override is given —
+ * unchanged from previous versions. Callers driving a real top-level browser navigation (a "Sign
+ * in" redirect) should resolve `authorizationEndpoint` via {@link resolveAuthorizationEndpoint}
+ * first — a bare API-host `/oauth/authorize` navigation returns JSON, not a login form.
  */
 export function buildAuthorizeUrl(options: AuthorizeUrlOptions): string {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const scope =
     Array.isArray(options.scope) ? options.scope.join(' ') : (options.scope ?? DEFAULT_SCOPE);
 
-  const url = new URL('/oauth/authorize', baseUrl);
+  const url = options.authorizationEndpoint
+    ? new URL(options.authorizationEndpoint)
+    : new URL('/oauth/authorize', baseUrl);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('client_id', options.clientId);
   url.searchParams.set('redirect_uri', options.redirectUri);

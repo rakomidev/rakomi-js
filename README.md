@@ -10,11 +10,13 @@ The official JavaScript / TypeScript SDK family for [Rakomi](https://rakomi.com)
 | [`@rakomi/sdk-core`](./packages/sdk-core) | Framework-agnostic authentication core |
 | [`@rakomi/react`](./packages/react) | React hooks + prebuilt auth components |
 | [`@rakomi/react-native`](./packages/react-native) | React Native / Expo SDK |
+| [`create-rakomi-app`](./packages/create-rakomi-app) | `npx create-rakomi-app` — scaffold a Rakomi quickstart app |
 
 ## Install
 
 ```bash
 pnpm add @rakomi/node          # or @rakomi/react, @rakomi/react-native, @rakomi/sdk-core
+npx create-rakomi-app          # scaffold a new app
 ```
 
 ## Documentation

@@ -1,4 +1,4 @@
-import type { Translations } from '../../i18n/types.js';
+import type { Locale, Translations } from '../../i18n/types.js';
 
 export interface UserButtonElements {
   root: string;
@@ -8,7 +8,7 @@ export interface UserButtonElements {
 }
 
 export interface UserButtonProps {
-  locale?: 'en' | 'pl';
+  locale?: Locale;
   afterSignOutUrl?: string;
   profileUrl?: string;
   showName?: boolean;

@@ -14,6 +14,7 @@ import {
   pollCiba as pollCibaImpl,
 } from './ciba.js';
 import { CredentialsClient } from './credentials.js';
+import { resolveAuthorizationEndpoint as resolveAuthorizationEndpointImpl } from './discovery.js';
 import {
   CONFIG_INVALID_BASE_URL,
   CONFIG_MISSING_API_KEY,
@@ -102,7 +103,7 @@ export class RakomiClient {
         throw new RakomiError(CONFIG_INVALID_BASE_URL());
       }
       let end = config.baseUrl.length;
-      while (end > 0 && config.baseUrl.charCodeAt(end - 1) === 47 /* '/' */) end--;
+      while (end > 0 && config.baseUrl.charCodeAt(end - 1) === 47) end--;
       this.baseUrl = config.baseUrl.slice(0, end);
     } else {
       this.baseUrl = DEFAULT_BASE_URL;
@@ -178,6 +179,17 @@ export class RakomiClient {
       clientId,
       baseUrl: options.baseUrl ?? this.baseUrl,
     });
+  }
+
+  /**
+   * Resolve the REAL hosted-login `authorization_endpoint` for this client's `baseUrl` — pass
+   * the result as {@link AuthorizeUrlOptions.authorizationEndpoint} to {@link buildAuthorizeUrl}
+   * before redirecting a browser. Never throws — returns {@link VerifyResult}.
+   */
+  resolveAuthorizationEndpoint(
+    options: { baseUrl?: string; ttlMs?: number; now?: () => number; fetchImpl?: typeof fetch } = {},
+  ): Promise<VerifyResult<string>> {
+    return resolveAuthorizationEndpointImpl(options.baseUrl ?? this.baseUrl, options);
   }
 
   async exchangeCode(

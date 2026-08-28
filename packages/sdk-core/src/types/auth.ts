@@ -86,6 +86,7 @@ export type AuthMachineState =
   | 'offline_stale'
   | 'error';
 
+/** Not to be confused with `OrgMembershipClaim` (the JWT-claim-shaped org membership entry). */
 export interface OrgMembership {
   orgId: string;
   role: string;
@@ -102,19 +103,55 @@ export interface HasParams {
   role?: string;
 }
 
+/**
+ * Which palettes a tenant supports. CSS `color-scheme` semantics, not `prefers-color-scheme` (which has
+ * no `both`): the value declares which palettes exist, and the end user's OS preference selects one.
+ * `light` / `dark` additionally mean *force that scheme, ignore the preference*.
+ */
+export type ThemeMode = 'light' | 'dark' | 'both';
+
+/** A single theme's palette. Every field is the tenant's own stored choice for that theme. */
+export interface BrandingPalette {
+  logoUrl?: string;
+  /** The brand colour ON the background — links and accents. NOT the button fill. */
+  primaryColor?: string;
+  backgroundColor?: string;
+  /** The brand colour AS A FILL. Deliberately distinct from `primaryColor`. */
+  buttonColor?: string;
+  /** Text ON the fill. Computed from the fill's luminance unless the tenant overrode it. */
+  buttonTextColor?: string;
+  textColor?: string;
+  headingColor?: string;
+}
+
 export interface BrandingConfig {
   logoUrl?: string;
   primaryColor?: string;
   backgroundColor?: string;
   buttonColor?: string;
   textColor?: string;
+  buttonTextColor?: string;
+  headingColor?: string;
   borderRadius?: string;
   tenantName: string;
+  /**
+   * Which palettes this tenant supports. The flat fields above always carry the LIGHT values.
+   * An UNRECOGNISED wire value resolves to `light` rather than rejecting the response: the set is
+   * published and may gain members, and an installed client must keep working when it does.
+   */
+  themeMode?: ThemeMode;
+  /** The dark palette. Present when `themeMode` is `dark` or `both`. */
+  dark?: BrandingPalette;
+}
+
+export interface SocialProviderFlags {
+  signIn: boolean;
+  signUp: boolean;
 }
 
 export interface AuthConfig {
   methods: string[];
-  socialProviders: string[];
+  socialProviders: Record<string, SocialProviderFlags>;
   mfaEnforced: boolean;
   mfaGracePeriodHours?: number;
   branding?: BrandingConfig;

@@ -1,4 +1,4 @@
-import type { Translations } from '../../i18n/types.js';
+import type { Locale, Translations } from '../../i18n/types.js';
 
 export interface UserProfileElements {
   root: string;
@@ -15,7 +15,7 @@ export interface UserProfileElements {
 
 export interface UserProfileProps {
   title?: string | React.ReactNode;
-  locale?: 'en' | 'pl';
+  locale?: Locale;
   sections?: ('password' | 'mfa' | 'sessions')[];
   className?: string;
   style?: React.CSSProperties;

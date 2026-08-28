@@ -24,8 +24,11 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 
+import { createAuthorizationEndpointCache } from '@rakomi/sdk-core';
+
 import { AppearanceContext } from './appearance.js';
 import { EventLog } from './event-log.js';
+import type { Locale } from './i18n/types.js';
 import { sdkFetch } from './lib/fetch-client.js';
 import { anonymousSignIn } from './oauth/anonymous-signin.js';
 import { AuthConfigManager } from './oauth/auth-config.js';
@@ -41,6 +44,24 @@ import { TokenManager } from './token-manager.js';
 import type { AuthState, OAuthTokenResponse, RakomiProviderProps, SignInOptions, SignInResult } from './types.js';
 
 const DEFAULT_BASE_URL = 'https://api.rakomi.com';
+
+/**
+ * Resolves the real `authorization_endpoint` a top-level browser navigation must target — the
+ * issuer's routing host (`baseUrl`) is not always the host that renders the hosted login UI (see
+ * `signInImpl` below). ONE module-level cache: it is keyed per `baseUrl`, so it is safe to share
+ * across every `RakomiProvider` instance in a page, and outlives any single provider's re-renders.
+ */
+const authorizationEndpointCache = createAuthorizationEndpointCache({
+  fetchDiscoveryDocument: async (baseUrl: string) => {
+    const res = await sdkFetch(`${baseUrl}/.well-known/openid-configuration`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`discovery fetch failed: HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+});
 
 /**
  * Internal context — provides baseUrl, clientId, redirectUrl, and completeSignIn to pre-built components.
@@ -105,9 +126,7 @@ function getEnvBaseUrl(): string | undefined {
 
 export const RakomiContext = createContext<AuthState | undefined>(undefined);
 export const AuthConfigManagerContext = createContext<AuthConfigManager | null>(null);
-export const RakomiLocaleContext = createContext<
-  'en' | 'pl' | 'de' | 'fr' | 'es' | undefined
->(undefined);
+export const RakomiLocaleContext = createContext<Locale | undefined>(undefined);
 export const RakomiTranslationsContext = createContext<
   Partial<import('./i18n/types.js').Translations> | undefined
 >(undefined);
@@ -189,7 +208,22 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
   const preflightStarted = useRef(false);
 
   useEffect(() => {
-    const tm = tokenManagerRef.current!;
+    if (tokenManagerRef.current === null) {
+      const storage = resolveStorage(persistence, customStorage);
+      const tabSync = new TabSync(clientId, persistence);
+      const eventLog = new EventLog(onAuthEvent);
+      tokenManagerRef.current = new TokenManager({
+        clientId,
+        baseUrl,
+        storage,
+        tabSync,
+        eventLog,
+        initialState,
+        sessionTimeout,
+        expiringThresholdMinutes,
+      });
+    }
+    const tm = tokenManagerRef.current;
 
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -467,12 +501,20 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
         setSessionItem(`rakomi:${clientId}:return_to`, returnTo);
       }
 
+      const resolvedEndpoint = await authorizationEndpointCache.resolve(baseUrl);
+      if (!resolvedEndpoint.ok) {
+        tm['eventLog'].push({ type: 'sign_in_failed', severity: 'warning', error: resolvedEndpoint.error });
+        tm.setSignedOutWithError(resolvedEndpoint.error);
+        return { status: 'error', error: resolvedEndpoint.error };
+      }
+
       const authorizeUrl = buildAuthorizeUrl({
         baseUrl,
         clientId,
         redirectUri: resolvedRedirect,
         state,
         codeChallenge,
+        authorizationEndpoint: resolvedEndpoint.authorizationEndpoint,
       });
 
       window.location.href = authorizeUrl;

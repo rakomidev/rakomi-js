@@ -11,6 +11,9 @@
 import type { OrgMembership, SdkError, TokenPayload, VerifyResult } from '@rakomi/node';
 export type { OrgMembership, SdkError, TokenPayload, VerifyResult };
 
+import type { Locale } from './i18n/types.js';
+export type { Locale };
+
 /** Request body for an anonymous sign-in. */
 export interface AnonymousSigninRequest {
   public_metadata?: Record<string, unknown>;
@@ -230,14 +233,46 @@ export interface HasParams {
  * Branding configuration from tenant settings (Pro+ feature).
  * Returned in GET /v1/auth/config when tenant has custom branding.
  */
+/**
+ * Which palettes a tenant supports. CSS `color-scheme` semantics, not `prefers-color-scheme` (which has
+ * no `both`): the value declares which palettes exist, the end user's preference selects one, and
+ * `light` / `dark` additionally force that scheme. An unrecognised wire value resolves to `light`.
+ */
+export type ThemeMode = 'light' | 'dark' | 'both';
+
+/** A single theme's palette. Every field is the tenant's own stored choice for that theme. */
+export interface BrandingPalette {
+  logoUrl?: string;
+  /** The brand colour ON the background — links and accents. NOT the button fill. */
+  primaryColor?: string;
+  backgroundColor?: string;
+  /** The brand colour AS A FILL. Deliberately distinct from `primaryColor`. */
+  buttonColor?: string;
+  /** Text ON the fill. Computed from the fill's luminance unless the tenant overrode it. */
+  buttonTextColor?: string;
+  textColor?: string;
+  headingColor?: string;
+}
+
 export interface BrandingConfig {
   logoUrl?: string;
   primaryColor?: string;
   backgroundColor?: string;
   buttonColor?: string;
   textColor?: string;
+  buttonTextColor?: string;
+  headingColor?: string;
   borderRadius?: string;
   tenantName: string;
+  /** The flat fields above always carry the LIGHT values. */
+  themeMode?: ThemeMode;
+  /** The dark palette. Present when `themeMode` is `dark` or `both`. */
+  dark?: BrandingPalette;
+}
+
+export interface SocialProviderFlags {
+  signIn: boolean;
+  signUp: boolean;
 }
 
 /**
@@ -246,7 +281,7 @@ export interface BrandingConfig {
  */
 export interface AuthConfig {
   methods: string[];
-  socialProviders: string[];
+  socialProviders: Record<string, SocialProviderFlags>;
   mfaEnforced: boolean;
   mfaGracePeriodHours?: number;
   branding?: BrandingConfig;
@@ -293,8 +328,8 @@ export interface RakomiProviderProps {
  * For PCI DSS 4.0 §8.2.8 (15 min idle): use expiringThresholdMinutes=15.
  */
   expiringThresholdMinutes?: number;
-  /** i18n locale for pre-built components. Default: 'en'. widened to 5 GA locales. */
-  locale?: 'en' | 'pl' | 'de' | 'fr' | 'es';
+  /** i18n locale for pre-built components. Default: 'en'. */
+  locale?: Locale;
   /**
    * Optional per-app translation overrides. Merged on top of the selected locale
    * (priority: `translations` > locale dictionary > English fallback).
