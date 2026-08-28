@@ -7,6 +7,7 @@ export const PUBLISH_TOPOLOGY = Object.freeze({
   '@rakomi/react': Object.freeze({ tagPrefix: 'react/v', dir: 'packages/react', dependsOnSdkCore: true }),
   '@rakomi/react-native': Object.freeze({ tagPrefix: 'react-native/v', dir: 'packages/react-native', dependsOnSdkCore: true }),
   'create-rakomi-app': Object.freeze({ tagPrefix: 'create-rakomi-app/v', dir: 'packages/create-rakomi-app', dependsOnSdkCore: false }),
+  rakomi: Object.freeze({ tagPrefix: 'cli/v', dir: 'packages/cli', dependsOnSdkCore: false }),
 })
 
 export const SDK_CORE = '@rakomi/sdk-core'
