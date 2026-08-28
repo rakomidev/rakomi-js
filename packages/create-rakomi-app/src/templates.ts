@@ -49,6 +49,8 @@ export function portalUrl(slug: string): string {
  * Pinned to the `main` branch ref (a future enhancement could pin a tagged ref per template).
  */
 export function archiveUrl(template: Template, base: string = DEFAULT_TEMPLATE_BASE): string {
-  const trimmed = base.replace(/\/+$/, '');
+  let end = base.length;
+  while (end > 0 && base.charCodeAt(end - 1) === 47) end -= 1;
+  const trimmed = base.slice(0, end);
   return `${trimmed}/${template.publicRepo}/tar.gz/refs/heads/main`;
 }

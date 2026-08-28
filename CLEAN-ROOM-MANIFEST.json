@@ -36,7 +36,7 @@
     },
     {
       "name": "@rakomi/react",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -62,14 +62,14 @@
     },
     {
       "name": "@rakomi/react-native",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "tagPrefix": "react-native",
       "emittedSymbols": [],
       "fileCount": 32
     },
     {
       "name": "@rakomi/sdk-core",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "tagPrefix": "sdk-core",
       "emittedSymbols": [
         "FrozenEndpointError",
@@ -86,14 +86,14 @@
     },
     {
       "name": "create-rakomi-app",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "tagPrefix": "create-rakomi-app",
       "emittedSymbols": [],
       "fileCount": 8
     },
     {
       "name": "rakomi",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "tagPrefix": "cli",
       "emittedSymbols": [],
       "fileCount": 21
@@ -210,7 +210,7 @@
     },
     {
       "path": "packages/create-rakomi-app/src/templates.ts",
-      "sha256": "sha256:7a7faf239164937c720d5649d6929c0607221692977def60f8a4e79ea42d6714"
+      "sha256": "sha256:02dbe92f8b3809490599111d90cbf8190f4f6dece2f7a8c389a8acbbd020b007"
     },
     {
       "path": "packages/create-rakomi-app/src/usage.ts",
@@ -222,7 +222,7 @@
     },
     {
       "path": "packages/react-native/src/components/sign-in.tsx",
-      "sha256": "sha256:0589c4f97bf63d32719efd867ae13b8243807ba8b17aee866b2e7c20fb9e369b"
+      "sha256": "sha256:ca5dfe9c6080cf06183fac91aee24c6b0d8c2259271123e21dcee361612f56ad"
     },
     {
       "path": "packages/react-native/src/components/sign-up.tsx",
@@ -246,7 +246,7 @@
     },
     {
       "path": "packages/react-native/src/hooks/use-auth-flows.ts",
-      "sha256": "sha256:6ca2aa2e1a45cd9bcd8bf398f109e17304a0decedf41604e293f9feb436a013e"
+      "sha256": "sha256:838c1cde9788734b4eaf5d4e95ca41d3940d39fecf8cbd369e77cea5d1b87061"
     },
     {
       "path": "packages/react-native/src/hooks/use-auth.ts",
@@ -434,7 +434,7 @@
     },
     {
       "path": "packages/react/src/components/user-profile/user-profile.tsx",
-      "sha256": "sha256:4ae71bc0b93fd89bc85ad76737ee599e7cbb890282cde5d1896807c790671ba1"
+      "sha256": "sha256:7fe2e9016f034a367d527e6da179de26333cd41434a008ea51414a7fc4b324eb"
     },
     {
       "path": "packages/react/src/context.tsx",
@@ -678,7 +678,7 @@
     },
     {
       "path": "packages/react/src/oauth/profile.ts",
-      "sha256": "sha256:321ad21a76a8cdf0a396e18aace2c6f1b0fe731912e1ebb2596af3080282108a"
+      "sha256": "sha256:1d79adc3d3271dffd5e635ef506537496f1802007f16b36080c9cc7fb7b47727"
     },
     {
       "path": "packages/react/src/oauth/register.ts",
@@ -786,7 +786,7 @@
     },
     {
       "path": "packages/sdk-core/src/oauth/mfa.ts",
-      "sha256": "sha256:07681d1a22eb9a7d70cd27069b6205d762da372039f450bfe3458c7b149609c9"
+      "sha256": "sha256:e9452717b5345c0ec6dd2cd2ec6d64914ec3c4eb8794be1c12a6b2530a9dd5c4"
     },
     {
       "path": "packages/sdk-core/src/oauth/pkce.ts",

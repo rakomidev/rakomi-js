@@ -215,6 +215,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
     setMfaLoading(true);
     setMfaError(null);
 
+    const code = (mfaCodeRef.current?.value ?? '').trim();
     const password = mfaPasswordRef.current?.value ?? '';
     const token = await getToken();
     if (!token) {
@@ -225,7 +226,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
     }
 
     try {
-      const result = await disableMfa({ baseUrl: internals.baseUrl, token, password });
+      const result = await disableMfa({ baseUrl: internals.baseUrl, token, code, password });
 
       if (result.ok) {
         setMfaState('idle');
@@ -247,6 +248,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
     setMfaLoading(true);
     setMfaError(null);
 
+    const code = (mfaCodeRef.current?.value ?? '').trim();
     const password = mfaPasswordRef.current?.value ?? '';
     const token = await getToken();
     if (!token) {
@@ -257,7 +259,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
     }
 
     try {
-      const result = await regenerateRecoveryCodes({ baseUrl: internals.baseUrl, token, password });
+      const result = await regenerateRecoveryCodes({ baseUrl: internals.baseUrl, token, code, password });
 
       if (result.ok) {
         setRecoveryCodes(result.recoveryCodes);
@@ -457,6 +459,19 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
         return (
           <form onSubmit={(e) => void handleMfaDisable(e)} data-rakomi-user-profile-form>
             <p>{t('userProfile.mfaDisable')}</p>
+            <div data-rakomi-field>
+              <label htmlFor={`${idPrefix}-mfa-disable-code`}>{t('signIn.mfa.codeLabel')}</label>
+              <input
+                ref={mfaCodeRef}
+                id={`${idPrefix}-mfa-disable-code`}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                autoComplete="one-time-code"
+                required
+              />
+            </div>
             <PasswordInput
               name="disablePassword"
               label={t('signIn.passwordLabel')}
@@ -479,6 +494,19 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
         return (
           <form onSubmit={(e) => void handleRegenerateCodes(e)} data-rakomi-user-profile-form>
             <p>{t('userProfile.mfaRecoveryCodes')}</p>
+            <div data-rakomi-field>
+              <label htmlFor={`${idPrefix}-mfa-regenerate-code`}>{t('signIn.mfa.codeLabel')}</label>
+              <input
+                ref={mfaCodeRef}
+                id={`${idPrefix}-mfa-regenerate-code`}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                autoComplete="one-time-code"
+                required
+              />
+            </div>
             <PasswordInput
               name="regeneratePassword"
               label={t('signIn.passwordLabel')}

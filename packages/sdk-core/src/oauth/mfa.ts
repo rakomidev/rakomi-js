@@ -2,7 +2,7 @@
  * MFA TOTP verification + step-up error handling.
  *
  * Contract:
- * - `next_action: 'verify_mfa'` (NOT the legacy `mfa_challenge_token`).
+ * - Request body: `{ mfa_challenge_token, code }`.
  * - `MfaStepUpRequiredError` and `MfaStepUpUnavailableError` partition the 401 space.
  */
 
@@ -38,7 +38,7 @@ export class MfaStepUpUnavailableError extends Error {
 
 export interface VerifyTotpInput {
   http: HttpClient;
-  /** Canonical: `${baseUrl}/v1/auth/mfa/totp/verify` (per). */
+  /** Canonical: `${baseUrl}/v1/auth/mfa/verify-login`. */
   endpoint: string;
   challengeToken: string;
   code: string;
@@ -58,7 +58,7 @@ export async function verifyTotp(input: VerifyTotpInput): Promise<VerifyTotpResu
     response = await input.http.fetch(input.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ challenge_token: input.challengeToken, code }),
+      body: JSON.stringify({ mfa_challenge_token: input.challengeToken, code }),
     });
   } catch (err) {
     return { ok: false, error: networkError(err instanceof Error ? err.message : 'network') };

@@ -1,3 +1,7 @@
+## 0.3.1 — 2026-08-28
+
+- MFA verification and recovery-code endpoints match the API.
+
 ## 0.3.0 — 2026-08-28
 
 - API errors from every `/v1/*` endpoint are now RFC 9457 Problem Details (`application/problem+json`: `type`, `title`, `status`, `detail`, `instance`, plus the stable `code` you already match on). The SDKs parse the new shape and expose the same `code` on thrown errors; the previous `{ error: { code } }` envelope is no longer emitted, so code that read `body.error.code` directly must move to the SDK's error object or to the top-level `code` field. OAuth endpoints (`/oauth/*`) keep the RFC 6749 §5.2 shape. Every `type` URI resolves to a section of https://docs.rakomi.dev/sdk/errors.

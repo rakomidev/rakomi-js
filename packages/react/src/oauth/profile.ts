@@ -135,14 +135,15 @@ export async function verifyMfaSetup(options: {
 export async function disableMfa(options: {
   baseUrl: string;
   token: string;
+  code: string;
   password: string;
 }): Promise<SimpleResult> {
-  const { baseUrl, token, password } = options;
+  const { baseUrl, token, code, password } = options;
 
   try {
-    const response = await authFetch(`${baseUrl}/v1/auth/mfa/disable`, token, {
-      method: 'POST',
-      body: JSON.stringify({ password }),
+    const response = await authFetch(`${baseUrl}/v1/auth/mfa`, token, {
+      method: 'DELETE',
+      body: JSON.stringify({ code, password }),
     });
 
     if (!response.ok) {
@@ -158,14 +159,15 @@ export async function disableMfa(options: {
 export async function regenerateRecoveryCodes(options: {
   baseUrl: string;
   token: string;
+  code: string;
   password: string;
 }): Promise<RegenerateCodesResult> {
-  const { baseUrl, token, password } = options;
+  const { baseUrl, token, code, password } = options;
 
   try {
-    const response = await authFetch(`${baseUrl}/v1/auth/mfa/regenerate-codes`, token, {
+    const response = await authFetch(`${baseUrl}/v1/auth/mfa/recovery-codes`, token, {
       method: 'POST',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ code, password }),
     });
 
     if (!response.ok) {

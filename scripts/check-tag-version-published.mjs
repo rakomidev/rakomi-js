@@ -20,7 +20,7 @@ export const REL_GATE_CODES = Object.freeze({
   CANNOT_EVALUATE: 'REL-GATE-N6E',
 })
 
-const TAG_PREFIX_TARGETS = Object.freeze([
+export const TAG_PREFIX_TARGETS = Object.freeze([
   Object.freeze({ prefix: 'sdk/v', packageName: '@rakomi/node', publishedBy: 'rakomidev/rakomi-js publish.yml (sdk/v*)' }),
   Object.freeze({ prefix: 'sdk-core/v', packageName: '@rakomi/sdk-core', publishedBy: 'rakomidev/rakomi-js publish.yml (sdk-core/v*)' }),
   Object.freeze({ prefix: 'react/v', packageName: '@rakomi/react', publishedBy: 'rakomidev/rakomi-js publish.yml (react/v*)' }),

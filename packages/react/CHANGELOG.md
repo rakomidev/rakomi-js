@@ -1,3 +1,7 @@
+## 0.3.1 — 2026-08-28
+
+- MFA verification and recovery-code endpoints match the API.
+
 ## 0.3.0 — 2026-08-28
 
 - Fixed a type mismatch where the `locale` prop on pre-built components (`SignIn`, `SignUp`, `UserButton`, `UserProfile`, `PricingTable`, `SubscriptionManager`) only accepted `'en' | 'pl'`, even though `RakomiProvider` and the exported `Locale` type already accept all five supported locales (`en`/`pl`/`de`/`fr`/`es`). Every component now types `locale` against the same `Locale` union, so passing `locale="de"` (or `"fr"` / `"es"`) type-checks and renders the full localized dictionary for that locale, matching runtime behavior that already worked.
