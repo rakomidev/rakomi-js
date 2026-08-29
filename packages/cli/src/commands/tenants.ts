@@ -2,11 +2,13 @@
 
 import { InteractiveRequiredError, NotLoggedInError, UsageError } from '../errors.js';
 import type { HttpDeps } from '../http.js';
-import type { SessionStore } from '../session.js';
+import { resolveDpopKey } from '../install-key.js';
+import type { KeyStore, SessionStore } from '../session.js';
 import { createTenant, listTenants } from '../tenants-client.js';
 
 export interface TenantsCreateDeps extends HttpDeps {
   readonly session: SessionStore;
+  readonly keys: KeyStore;
   readonly json: boolean;
   readonly dryRun: boolean;
   readonly ci: boolean;
@@ -50,6 +52,7 @@ export async function runTenantsCreate(deps: TenantsCreateDeps, args: TenantsCre
     name: args.name,
     slug: args.slug,
     ownerEmail: ownerIsSelf ? undefined : args.owner,
+    dpop: resolveDpopKey(deps.keys, session),
   });
 
   if (deps.json) {
@@ -67,6 +70,7 @@ export async function runTenantsCreate(deps: TenantsCreateDeps, args: TenantsCre
 
 export interface TenantsListDeps extends HttpDeps {
   readonly session: SessionStore;
+  readonly keys: KeyStore;
   readonly json: boolean;
   readonly stdout: { write(s: string): void };
 }
@@ -75,7 +79,12 @@ export async function runTenantsList(deps: TenantsListDeps): Promise<void> {
   const session = deps.session.read();
   if (!session) throw new NotLoggedInError();
 
-  const result = await listTenants(deps, { apiBaseUrl: session.api_base_url, accessToken: session.access_token, parent: 'me' });
+  const result = await listTenants(deps, {
+    apiBaseUrl: session.api_base_url,
+    accessToken: session.access_token,
+    parent: 'me',
+    dpop: resolveDpopKey(deps.keys, session),
+  });
 
   if (deps.json) {
     deps.stdout.write(JSON.stringify(result) + '\n');

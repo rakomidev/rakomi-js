@@ -2,6 +2,7 @@
 
 import { CliError, EXIT } from './errors.js';
 import { describeError, type HttpDeps, request } from './http.js';
+import type { StoredInstallKey } from './install-key.js';
 import type { PkcePair } from './pkce.js';
 
 export interface AuthCodeTokenResult {
@@ -37,6 +38,27 @@ export async function exchangeAuthorizationCode(
     readonly redirectUri: string;
     readonly code: string;
     readonly codeVerifier: string;
+    /**
+     * Story rakomi-cli-cimd-per-install-key-binding — an RFC 7523 §2.2 `private_key_jwt`
+     * client-assertion, signed with THIS install's own local key, sent ADDITIVELY alongside PKCE
+     * (never instead of it — a public CIMD client's PKCE requirement is unaffected). Present ONLY
+     * once a PRIOR bind call has confirmed this install's key is the one the server's row trusts
+     * (`login.ts`) — never sent speculatively, since a present-but-wrong-key assertion is a hard
+     * server-side reject, not a silent fallback.
+     */
+    readonly clientAssertion?: string;
+    /**
+     * Story rakomi-cli-dpop-token-binding — the install key, if this install has one (i.e. the CIMD
+     * default client_id was used). Sent UNCONDITIONALLY on every token-endpoint call when present —
+     * NOT gated on a prior TOFU-bind confirmation (unlike `clientAssertion` above, which answers "who
+     * is this client" and would lock out a losing install if sent speculatively). DPoP proof-of-
+     * possession answers a DIFFERENT question — "does the caller hold the key this token gets bound
+     * to" — and every install's OWN key independently proves possession for whichever token THAT
+     * install is issued, regardless of the client_assertion TOFU outcome (see `install-key.ts`'s
+     * `resolveDpopKey()` doc). The server ignores the proof and mints an ordinary Bearer token
+     * whenever `dpop_mode` is `'off'` for this client_id — strictly additive, never a downgrade risk.
+     */
+    readonly dpopKey?: StoredInstallKey;
   },
 ): Promise<AuthCodeTokenResult> {
   const result = await request<AuthCodeTokenResult & { error?: string }>(deps, {
@@ -48,7 +70,14 @@ export async function exchangeAuthorizationCode(
       redirect_uri: opts.redirectUri,
       client_id: opts.clientId,
       code_verifier: opts.codeVerifier,
+      ...(opts.clientAssertion
+        ? {
+            client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+            client_assertion: opts.clientAssertion,
+          }
+        : {}),
     },
+    dpop: opts.dpopKey ? { key: opts.dpopKey } : undefined,
   });
   if (result.status !== 200) {
     throw new CliError(`Could not complete sign-in: ${describeError(result.body, result.status)}`, EXIT.FAIL);

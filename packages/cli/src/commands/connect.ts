@@ -5,11 +5,13 @@ import { pollCimdMaterialization, requestWriteElevation } from '../connect-clien
 import { DEFAULT_MCP_URL } from '../env.js';
 import { InteractiveRequiredError, NotLoggedInError, UsageError } from '../errors.js';
 import type { HttpDeps } from '../http.js';
+import { resolveDpopKey } from '../install-key.js';
 import { mcpConfigPath, undoMcpConfigWrite, writeRakomiMcpServerEntry } from '../mcp-config.js';
-import type { SessionStore } from '../session.js';
+import type { KeyStore, SessionStore, StoredSession } from '../session.js';
 
 export interface ConnectDeps extends HttpDeps {
   readonly session: SessionStore;
+  readonly keys: KeyStore;
   readonly cwd: string;
   readonly apiBaseUrl: string;
   readonly mcpUrl: string;
@@ -51,7 +53,7 @@ export async function runConnect(deps: ConnectDeps): Promise<void> {
   if (!session) throw new NotLoggedInError();
 
   if (deps.status) {
-    await reportStatus(deps, session.access_token);
+    await reportStatus(deps, session);
     return;
   }
 
@@ -68,28 +70,34 @@ export async function runConnect(deps: ConnectDeps): Promise<void> {
       deps.stdout.write(`${clientDisplayName(client)}:\n${CLAUDE_DESKTOP_INSTRUCTIONS}\n`);
       continue;
     }
-    await connectClaudeCode(deps, session.access_token);
+    await connectClaudeCode(deps, session);
   }
 }
 
 /** `--cimd-url` + `--status`: checks materialization (and elevation, if `--write`) without
  * rewriting `.mcp.json` — the resume path the CLI's waiting message points users at. */
-async function reportStatus(deps: ConnectDeps, accessToken: string): Promise<void> {
+async function reportStatus(deps: ConnectDeps, session: StoredSession): Promise<void> {
   if (!deps.cimdUrl) {
     throw new UsageError('`connect --status` needs `--cimd-url <url>` — the CIMD URL `connect` printed when it started waiting.');
   }
-  const row = await pollCimdMaterialization(deps, { apiBaseUrl: deps.apiBaseUrl, accessToken, cimdUrl: deps.cimdUrl });
+  const dpop = resolveDpopKey(deps.keys, session);
+  const row = await pollCimdMaterialization(deps, {
+    apiBaseUrl: deps.apiBaseUrl,
+    accessToken: session.access_token,
+    cimdUrl: deps.cimdUrl,
+    dpop,
+  });
   if (!row) {
     deps.stdout.write('Not connected yet — finish sign-in in your MCP client, then run this command again.\n');
     return;
   }
   deps.stdout.write(`Connected — access: ${row.agent_access.level}${row.agent_access.owner_granted ? ' (owner-granted)' : ''}.\n`);
   if (deps.write && row.agent_access.level !== 'write') {
-    await requestWrite(deps, accessToken, row.id);
+    await requestWrite(deps, session, row.id);
   }
 }
 
-async function connectClaudeCode(deps: ConnectDeps, accessToken: string): Promise<void> {
+async function connectClaudeCode(deps: ConnectDeps, session: StoredSession): Promise<void> {
   if (deps.dryRun) {
     deps.stdout.write(`Would write ${mcpConfigPath(deps.cwd)} with mcpServers.rakomi -> ${deps.mcpUrl}. No file written (--dry-run).\n`);
     return;
@@ -115,7 +123,13 @@ async function connectClaudeCode(deps: ConnectDeps, accessToken: string): Promis
     return;
   }
 
-  const row = await pollCimdMaterialization(deps, { apiBaseUrl: deps.apiBaseUrl, accessToken, cimdUrl: deps.cimdUrl });
+  const dpop = resolveDpopKey(deps.keys, session);
+  const row = await pollCimdMaterialization(deps, {
+    apiBaseUrl: deps.apiBaseUrl,
+    accessToken: session.access_token,
+    cimdUrl: deps.cimdUrl,
+    dpop,
+  });
   if (!row) {
     deps.stdout.write(
       `\nNot connected yet. Ctrl+C is safe — resume any time with:\n` +
@@ -129,12 +143,13 @@ async function connectClaudeCode(deps: ConnectDeps, accessToken: string): Promis
     if (deps.ci) {
       throw new InteractiveRequiredError('`connect --write` cannot run under --ci — write-access needs a human owner decision.');
     }
-    await requestWrite(deps, accessToken, row.id);
+    await requestWrite(deps, session, row.id);
   }
 }
 
-async function requestWrite(deps: ConnectDeps, accessToken: string, oauthClientId: string): Promise<void> {
-  await requestWriteElevation(deps, { apiBaseUrl: deps.apiBaseUrl, accessToken, oauthClientId });
+async function requestWrite(deps: ConnectDeps, session: StoredSession, oauthClientId: string): Promise<void> {
+  const dpop = resolveDpopKey(deps.keys, session);
+  await requestWriteElevation(deps, { apiBaseUrl: deps.apiBaseUrl, accessToken: session.access_token, oauthClientId, dpop });
   deps.stdout.write(
     "Write-access request sent to your tenant's owner(s) — if that's you, you'll approve it yourself " +
       'from the dashboard Agents page. Destructive actions will still ask a human every time.\n',

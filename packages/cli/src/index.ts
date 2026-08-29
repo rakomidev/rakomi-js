@@ -8,8 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { systemBrowserOpener } from './browser.js';
+import type { CiOidcEnv } from './ci-oidc-token.js';
 import { runConnect } from './commands/connect.js';
-import { runLogin } from './commands/login.js';
+import { runLogin, runLoginCi } from './commands/login.js';
 import { runLogout } from './commands/logout.js';
 import { runTenantsCreate, runTenantsList } from './commands/tenants.js';
 import { runWhoami } from './commands/whoami.js';
@@ -17,7 +18,7 @@ import { apiBaseUrl, type CliEnv, DEFAULT_MCP_URL } from './env.js';
 import { CliError, EXIT, type ExitCode, UsageError } from './errors.js';
 import type { FetchLike } from './http.js';
 import { startLoopbackListener } from './loopback-server.js';
-import { resolveStores, type SessionStore } from './session.js';
+import { type KeyStore, type ResolvedStores, resolveStores, type SessionStore } from './session.js';
 import { helpText, type OutputStream, usageLine } from './usage.js';
 
 export interface RunDeps {
@@ -29,7 +30,16 @@ export interface RunDeps {
   readonly isTTY: boolean;
   readonly fetchImpl: FetchLike;
   readonly session: SessionStore;
+  readonly keys: KeyStore;
   readonly detectClaudeCode: () => boolean;
+  /** Story rakomi-cli-login-ci-oidc-federation — CI-platform env vars for `login --ci`'s OIDC
+   * token resolution (see `ci-oidc-token.ts`). Optional so every pre-existing `RunDeps` fixture in
+   * the test suite keeps compiling unchanged; `login --ci` degrades to "no OIDC token source
+   * found" (a `CliError`, never a crash) when omitted. */
+  readonly ciEnv?: CiOidcEnv;
+  /** Injectable so `login --ci`'s `--oidc-token-file` path is testable with no real filesystem;
+   * defaults to `readFileSync` in `main()`. */
+  readonly readTextFile?: (path: string) => string;
 }
 
 const GLOBAL_OPTIONS = {
@@ -39,6 +49,7 @@ const GLOBAL_OPTIONS = {
   'dry-run': { type: 'boolean' },
   'no-browser': { type: 'boolean' },
   'no-keychain': { type: 'boolean' },
+  'oidc-token-file': { type: 'string' },
   client: { type: 'string' },
   undo: { type: 'boolean' },
   write: { type: 'boolean' },
@@ -94,11 +105,25 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
 
   const [command, ...rest] = positionals;
   switch (command) {
-    case 'login':
+    case 'login': {
+      if (values.ci === true) {
+        await runLoginCi({
+          ...httpDeps,
+          env: deps.env,
+          ciEnv: deps.ciEnv ?? {},
+          session: deps.session,
+          oidcTokenFile: typeof values['oidc-token-file'] === 'string' ? values['oidc-token-file'] : undefined,
+          readTextFile: deps.readTextFile ?? ((p) => readFileSync(p, 'utf8')),
+          stdout: deps.stdout,
+          now: () => Date.now(),
+        });
+        return EXIT.OK;
+      }
       await runLogin({
         ...httpDeps,
         env: deps.env,
         session: deps.session,
+        keys: deps.keys,
         noBrowser: values['no-browser'] === true || ci,
         openBrowser: systemBrowserOpener(),
         startLoopback: startLoopbackListener,
@@ -107,19 +132,21 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         now: () => Date.now(),
       });
       return EXIT.OK;
+    }
 
     case 'logout':
       runLogout({ session: deps.session, stdout: deps.stdout });
       return EXIT.OK;
 
     case 'whoami':
-      await runWhoami({ ...httpDeps, session: deps.session, json, stdout: deps.stdout });
+      await runWhoami({ ...httpDeps, session: deps.session, keys: deps.keys, json, stdout: deps.stdout });
       return EXIT.OK;
 
     case 'connect':
       await runConnect({
         ...httpDeps,
         session: deps.session,
+        keys: deps.keys,
         cwd: deps.cwd,
         apiBaseUrl: apiBaseUrl(deps.env),
         mcpUrl: deps.env.RAKOMI_API_URL ? `${apiBaseUrl(deps.env)}/mcp` : DEFAULT_MCP_URL,
@@ -141,13 +168,13 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         const name = tenantArgs[0];
         if (!name) throw new UsageError('Usage: rakomi tenants create <name> [--owner me|<email>] [--slug <slug>]');
         await runTenantsCreate(
-          { ...httpDeps, session: deps.session, json, dryRun, ci, stdout: deps.stdout },
+          { ...httpDeps, session: deps.session, keys: deps.keys, json, dryRun, ci, stdout: deps.stdout },
           { name, slug: typeof values.slug === 'string' ? values.slug : undefined, owner: typeof values.owner === 'string' ? values.owner : 'me' },
         );
         return EXIT.OK;
       }
       if (sub === 'list') {
-        await runTenantsList({ ...httpDeps, session: deps.session, json, stdout: deps.stdout });
+        await runTenantsList({ ...httpDeps, session: deps.session, keys: deps.keys, json, stdout: deps.stdout });
         return EXIT.OK;
       }
       throw new UsageError('Usage: rakomi tenants <create|list> ...');
@@ -155,6 +182,18 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
 
     default:
       throw new UsageError(`Unknown command "${command ?? ''}".`);
+  }
+}
+
+/**
+ * Prints `resolved.fallbackDisclosure`, if any, exactly once — the caller (`main()`) calls this ONCE at
+ * store-construction time, never from inside a session read/write, so a command doing several session
+ * reads never repeats it. Extracted from `main()` so this behaviour is independently unit-testable
+ * (`main()` itself reads real `process.env`/`process.argv` and is exercised only via `isCliEntry()`).
+ */
+export function printFallbackDisclosureOnce(resolved: ResolvedStores, stderr: { write(s: string): void }): void {
+  if (resolved.fallbackDisclosure) {
+    stderr.write(resolved.fallbackDisclosure + '\n');
   }
 }
 
@@ -179,11 +218,16 @@ async function main(): Promise<void> {
     NO_COLOR: process.env.NO_COLOR,
   };
   const noKeychainEnv = process.env.RAKOMI_NO_KEYCHAIN;
+  const ciEnv: CiOidcEnv = {
+    ACTIONS_ID_TOKEN_REQUEST_URL: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+    CI_JOB_JWT_V2: process.env.CI_JOB_JWT_V2,
+    CI_JOB_JWT: process.env.CI_JOB_JWT,
+    RAKOMI_OIDC_TOKEN: process.env.RAKOMI_OIDC_TOKEN,
+  };
   const noKeychainFlag = process.argv.slice(2).includes('--no-keychain');
   const resolved = resolveStores(env, { noKeychain: noKeychainFlag || Boolean(env.CI) || Boolean(noKeychainEnv) });
-  if (resolved.fallbackDisclosure) {
-    process.stderr.write(resolved.fallbackDisclosure + '\n');
-  }
+  printFallbackDisclosureOnce(resolved, { write: (text) => void process.stderr.write(text) });
   process.exitCode = await run(process.argv.slice(2), {
     stdout: { write: (text) => void process.stdout.write(text) },
     stderr: { write: (text) => void process.stderr.write(text) },
@@ -193,7 +237,9 @@ async function main(): Promise<void> {
     isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
     fetchImpl: fetch,
     session: resolved.session,
+    keys: resolved.keys,
     detectClaudeCode: () => detectClaudeCodeCli(),
+    ciEnv,
   });
 }
 

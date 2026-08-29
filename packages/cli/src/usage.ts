@@ -13,6 +13,8 @@ export function helpText(): string {
     '',
     'Commands:',
     '  login                    sign in (browser by default; --no-browser for a device code)',
+    '    --ci                   sign in from CI via the runner\'s own OIDC identity (no browser/device code)',
+    '    --oidc-token-file <p>  read the OIDC token from a file instead of the CI platform\'s own env',
     '  logout                   clear the local session',
     '  whoami                   show the signed-in account',
     '  connect                  connect Claude Code / Claude Desktop to your tenant (read access)',

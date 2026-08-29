@@ -1,3 +1,7 @@
+## 0.3.2 — 2026-08-29
+
+- Dark-mode primary button colour meets WCAG AA contrast.
+
 ## 0.3.1 — 2026-08-28
 
 - MFA verification and recovery-code endpoints match the API.

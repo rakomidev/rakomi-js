@@ -6,11 +6,20 @@ import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 import type { CliEnv } from './env.js';
+import { CliError } from './errors.js';
 
 export interface StoredSession {
   readonly access_token: string;
   readonly refresh_token?: string;
-  readonly token_type: 'Bearer';
+  /** Widened from the closed literal `'Bearer'` (two sibling stories both needed this). The
+   * OIDC-federation `--ci` grant is DPoP-bound unconditionally (server-side `dpopMode: 'on'`,
+   * mandatory), so a session minted by `rakomi login --ci` always carries `'DPoP'` here. For the
+   * ordinary CIMD-default login flow, the server sets `'DPoP'` on the token response IFF the token
+   * endpoint received a valid DPoP proof from a client whose `dpop_mode != 'off'`
+   * (`token-route.ts`) — persisting the server's REAL value here (never a hardcode) is what makes
+   * `http.ts`'s call sites able to decide whether to send a DPoP proof on every subsequent
+   * authenticated call. */
+  readonly token_type: 'Bearer' | 'DPoP';
   /** Epoch milliseconds. */
   readonly expires_at: number;
   readonly api_base_url: string;
@@ -89,11 +98,28 @@ export class FileSessionStore implements SessionStore {
   }
 }
 
+/**
+ * Guards every `KeyStore` `name` against path traversal (`FileKeyStore` interpolates it straight into
+ * a filename; `WindowsDpapiBackend` interpolates it into `${service}.${account}.dpapi`) and against an
+ * oversized/garbage keychain "account" value (`KeychainKeyStore` passes it straight to `security`/
+ * `secret-tool`). No consumer calls `KeyStore` yet (see the interface doc comment) — this validates at
+ * the boundary BEFORE the first real consumer (the future per-install DPoP/CIMD-assertion signing key)
+ * lands, rather than trusting that consumer to think of it. Deliberately conservative: this is an
+ * internal identifier the CLI itself names (`'dpop-binding'`, …), never end-user input, so ASCII
+ * alnum/hyphen/underscore is not a functional restriction.
+ */
+function assertValidKeyName(name: string): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(name)) {
+    throw new TypeError(`invalid KeyStore name: ${JSON.stringify(name)} (expected 1-128 chars, alphanumeric/hyphen/underscore only, no path separators)`);
+  }
+}
+
 /** A file-backed `KeyStore` — one file per named key, always distinct from `session.json`. Used by the fallback tier. */
 export class FileKeyStore implements KeyStore {
   constructor(private readonly dir: string) {}
 
   private path(name: string): string {
+    assertValidKeyName(name);
     return join(this.dir, `key-${name}.json`);
   }
 
@@ -128,7 +154,7 @@ function isStoredSession(value: unknown): value is StoredSession {
   return (
     typeof v.access_token === 'string' &&
     v.access_token.length > 0 &&
-    v.token_type === 'Bearer' &&
+    (v.token_type === 'Bearer' || v.token_type === 'DPoP') &&
     typeof v.expires_at === 'number' &&
     typeof v.api_base_url === 'string' &&
     typeof v.client_id === 'string'
@@ -143,8 +169,38 @@ export function isExpired(session: StoredSession, now: number): boolean {
 /** Matches `node:child_process`'s `execFileSync` closely enough to be a drop-in default, and small enough to fake in a test. */
 export type ExecFileSyncLike = (file: string, args: readonly string[], options?: { readonly input?: string }) => string;
 
+/**
+ * Thrown by `realExecFileSync` when the child process exits non-zero. Carries the exit `status`
+ * and the child's own captured `stderrOutput` so a `KeychainBackend` can tell an EXPECTED
+ * "item not found" exit apart from a genuine failure — without ever needing to inherit, print, or
+ * re-throw the child's raw stderr verbatim. A backend's `isAvailable()`/`set()`/`delete()` never
+ * need to inspect this — only `get()` does, per backend, below.
+ */
+export class ExecFileFailure extends Error {
+  constructor(
+    readonly command: string,
+    readonly status: number | null,
+    readonly stderrOutput: string,
+  ) {
+    super(`${command} exited with status ${status ?? 'unknown'}${stderrOutput.length > 0 ? `: ${stderrOutput}` : ''}`);
+    this.name = 'ExecFileFailure';
+  }
+}
+
 function realExecFileSync(file: string, args: readonly string[], options?: { readonly input?: string }): string {
-  return execFileSync(file, [...args], { encoding: 'utf8', input: options?.input, maxBuffer: 10 * 1024 * 1024 }).toString();
+  try {
+    return execFileSync(file, [...args], {
+      encoding: 'utf8',
+      input: options?.input,
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).toString();
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException & { status?: number | null; stderr?: Buffer | string };
+    const rawStderr = err.stderr;
+    const stderrOutput = (typeof rawStderr === 'string' ? rawStderr : rawStderr?.toString('utf8')) ?? '';
+    throw new ExecFileFailure(file, err.status ?? null, stderrOutput.trim());
+  }
 }
 
 /** Presence-only PATH scan — no process spawned, same technique as `index.ts`'s `detectClaudeCodeCli`. */
@@ -157,11 +213,27 @@ export interface KeychainBackend {
   readonly name: string;
   /** Cheap, side-effect-free (or read-only) check that this backend can actually be used right now. */
   isAvailable(): boolean;
-  /** `null` on "not found" AND on any read failure — callers must treat both as "nothing usable here". */
+  /**
+   * `null` on "not found" — the routine, expected state before the user has ever logged in;
+   * returned SILENTLY, with nothing printed. An UNEXPECTED failure (keychain locked, permission
+   * denied, Secret Service unreachable, …) is surfaced by THROWING a `CliError` instead of being
+   * swallowed to `null` — a genuine problem must never masquerade as "not logged in". Exception:
+   * `WindowsDpapiBackend` still returns `null` for an undecryptable item (wrong Windows user
+   * profile, corrupted ciphertext) — that ambiguity is inherent to DPAPI and is documented on the
+   * backend itself, not a case this contract can distinguish.
+   */
   get(service: string, account: string): string | null;
   set(service: string, account: string, value: string): void;
   /** Idempotent — deleting an absent item is not an error. */
   delete(service: string, account: string): void;
+}
+
+/** Formats an unexpected `KeychainBackend.get()` failure into the CLI's own error type — never let
+ * the raw child-process stderr, an exception's `.stack`, or any other property of the caught value
+ * reach the user unformatted. The underlying message is included exactly once. */
+function keychainReadFailure(backendLabel: string, cause: unknown): CliError {
+  const detail = cause instanceof ExecFileFailure && cause.stderrOutput.length > 0 ? cause.stderrOutput : cause instanceof Error ? cause.message : String(cause);
+  return new CliError(`Could not read your session from ${backendLabel}: ${detail}`);
 }
 
 /** macOS Keychain, via the `security` CLI that ships with every macOS install — no native module. */
@@ -188,8 +260,9 @@ export class MacKeychainBackend implements KeychainBackend {
       const out = this.execFileSyncFn('security', ['find-generic-password', '-a', account, '-s', service, '-w']);
       const value = out.trim();
       return value.length > 0 ? value : null;
-    } catch {
-      return null;
+    } catch (e) {
+      if (e instanceof ExecFileFailure && e.status === 44) return null;
+      throw keychainReadFailure('macOS Keychain', e);
     }
   }
 
@@ -226,8 +299,9 @@ export class LinuxSecretToolBackend implements KeychainBackend {
       const out = this.execFileSyncFn('secret-tool', ['lookup', 'service', service, 'account', account]);
       const value = out.replace(/\n$/, '');
       return value.length > 0 ? value : null;
-    } catch {
-      return null;
+    } catch (e) {
+      if (e instanceof ExecFileFailure && e.stderrOutput.length === 0) return null;
+      throw keychainReadFailure('the Linux Secret Service', e);
     }
   }
 
@@ -293,7 +367,12 @@ export class WindowsDpapiBackend implements KeychainBackend {
     const valueB64 = Buffer.from(value, 'utf8').toString('base64');
     const script = `[Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect([Convert]::FromBase64String('${valueB64}'), $null, 'CurrentUser'))`;
     const cipherB64 = this.execFileSyncFn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]).trim();
-    writeFileSync(this.filePath(service, account), cipherB64 + '\n', { mode: 0o600 });
+    const path = this.filePath(service, account);
+    writeFileSync(path, cipherB64 + '\n', { mode: 0o600 });
+    try {
+      chmodSync(path, 0o600);
+    } catch {
+    }
   }
 
   delete(service: string, account: string): void {
@@ -350,19 +429,35 @@ export class KeychainSessionStore implements SessionStore {
   }
 }
 
-/** OS-keychain-backed `KeyStore` — every named key lives under `KEY_SERVICE`, never `SESSION_SERVICE`. */
+/**
+ * OS-keychain-backed `KeyStore` — every named key lives under `KEY_SERVICE`, never `SESSION_SERVICE`.
+ * `name` is validated (`assertValidKeyName`) before it reaches the backend: on `WindowsDpapiBackend` it
+ * interpolates straight into a filename (`${service}.${account}.dpapi`), so an unvalidated `name` would
+ * carry the same path-traversal exposure `FileKeyStore` guards against.
+ */
 export class KeychainKeyStore implements KeyStore {
   constructor(private readonly backend: KeychainBackend) {}
 
   get(name: string): string | null {
+    try {
+      assertValidKeyName(name);
+    } catch {
+      return null;
+    }
     return this.backend.get(KEY_SERVICE, name);
   }
 
   set(name: string, value: string): void {
+    assertValidKeyName(name);
     this.backend.set(KEY_SERVICE, name, value);
   }
 
   clear(name: string): void {
+    try {
+      assertValidKeyName(name);
+    } catch {
+      return;
+    }
     this.backend.delete(KEY_SERVICE, name);
   }
 }

@@ -2,6 +2,7 @@
 
 import { CliError, EXIT } from './errors.js';
 import { describeError, type HttpDeps, request } from './http.js';
+import type { StoredInstallKey } from './install-key.js';
 
 export interface CimdClientRow {
   readonly id: string;
@@ -15,14 +16,21 @@ export interface CimdClientRow {
  */
 export async function pollCimdMaterialization(
   deps: HttpDeps,
-  opts: { readonly apiBaseUrl: string; readonly accessToken: string; readonly cimdUrl: string },
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly accessToken: string;
+    readonly cimdUrl: string;
+    /** Story rakomi-cli-dpop-token-binding — present IFF the active session is DPoP-bound (`install-key.ts`'s `resolveDpopKey()`). */
+    readonly dpop?: StoredInstallKey;
+  },
 ): Promise<CimdClientRow | null> {
   const url = new URL('/v1/oauth-clients', opts.apiBaseUrl);
   url.searchParams.set('cimd_url', opts.cimdUrl);
   const result = await request<{ data: readonly CimdClientRow[] }>(deps, {
     method: 'GET',
     url: url.toString(),
-    headers: { authorization: `Bearer ${opts.accessToken}` },
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
@@ -41,13 +49,19 @@ export async function pollCimdMaterialization(
  */
 export async function requestWriteElevation(
   deps: HttpDeps,
-  opts: { readonly apiBaseUrl: string; readonly accessToken: string; readonly oauthClientId: string },
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly accessToken: string;
+    readonly oauthClientId: string;
+    readonly dpop?: StoredInstallKey;
+  },
 ): Promise<void> {
   const result = await request(deps, {
     method: 'POST',
     url: `${opts.apiBaseUrl}/v1/oauth-clients/${encodeURIComponent(opts.oauthClientId)}/elevation-requests`,
-    headers: { authorization: `Bearer ${opts.accessToken}` },
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
     body: { scopes: ['mcp:tools:write'] },
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
