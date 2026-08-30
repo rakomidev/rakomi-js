@@ -1,0 +1,93 @@
+name: Dispatch release notes for un-released tags
+
+# Create GitHub Release's own `workflow_run` trigger (release-notes.yml) is meant to fire once Publish
+# completes, but on this repository Publish is triggered exclusively by a tag push — never a branch push
+# — and that completion event has never once been observed to fire for a tag-only-triggered upstream
+# workflow across many real releases here (zero workflow_run-triggered runs recorded, for any workflow,
+# ever). Rather than depend on that unreliable completion event, this workflow polls on a short interval:
+# it lists recent successful Publish runs, finds the ones with no matching GitHub Release yet, and
+# explicitly dispatches Create GitHub Release for each — the same workflow_dispatch mechanism the manual
+# backfill procedure already used. workflow_dispatch (like repository_dispatch) is one of the two event
+# types GitHub explicitly exempts from the "GITHUB_TOKEN-triggered events do not start new workflow runs"
+# restriction, so an explicit dispatch is reliable where the completion-event chain is not.
+#
+# This lives in its own workflow file, never as an extra step inside Publish, because Publish's
+# `permissions:` block is pinned to exactly {contents: read, id-token: write} to bound its OIDC token's
+# blast radius — adding `actions: write` there so it could dispatch this workflow directly would widen
+# that boundary. release-notes.yml's `workflow_run` trigger is left in place as a harmless second path in
+# case a future platform change makes it fire; Create GitHub Release is idempotent (create-or-update by
+# tag name), so both paths racing for the same tag is safe.
+#
+# A tag published outside the dispatch window is never auto-dispatched (deliberately — an old tag can be
+# an abandoned release on purpose); it gets a `::warning::` and a step-summary line naming the manual
+# dispatch command instead, so it stays visible rather than being silently forgotten.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-notes-dispatch
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  WINDOW_HOURS: "6"
+  STALE_LOOKBACK_DAYS: "30"
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Find recent successful Publish runs with no matching Release
+        id: targets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          command gh run list --workflow publish.yml --status success --limit 50 \
+            --json headBranch,createdAt > /tmp/publish-runs.json
+          command gh release list --limit 100 --json tagName --jq '.[].tagName' > /tmp/existing-tags.txt
+          CUTOFF=$(date -u -d "-${WINDOW_HOURS} hours" +%s)
+          jq -r --argjson cutoff "$CUTOFF" '
+            .[] | select((.createdAt | fromdateiso8601) >= $cutoff) | .headBranch
+          ' /tmp/publish-runs.json | sort -u > /tmp/candidate-tags.txt
+          sort -u /tmp/existing-tags.txt -o /tmp/existing-tags.txt
+          comm -23 /tmp/candidate-tags.txt /tmp/existing-tags.txt > /tmp/dispatch-targets.txt
+          echo "candidate tags in the last ${WINDOW_HOURS}h:"; cat /tmp/candidate-tags.txt
+          echo "already released:"; cat /tmp/existing-tags.txt
+          echo "dispatch targets:"; cat /tmp/dispatch-targets.txt
+
+      - name: Warn about un-released tags outside the dispatch window (never auto-dispatched)
+        run: |
+          set -euo pipefail
+          WIDE_CUTOFF=$(date -u -d "-${STALE_LOOKBACK_DAYS} days" +%s)
+          jq -r --argjson cutoff "$WIDE_CUTOFF" '
+            .[] | select((.createdAt | fromdateiso8601) >= $cutoff) | .headBranch
+          ' /tmp/publish-runs.json | sort -u > /tmp/candidate-tags-wide.txt
+          comm -23 /tmp/candidate-tags-wide.txt /tmp/existing-tags.txt > /tmp/unreleased-wide.txt
+          comm -23 /tmp/unreleased-wide.txt /tmp/dispatch-targets.txt > /tmp/stale-unreleased.txt
+          while IFS= read -r TAG; do
+            [ -n "$TAG" ] || continue
+            echo "::warning::release notes were never dispatched for $TAG (published more than ${WINDOW_HOURS}h ago, outside the dispatch window) — dispatch manually: gh workflow run release-notes.yml --ref refs/tags/$TAG"
+            echo "- \`$TAG\` — published more than ${WINDOW_HOURS}h ago, no Release yet. Dispatch manually: \`gh workflow run release-notes.yml --ref refs/tags/$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          done < /tmp/stale-unreleased.txt
+
+      - name: Dispatch Create GitHub Release for each un-released tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r TAG; do
+            [ -n "$TAG" ] || continue
+            echo "dispatching release notes for $TAG"
+            command gh workflow run release-notes.yml --ref "refs/tags/$TAG"
+          done < /tmp/dispatch-targets.txt
