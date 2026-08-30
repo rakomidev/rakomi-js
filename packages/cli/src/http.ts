@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import { buildDpopProof, canonicalizeHtu, type DpopKeyPair } from './dpop.js';
 import { CliError, EXIT } from './errors.js';
 
 export type FetchLike = (url: string, init: RequestInit & { signal: AbortSignal }) => Promise<Response>;
@@ -11,6 +12,21 @@ export interface HttpDeps {
   readonly timeoutMs?: number;
 }
 
+/**
+ * Story rakomi-cli-dpop-token-binding — RFC 9449 DPoP proof-of-possession, threaded through the ONE
+ * HTTP chokepoint (`request()` below) rather than per-call-site, so the nonce-retry logic (RFC 9449 §8)
+ * has exactly ONE implementation. `accessToken` present ⇒ a resource-server call (`ath` is computed +
+ * included, and `Authorization: DPoP <token>` replaces any `Bearer` header the caller would otherwise
+ * build); `accessToken` absent ⇒ the token-endpoint call itself (no `ath`, no `Authorization` header —
+ * the OAuth token endpoint never used one).
+ */
+export interface DpopRequestOptions {
+  /** A `DpopKeyPair`-shaped key (a `StoredInstallKey` from `install-key.ts` satisfies this
+   * structurally — same two required fields). */
+  readonly key: DpopKeyPair;
+  readonly accessToken?: string;
+}
+
 export interface HttpRequest {
   readonly method: 'GET' | 'POST' | 'DELETE';
   readonly url: string;
@@ -20,6 +36,9 @@ export interface HttpRequest {
   readonly form?: Record<string, string>;
   /** Idempotency-Key header — see `POST /v1/tenants` contract (deep dive §4 Flow B). */
   readonly idempotencyKey?: string;
+  /** When present, this request is DPoP-signed — see `DpopRequestOptions`. Absent ⇒ this request is
+   * strictly unaffected by this story (byte-identical to before it shipped). */
+  readonly dpop?: DpopRequestOptions;
 }
 
 export interface HttpResult<T> {
@@ -82,13 +101,9 @@ export function errorCode(body: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Perform one HTTP call with a hard timeout, returning the parsed JSON body regardless of status
- * (the caller decides what a given status means). Throws `CliError` ONLY for a transport-level
- * failure (network error, timeout, non-JSON body) — never for a 4xx/5xx, which is a normal,
- * typed `HttpResult`.
- */
-export async function request<T = unknown>(deps: HttpDeps, req: HttpRequest): Promise<HttpResult<T>> {
+/** One HTTP attempt — no retry logic. `dpopNonce`, when present, rides in the signed proof's `nonce`
+ * claim (RFC 9449 §8 — used only by `request()`'s own retry-once below, never by a caller directly). */
+async function performOnce<T>(deps: HttpDeps, req: HttpRequest, dpopNonce?: string): Promise<HttpResult<T>> {
   const controller = new AbortController();
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -103,6 +118,19 @@ export async function request<T = unknown>(deps: HttpDeps, req: HttpRequest): Pr
       body = JSON.stringify(req.body);
     }
     if (req.idempotencyKey) headers['idempotency-key'] = req.idempotencyKey;
+
+    if (req.dpop) {
+      const proof = buildDpopProof(req.dpop.key, {
+        htm: req.method,
+        htu: canonicalizeHtu(req.url),
+        accessToken: req.dpop.accessToken,
+        nonce: dpopNonce,
+      });
+      headers['dpop'] = proof;
+      if (req.dpop.accessToken !== undefined) {
+        headers['authorization'] = `DPoP ${req.dpop.accessToken}`;
+      }
+    }
 
     let res: Response;
     try {
@@ -127,4 +155,45 @@ export async function request<T = unknown>(deps: HttpDeps, req: HttpRequest): Pr
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** `true` iff `result` is the RFC 9449 §8 server-nonce challenge shape: a 401 `auth/invalid_dpop_proof`
+ * carrying a non-empty `DPoP-Nonce` response header. The internal `rfc_error:'use_dpop_nonce'` audit tag
+ * is NEVER serialized into the HTTP response body — `error.code` is the SAME `auth/invalid_dpop_proof`
+ * for every DPoP rejection reason, so the header is the ONLY reliable signal (verified server-side:
+ * `dpop-token-binding.ts`/`error-handler.ts`). */
+function isDpopNonceChallenge(result: HttpResult<unknown>): string | undefined {
+  if (result.status !== 401) return undefined;
+  if (errorCode(result.body) !== 'auth/invalid_dpop_proof') return undefined;
+  const nonce = result.headers.get('dpop-nonce');
+  return nonce && nonce.length > 0 ? nonce : undefined;
+}
+
+/**
+ * Perform one HTTP call with a hard timeout, returning the parsed JSON body regardless of status
+ * (the caller decides what a given status means). Throws `CliError` ONLY for a transport-level
+ * failure (network error, timeout, non-JSON body) — never for a 4xx/5xx, which is a normal,
+ * typed `HttpResult`.
+ *
+ * Story rakomi-cli-dpop-token-binding — when `req.dpop` is present, a server RFC 9449 §8 nonce
+ * challenge (`use_dpop_nonce`) is retried EXACTLY ONCE with a fresh proof carrying the challenge nonce.
+ * A SECOND consecutive challenge (a persistently-demanded nonce) is not retried again — it surfaces as
+ * a `CliError`, never an infinite loop. Absent `req.dpop`, this function is byte-identical to before
+ * this story (no extra round trip, no new failure mode).
+ */
+export async function request<T = unknown>(deps: HttpDeps, req: HttpRequest): Promise<HttpResult<T>> {
+  const first = await performOnce<T>(deps, req);
+  if (!req.dpop) return first;
+
+  const nonce = isDpopNonceChallenge(first);
+  if (nonce === undefined) return first;
+
+  const retry = await performOnce<T>(deps, req, nonce);
+  if (isDpopNonceChallenge(retry) !== undefined) {
+    throw new CliError(
+      'The Rakomi API kept demanding a fresh DPoP nonce; the request could not complete.',
+      EXIT.FAIL,
+    );
+  }
+  return retry;
 }

@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 
 import { CliError, EXIT } from './errors.js';
 import { describeError, errorCode, type HttpDeps, request } from './http.js';
+import type { StoredInstallKey } from './install-key.js';
 
 export type TenantStatus = 'pending_owner_acceptance' | 'active' | 'suspended';
 
@@ -36,6 +37,8 @@ export interface CreateTenantOptions {
    * ONLY for a third-party owner hand-off, which requires a partner client_credentials token. */
   readonly ownerEmail?: string;
   readonly idempotencyKey?: string;
+  /** Story rakomi-cli-dpop-token-binding — present IFF the active session is DPoP-bound. */
+  readonly dpop?: StoredInstallKey;
 }
 
 /** The exact, known 403 code the real endpoint returns for a caller who is neither
@@ -63,9 +66,10 @@ export async function createTenant(deps: HttpDeps, opts: CreateTenantOptions): P
   const result = await request<CreateTenantResult>(deps, {
     method: 'POST',
     url: `${opts.apiBaseUrl}/v1/tenants`,
-    headers: { authorization: `Bearer ${opts.accessToken}` },
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
     body: { name: opts.name, ...(opts.slug ? { slug: opts.slug } : {}), ...(opts.ownerEmail ? { owner_email: opts.ownerEmail } : {}) },
     idempotencyKey: opts.idempotencyKey ?? generateIdempotencyKey(),
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
@@ -101,14 +105,20 @@ export interface ListTenantsResult {
 
 export async function listTenants(
   deps: HttpDeps,
-  opts: { readonly apiBaseUrl: string; readonly accessToken: string; readonly parent?: 'me' },
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly accessToken: string;
+    readonly parent?: 'me';
+    readonly dpop?: StoredInstallKey;
+  },
 ): Promise<ListTenantsResult> {
   const url = new URL('/v1/tenants', opts.apiBaseUrl);
   if (opts.parent) url.searchParams.set('parent', opts.parent);
   const result = await request<ListTenantsResult>(deps, {
     method: 'GET',
     url: url.toString(),
-    headers: { authorization: `Bearer ${opts.accessToken}` },
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);

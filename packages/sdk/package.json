@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/node",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Server-side Node.js SDK for Rakomi — verify access tokens and webhook signatures. EU-native auth-as-a-service.",
   "keywords": [
     "rakomi",

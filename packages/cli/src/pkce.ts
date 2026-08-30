@@ -3,7 +3,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 function base64url(buf: Buffer): string {
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  return buf.toString('base64url');
 }
 
 /** RFC 7636 §4.1: 43-128 char unreserved-charset string. 32 random bytes → 43-char base64url — the floor. */

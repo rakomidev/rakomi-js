@@ -9,7 +9,15 @@ npx rakomi login
 ```
 
 Signs you in with your browser (loopback OAuth + PKCE). Add `--no-browser` on a headless/SSH
-session to get a short code to enter on another device instead.
+session to get a short code to enter on another device instead. If you don't already have a
+`accounts.rakomi.com` session or an invitation link, pass `--tenant-id <uuid>` (or set
+`RAKOMI_PLATFORM_TENANT_ID`) so sign-in knows which tenant to authenticate against — ask your
+Rakomi administrator for the right value.
+
+`rakomi whoami` shows the tenant you signed in against ("Home tenant") and the tenant your other
+commands should treat as active ("Active tenant"). `rakomi use <tenant-id>` remembers a tenant id
+locally for that; `--tenant <tenant-id>` overrides it for one command. Neither is a verified
+grant — the tenant `whoami` shows as your Home tenant is the only one the server has confirmed.
 
 ## Connect an AI agent
 
@@ -45,7 +53,8 @@ token), sends a real invitation e-mail, and is refused under `--ci` — see
 | --- | --- |
 | `login` | sign in (browser by default; `--no-browser` for a device code) |
 | `logout` | clear the local session |
-| `whoami` | show the signed-in account |
+| `whoami` | show the signed-in account, home tenant, and active tenant |
+| `use <tenant-id>` | remember a tenant id locally for `whoami`/future commands |
 | `connect` | connect Claude Code / Claude Desktop to your tenant (read access) |
 | `tenants create <name>` | create a tenant (`--owner me\|<email>`, `--slug <slug>`) |
 | `tenants list` | list tenants you provisioned |
@@ -59,6 +68,8 @@ token), sends a real invitation e-mail, and is refused under `--ci` — see
 | `--dry-run` | print what would happen, make no writes or mutating calls |
 | `--no-browser` | use the device-code flow instead of opening a browser |
 | `--no-keychain` | store the session in a `0600` file instead of the OS keychain |
+| `--tenant-id <uuid>` | (`login`) the tenant to sign in against, if `RAKOMI_PLATFORM_TENANT_ID` isn't set for you |
+| `--tenant <tenant-id>` | override the active tenant for a single command (`whoami` today) |
 | `--client <name>` | `claude-code` or `claude-desktop` — required when more than one applies |
 | `--undo` | restore the `.mcp.json` `connect` last backed up |
 | `--cimd-url <url>` | (`connect`) the connecting client's own CIMD document URL — confirms/re-checks the connection |

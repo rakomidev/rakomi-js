@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+import type { HttpDeps } from './http.js';
+import { request } from './http.js';
+
 /** Default hosts (frozen domain strategy). */
 export const DEFAULT_API_BASE_URL = 'https://api.rakomi.com';
 export const DEFAULT_ACCOUNTS_BASE_URL = 'https://accounts.rakomi.com';
@@ -22,6 +25,16 @@ export const DEFAULT_MCP_URL = 'https://mcp.rakomi.com/mcp';
  * client-metadata-document login, can point at a different, manually-pre-registered client instead.
  */
 export const DEFAULT_CIMD_CLIENT_ID_URL = 'https://api.rakomi.com/.well-known/rakomi-cli/client-metadata.json';
+
+/**
+ * Story rakomi-cli-login-ci-oidc-federation — the CI-only `StoredSession.client_id` sentinel
+ * `rakomi login --ci` writes. There is no `oauth_clients` row for this grant (the tenant's trust
+ * policy IS the credential — see `oidc-federation-login.ts`'s module doc), so this is a readable
+ * marker rather than a real client identity. Exported here (not left local to `login.ts`) because
+ * `install-key.ts`'s `resolveDpopKey()` — Story rakomi-cli-ci-session-per-request-dpop-wiring —
+ * also needs to recognize it, to resolve the SAME durable key `login --ci` persisted at exchange time.
+ */
+export const CI_FEDERATION_SESSION_CLIENT_ID = 'oidc-federation';
 
 /**
  * True iff `id` is a CIMD `client_id` — an absolute `https://` URL, no userinfo, no fragment. A
@@ -49,6 +62,19 @@ export interface CliEnv {
   readonly RAKOMI_ACCOUNTS_URL?: string;
   readonly RAKOMI_CLIENT_ID?: string;
   readonly RAKOMI_CONFIG_DIR?: string;
+  /**
+   * Story rakomi-cli-login-identity-first-platform-tenant — which tenant `rakomi login`'s
+   * CIMD-default loopback flow authenticates the developer's account against (passed through as
+   * `tenant_id` on the accounts `/authorize`/`/login` URL — the same, already-reviewed mechanism
+   * register/reset-password links use, `resolve-entry-tenant.ts`). A CIMD `client_id` cannot be
+   * resolved to a tenant server-side on its own (a known, tracked gap) — without this, a genuinely cold login (no prior
+   * accounts.rakomi.com session) hits accounts' honest "no resolvable tenant" dead end AFTER a
+   * browser already opened. No environment ships a real platform tenant yet — dev's `.mise.toml [env]` points this at the seeded
+   * acme-corp tenant as a stand-in; staging/prod are intentionally left UNSET until a real one is
+   * provisioned, so `login.ts`'s preflight fails fast and actionably instead of silently using a
+   * wrong tenant. Overridable per-invocation via `rakomi login --tenant-id <uuid>`.
+   */
+  readonly RAKOMI_PLATFORM_TENANT_ID?: string;
   readonly CI?: string;
   readonly NO_COLOR?: string;
 }
@@ -63,4 +89,81 @@ export function accountsBaseUrl(env: CliEnv): string {
 
 export function clientId(env: CliEnv): string {
   return env.RAKOMI_CLIENT_ID || DEFAULT_CIMD_CLIENT_ID_URL;
+}
+
+const TENANT_ID_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NIL_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+const MAX_TENANT_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+/**
+ * Story rakomi-cli-login-identity-first-platform-tenant — a deliberate, minimal, standalone copy
+ * of accounts' `resolve-entry-tenant.ts` `isIdentifyingTenantId()` predicate (same reasoning as
+ * `isCimdClientId` above: zero runtime deps, cannot import server/accounts code). The two MUST
+ * agree on what counts as a real, usable tenant id — a 36-char UUID that is neither the nil nor the
+ * max UUID (both well-formed but semantically non-identifying, and excluded server-side for exactly
+ * that reason). Kept in sync by convention.
+ */
+export function isValidTenantId(id: string): boolean {
+  if (id.length !== 36) return false;
+  if (!TENANT_ID_UUID_PATTERN.test(id)) return false;
+  const lower = id.toLowerCase();
+  return lower !== NIL_TENANT_ID && lower !== MAX_TENANT_ID;
+}
+
+/**
+ * The "platform tenant" `rakomi login`'s CIMD-default loopback flow authenticates against — see
+ * `CliEnv.RAKOMI_PLATFORM_TENANT_ID`'s doc comment. Returns `undefined` when unset OR malformed;
+ * callers (`login.ts`) are responsible for turning that into an actionable error rather than
+ * silently proceeding without a `tenant_id` — the whole point of this story.
+ */
+export function platformTenantId(env: CliEnv): string | undefined {
+  const raw = env.RAKOMI_PLATFORM_TENANT_ID;
+  return raw && isValidTenantId(raw) ? raw : undefined;
+}
+
+/**
+ * Story rakomi-cli-cimd-disabled-fallback-error — the RFC 8414 / MCP Authorization discovery field the
+ * API's `GET /.well-known/oauth-authorization-server` advertises IFF the platform-wide CIMD kill-switch
+ * is on (advertise-IFF-honored: a disabled environment advertises it to NOBODY, and every environment
+ * that advertises it serves it). MUST match the equivalent server-side constant name — this package
+ * ships with ZERO runtime deps (see `isCimdClientId`'s own comment above), so importing the server's
+ * constant is not an option; kept in sync by convention, the same discipline `login.ts`'s `LOGIN_SCOPE`
+ * already uses for the CIMD document's `scope` field.
+ */
+const CLIENT_ID_METADATA_DOCUMENT_SUPPORTED_FIELD = 'client_id_metadata_document_supported';
+
+/**
+ * Preflight: does THIS API host honor CIMD sign-in right now? Returns `true`/`false` on a clean
+ * signal, `undefined` when the signal could not be read (network error, non-200, malformed body) —
+ * callers MUST treat `undefined` as "proceed as before", never as `false`. WHY a preflight rather than
+ * reading the eventual authorize/token error: the platform CIMD kill-switch rejects a CIMD `client_id`
+ * at the API's `/oauth/authorize` PRE-REDIRECT JSON boundary (RFC 6749 §4.1.2.1 — a step BEFORE
+ * `redirect_uri` is validated, so it MUST NOT redirect). The browser-rendered accounts app therefore
+ * cannot bounce back to this CLI's loopback listener on that rejection, and `rakomi login` would
+ * otherwise just sit at the loopback listener for the full 5-minute timeout with no actionable signal
+ * at all — this preflight turns that into an immediate, actionable message.
+ *
+ * This is deliberately TENANT-BLIND: `.well-known/oauth-authorization-server` is public,
+ * unauthenticated, platform-wide metadata (`noAuth()` on the server route) — it carries no
+ * tenant-existence signal, so reading it before login cannot become the cross-tenant oracle the
+ * server's uniform "Unknown client" reply is designed to avoid (`authorize-route.ts` R3-4).
+ *
+ * DISCLOSED RESIDUAL: a SEPARATE per-tenant opt-in column (`tenants.cimd_enabled`, distinct from this
+ * platform-wide flag) is not observable here — a caller whose own tenant has not opted in still sees
+ * `true` from this check (the platform honors CIMD generally) and still hits the same un-diagnosable
+ * loopback timeout. Detecting that would need either an authenticated probe (circular — the caller is
+ * trying to log in) or a distinguishable server-side error code, which the uniform-reject design
+ * deliberately withholds; a tracked follow-up widens it deliberately, never by default.
+ */
+export async function isCimdPlatformSupported(deps: HttpDeps, apiUrl: string): Promise<boolean | undefined> {
+  try {
+    const result = await request<Record<string, unknown>>(deps, {
+      method: 'GET',
+      url: `${apiUrl}/.well-known/oauth-authorization-server`,
+    });
+    if (result.status !== 200) return undefined;
+    return result.body[CLIENT_ID_METADATA_DOCUMENT_SUPPORTED_FIELD] === true;
+  } catch {
+    return undefined;
+  }
 }
