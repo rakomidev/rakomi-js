@@ -27,7 +27,9 @@ export class JwksCache {
   private readonly baseUrl: string;
 
   constructor(baseUrl: string, fullJwksUrl?: string) {
-    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    let end = baseUrl.length;
+    while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) end--;
+    this.baseUrl = baseUrl.slice(0, end);
     this.jwksUrl = fullJwksUrl ?? `${this.baseUrl}/.well-known/jwks.json`;
   }
 

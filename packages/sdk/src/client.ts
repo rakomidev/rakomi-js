@@ -4,6 +4,7 @@ import {
   type AnonymousSigninOptions,
   type AnonymousSigninResult,
 } from './anonymous.js';
+import { AuthzClient } from './authz.js';
 import {
   awaitCibaDecision as awaitCibaDecisionImpl,
   type CibaAwaitDecisionOptions,
@@ -81,6 +82,12 @@ export class RakomiClient {
   readonly link: LinkClient;
   /** end-user agent management (`users.me.agents.list/.revoke`). Requires end-user JWT per call. */
   readonly users: { readonly me: { readonly agents: AgentsClient } };
+  /**
+   * Experimental AuthZEN Authorization API 1.0 subset PDP-client (`authz.evaluate/.evaluateBatch/
+   * .searchActions/.discover`). Requires an end-user or M2M/agent JWT per call — NOT the SDK's own API
+   * key. See {@link AuthzClient}'s module doc comment and docs.rakomi.dev/guides/authzen-pdp before use.
+   */
+  readonly authz: AuthzClient;
 
   constructor(config: RakomiConfig) {
     if (!config.apiKey) {
@@ -128,6 +135,8 @@ export class RakomiClient {
     this.link = new LinkClient({ baseUrl: this.baseUrl });
 
     this.users = { me: { agents: new AgentsClient({ baseUrl: this.baseUrl }) } };
+
+    this.authz = new AuthzClient({ baseUrl: this.baseUrl });
   }
 
   async verifyToken<T extends TokenPayload = TokenPayload>(

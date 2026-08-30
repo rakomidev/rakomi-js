@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 
 import { CliError, EXIT } from './errors.js';
 import { describeError, errorCode, type HttpDeps, request } from './http.js';
+import type { StoredInstallKey } from './install-key.js';
 
 export type TenantStatus = 'pending_owner_acceptance' | 'active' | 'suspended';
 
@@ -36,6 +37,8 @@ export interface CreateTenantOptions {
    * ONLY for a third-party owner hand-off, which requires a partner client_credentials token. */
   readonly ownerEmail?: string;
   readonly idempotencyKey?: string;
+  /** Story rakomi-cli-dpop-token-binding — present IFF the active session is DPoP-bound. */
+  readonly dpop?: StoredInstallKey;
 }
 
 /** The exact, known 403 code the real endpoint returns for a caller who is neither
@@ -63,9 +66,10 @@ export async function createTenant(deps: HttpDeps, opts: CreateTenantOptions): P
   const result = await request<CreateTenantResult>(deps, {
     method: 'POST',
     url: `${opts.apiBaseUrl}/v1/tenants`,
-    headers: { authorization: `Bearer ${opts.accessToken}` },
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
     body: { name: opts.name, ...(opts.slug ? { slug: opts.slug } : {}), ...(opts.ownerEmail ? { owner_email: opts.ownerEmail } : {}) },
     idempotencyKey: opts.idempotencyKey ?? generateIdempotencyKey(),
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
@@ -101,14 +105,20 @@ export interface ListTenantsResult {
 
 export async function listTenants(
   deps: HttpDeps,
-  opts: { readonly apiBaseUrl: string; readonly accessToken: string; readonly parent?: 'me' },
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly accessToken: string;
+    readonly parent?: 'me';
+    readonly dpop?: StoredInstallKey;
+  },
 ): Promise<ListTenantsResult> {
   const url = new URL('/v1/tenants', opts.apiBaseUrl);
   if (opts.parent) url.searchParams.set('parent', opts.parent);
   const result = await request<ListTenantsResult>(deps, {
     method: 'GET',
     url: url.toString(),
-    headers: { authorization: `Bearer ${opts.accessToken}` },
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
@@ -121,6 +131,86 @@ export async function listTenants(
   }
   if (result.status !== 200) {
     throw new CliError(`Could not list tenants: ${describeError(result.body, result.status)}`, EXIT.FAIL);
+  }
+  return result.body;
+}
+
+/** Mirrors the server's `TenantMembershipResponse` exactly — `{id, slug, name, role}`, nothing
+ * about a tenant the caller is not a verified member of. */
+export interface TenantMembership {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly role: string;
+}
+
+export interface ListTenantMembershipsResult {
+  readonly data: readonly TenantMembership[];
+}
+
+function describeCallerUnverified(action: 'list your tenant memberships' | 'look up this tenant membership'): string {
+  return (
+    `Could not ${action}: your account e-mail is not verified (or is disabled). Verify your e-mail ` +
+    'and sign in again.'
+  );
+}
+
+export async function listTenantMemberships(
+  deps: HttpDeps,
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly accessToken: string;
+    readonly dpop?: StoredInstallKey;
+  },
+): Promise<ListTenantMembershipsResult> {
+  const result = await request<ListTenantMembershipsResult>(deps, {
+    method: 'GET',
+    url: `${opts.apiBaseUrl}/v1/tenants/memberships`,
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
+  });
+  if (result.status === 401) {
+    throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
+  }
+  if (result.status === 403) {
+    throw new CliError(describeCallerUnverified('list your tenant memberships'), EXIT.FAIL);
+  }
+  if (result.status !== 200) {
+    throw new CliError(`Could not list your tenant memberships: ${describeError(result.body, result.status)}`, EXIT.FAIL);
+  }
+  return result.body;
+}
+
+/** `rakomi use <slug>` — resolves ONE membership by slug through a single verified round trip
+ * (`tenants.slug` is globally unique, so there is never an "ambiguous slug" case to design for).
+ * Returns `null` on 404 — the caller (`runUse`) turns that into a `UsageError` naming only the
+ * slug the user already typed, never confirming whether the slug exists at all. */
+export async function getTenantMembershipBySlug(
+  deps: HttpDeps,
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly accessToken: string;
+    readonly slug: string;
+    readonly dpop?: StoredInstallKey;
+  },
+): Promise<TenantMembership | null> {
+  const result = await request<TenantMembership>(deps, {
+    method: 'GET',
+    url: `${opts.apiBaseUrl}/v1/tenants/memberships/${encodeURIComponent(opts.slug)}`,
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
+  });
+  if (result.status === 401) {
+    throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
+  }
+  if (result.status === 404) {
+    return null;
+  }
+  if (result.status === 403) {
+    throw new CliError(describeCallerUnverified('look up this tenant membership'), EXIT.FAIL);
+  }
+  if (result.status !== 200) {
+    throw new CliError(`Could not look up tenant "${opts.slug}": ${describeError(result.body, result.status)}`, EXIT.FAIL);
   }
   return result.body;
 }
