@@ -21,8 +21,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --rakomi-color-primary: #3b82f6;
-    --rakomi-color-primary-hover: #2563eb;
+    
+    --rakomi-color-primary: #2563eb;
+    --rakomi-color-primary-hover: #1d4ed8;
     --rakomi-color-bg: #1f2937;
     --rakomi-color-bg-secondary: #111827;
     --rakomi-color-text: #f9fafb;
@@ -33,8 +34,9 @@
 
 [data-rakomi-theme="dark"] {
   color-scheme: dark;
-  --rakomi-color-primary: #3b82f6;
-  --rakomi-color-primary-hover: #2563eb;
+  
+  --rakomi-color-primary: #2563eb;
+  --rakomi-color-primary-hover: #1d4ed8;
   --rakomi-color-bg: #1f2937;
   --rakomi-color-bg-secondary: #111827;
   --rakomi-color-text: #f9fafb;

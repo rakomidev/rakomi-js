@@ -9,7 +9,17 @@ npx rakomi login
 ```
 
 Signs you in with your browser (loopback OAuth + PKCE). Add `--no-browser` on a headless/SSH
-session to get a short code to enter on another device instead.
+session to get a short code to enter on another device instead. If you don't already have a
+`accounts.rakomi.com` session or an invitation link, pass `--tenant-id <uuid>` (or set
+`RAKOMI_PLATFORM_TENANT_ID`) so sign-in knows which tenant to authenticate against — ask your
+Rakomi administrator for the right value.
+
+`rakomi whoami` shows the tenant you signed in against ("Home tenant") and the tenant your other
+commands should treat as active ("Active tenant"). `rakomi tenants memberships` lists every tenant
+your account is a verified member of, with your role in each. `rakomi use <slug>` looks one up from
+that list and remembers it — a slug you don't belong to fails with a plain "not found" rather than
+confirming the tenant exists; `rakomi use <tenant-id>` (a full id) remembers it directly without a
+lookup, and `--tenant <tenant-id>` overrides it for one command.
 
 ## Connect an AI agent
 
@@ -45,10 +55,12 @@ token), sends a real invitation e-mail, and is refused under `--ci` — see
 | --- | --- |
 | `login` | sign in (browser by default; `--no-browser` for a device code) |
 | `logout` | clear the local session |
-| `whoami` | show the signed-in account |
+| `whoami` | show the signed-in account, home tenant, and active tenant |
+| `use <tenant-id-or-slug>` | remember a tenant locally for `whoami`/future commands; a slug is server-verified |
 | `connect` | connect Claude Code / Claude Desktop to your tenant (read access) |
 | `tenants create <name>` | create a tenant (`--owner me\|<email>`, `--slug <slug>`) |
 | `tenants list` | list tenants you provisioned |
+| `tenants memberships` | list tenants you're a verified member of |
 
 ## Global options
 
@@ -59,6 +71,8 @@ token), sends a real invitation e-mail, and is refused under `--ci` — see
 | `--dry-run` | print what would happen, make no writes or mutating calls |
 | `--no-browser` | use the device-code flow instead of opening a browser |
 | `--no-keychain` | store the session in a `0600` file instead of the OS keychain |
+| `--tenant-id <uuid>` | (`login`) the tenant to sign in against, if `RAKOMI_PLATFORM_TENANT_ID` isn't set for you |
+| `--tenant <tenant-id>` | override the active tenant for a single command (`whoami` today) |
 | `--client <name>` | `claude-code` or `claude-desktop` — required when more than one applies |
 | `--undo` | restore the `.mcp.json` `connect` last backed up |
 | `--cimd-url <url>` | (`connect`) the connecting client's own CIMD document URL — confirms/re-checks the connection |

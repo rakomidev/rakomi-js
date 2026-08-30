@@ -123,6 +123,31 @@ export {
   AgentsRateLimitedError,
   AgentsUnauthorizedError,
 } from './agents.js';
+export type {
+  AuthzBatchEvaluationItem,
+  AuthzBatchEvaluationResult,
+  AuthzClientContext,
+  AuthzDiscoveryDocument,
+  AuthzenAction,
+  AuthzenResource,
+  AuthzenSubject,
+  AuthzEvaluateBatchOptions,
+  AuthzEvaluateOptions,
+  AuthzEvaluationResult,
+  AuthzSearchActionResult,
+  AuthzSearchActionsOptions,
+  AuthzSearchPage,
+} from './authz.js';
+export {
+  AuthzClient,
+  AuthzDisabledError,
+  AuthzForbiddenError,
+  AuthzInvalidRequestError,
+  AuthzNetworkError,
+  AuthzPayloadTooLargeError,
+  AuthzRateLimitedError,
+  AuthzUnauthorizedError,
+} from './authz.js';
 export {
   buildAuthorizeUrl,
   exchangeCode,

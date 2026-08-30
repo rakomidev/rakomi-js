@@ -2,6 +2,7 @@
 
 import { CliError, EXIT } from './errors.js';
 import { describeError, type HttpDeps, request } from './http.js';
+import type { StoredInstallKey } from './install-key.js';
 
 export interface UserInfo {
   readonly sub: string;
@@ -13,12 +14,18 @@ export interface UserInfo {
 
 export async function fetchUserInfo(
   deps: HttpDeps,
-  opts: { readonly apiBaseUrl: string; readonly accessToken: string },
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly accessToken: string;
+    /** Story rakomi-cli-dpop-token-binding — present IFF the active session is DPoP-bound. */
+    readonly dpop?: StoredInstallKey;
+  },
 ): Promise<UserInfo> {
   const result = await request<UserInfo & { error?: string }>(deps, {
     method: 'GET',
     url: `${opts.apiBaseUrl}/oauth/userinfo`,
-    headers: { authorization: `Bearer ${opts.accessToken}` },
+    headers: opts.dpop ? undefined : { authorization: `Bearer ${opts.accessToken}` },
+    dpop: opts.dpop ? { key: opts.dpop, accessToken: opts.accessToken } : undefined,
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);

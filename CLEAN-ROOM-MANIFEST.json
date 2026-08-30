@@ -29,14 +29,14 @@
   "packages": [
     {
       "name": "@rakomi/node",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "tagPrefix": "sdk",
       "emittedSymbols": [],
-      "fileCount": 30
+      "fileCount": 31
     },
     {
       "name": "@rakomi/react",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -93,10 +93,10 @@
     },
     {
       "name": "rakomi",
-      "version": "0.1.1",
+      "version": "0.3.0",
       "tagPrefix": "cli",
       "emittedSymbols": [],
-      "fileCount": 21
+      "fileCount": 30
     }
   ],
   "files": [
@@ -105,36 +105,52 @@
       "sha256": "sha256:c303faac8747687ac33391e1a8ddfe7225ae628aaae9aa50c6d62734f08e7357"
     },
     {
+      "path": "packages/cli/src/ci-oidc-token.ts",
+      "sha256": "sha256:31ede9d773002b08cbde2fd6b53715cbfdd967ba7fa71fbf91eed7c97545ee2b"
+    },
+    {
       "path": "packages/cli/src/clients.ts",
       "sha256": "sha256:d831943edc806da03883475846b8a3e09bba5befc4a61f9dbcc2f63c02d0bd29"
     },
     {
       "path": "packages/cli/src/commands/connect.ts",
-      "sha256": "sha256:ef9b0a66a0ef116bf6fa2841f9523d28743240b1031fb9be535407305321bb92"
+      "sha256": "sha256:aaabcc7edb3b8b2e64ed74ca662a4f74f1c559b433c3d4f8f86224d24fc5f256"
     },
     {
       "path": "packages/cli/src/commands/login.ts",
-      "sha256": "sha256:d0c166674a9d3935e3e7d1244e2785b69a5f565cf56e71bde21ed81f11f3a54d"
+      "sha256": "sha256:0d0bad8cc75d70c9bf7fb3db0911e7c2f49722502e0a811fd543f226bd96929e"
     },
     {
       "path": "packages/cli/src/commands/logout.ts",
       "sha256": "sha256:979ddb02833260821d2eb3d209334b8401d129545a85aa780f1673677f9d9761"
     },
     {
+      "path": "packages/cli/src/commands/mcp.ts",
+      "sha256": "sha256:f37d024345914946a0fa0dcc11f15f6e4dd82c8b2eea334ab74b4e85d49d036f"
+    },
+    {
       "path": "packages/cli/src/commands/tenants.ts",
-      "sha256": "sha256:11e4bf198b62bffd3f85f97ed21c22f0c5c1c3b1ab6b780f2215e3ce657e3436"
+      "sha256": "sha256:6b0f0c3c13223077758c9aa5e8c739cb7c3e81e3753c1bbb0c0d30303627977c"
+    },
+    {
+      "path": "packages/cli/src/commands/use.ts",
+      "sha256": "sha256:4fdd22eecf8aa88d5abe82e691b0952a3287d40f175e0f30858626c187acb44c"
     },
     {
       "path": "packages/cli/src/commands/whoami.ts",
-      "sha256": "sha256:524e6d44b728537344e32707dac3957ec97b1d6074d1a640a6a018f7d49ddf31"
+      "sha256": "sha256:aa259e862e72fe7352a63e7f613e37b1f2a8c32ba47a28c5e2cf63c2b8fb6a59"
     },
     {
       "path": "packages/cli/src/connect-client.ts",
-      "sha256": "sha256:822eb2490e3e87488a6ca383a6c4518873f754339a4ea213728aa753e0b69cac"
+      "sha256": "sha256:f4fa02d038462a34fe1f1163c4eeb89fb1fa479fe140805d110d234e3d1ab1c4"
+    },
+    {
+      "path": "packages/cli/src/dpop.ts",
+      "sha256": "sha256:2dbff0f173bc169fdc6397ea71fd4523cc18bc293d0f06d95d0746b21bd95bd8"
     },
     {
       "path": "packages/cli/src/env.ts",
-      "sha256": "sha256:a5d7e99eb217fb5a811b7d611be7cc82ac00005585b4b3331ea73c897aa8e40c"
+      "sha256": "sha256:f71aa2a395d7cf493828df3f3a4a4e16c427222a17d4587a1c2fa1bab293314a"
     },
     {
       "path": "packages/cli/src/errors.ts",
@@ -142,11 +158,19 @@
     },
     {
       "path": "packages/cli/src/http.ts",
-      "sha256": "sha256:b14b0f64905698d19872e1cd6bd54e56da4d36a796d1efe2c90772a7fcf91903"
+      "sha256": "sha256:35e21ad4a49b2f269f6f86509d9b9a7ac46d2499508bf704783c1a660906bd15"
     },
     {
       "path": "packages/cli/src/index.ts",
-      "sha256": "sha256:a33dd00050e09af214037172919926a6cea1110a54d4d7c25b3717473bd5430e"
+      "sha256": "sha256:292f23cfa088b25100590f5746c064b57a003f2b0cec5fabdb7fffb2e6f56a89"
+    },
+    {
+      "path": "packages/cli/src/install-key.ts",
+      "sha256": "sha256:a08b81ad911770859791abd4dfe29691b5012ff1949a0c54a5f6700ba9d0250c"
+    },
+    {
+      "path": "packages/cli/src/lease-client.ts",
+      "sha256": "sha256:6281f2d68abadace11fb50ccdd0568e932a38373b2d8387efac4a068e3ba9c66"
     },
     {
       "path": "packages/cli/src/loopback-server.ts",
@@ -157,32 +181,44 @@
       "sha256": "sha256:2e4d87d01fcb9c843ef8e9360784d313bb38e92f4a2eab67f516f681737c849b"
     },
     {
+      "path": "packages/cli/src/mcp-tools-ci.ts",
+      "sha256": "sha256:9b01973191ade20389f54f3402c14990a9d3e71a94ed91e7e8166925bd2779ca"
+    },
+    {
       "path": "packages/cli/src/oauth-authcode.ts",
-      "sha256": "sha256:d9350d55661d3f347243e4307decac9f8a889844be6a94d33bfd783c82d1d3b4"
+      "sha256": "sha256:af2d6b33e19a55ccf519f86007b769fe8b03fa601d93a096c5d46f69e0ab57a8"
     },
     {
       "path": "packages/cli/src/oauth-device.ts",
       "sha256": "sha256:57915f1b1147cb937d1be185df2e0c526a3ec7a86c95bb2e4d21ec5647556728"
     },
     {
+      "path": "packages/cli/src/oidc-federation-login.ts",
+      "sha256": "sha256:3afcb4fc46248310919c3b98b4b0b085ebda68733279fb5662259f8273c71c0a"
+    },
+    {
       "path": "packages/cli/src/pkce.ts",
-      "sha256": "sha256:eac6d253f2d7807aa4c3f3ef16d105b054ec8cf78d4ce1656c59cfb53c994461"
+      "sha256": "sha256:7ccdbd4613960981cc5832318acc59a8f664e6d22fb944dfeecc773fb0a17486"
     },
     {
       "path": "packages/cli/src/session.ts",
-      "sha256": "sha256:aa06ea3ea979fa2c1107f8a2b2c2f37d7e9e18d3a774f760e66067220870955d"
+      "sha256": "sha256:76b4214e0110148168689c8c4cfdb115b1ec14cdbb1b703a39deeb46d3317e36"
+    },
+    {
+      "path": "packages/cli/src/tenant-config.ts",
+      "sha256": "sha256:6d0d411e1ec821ed101f4c926a51d4b2f693f8607528c60136dd97a8a11d05f4"
     },
     {
       "path": "packages/cli/src/tenants-client.ts",
-      "sha256": "sha256:a32ab0e8e373c960b477680768fec4f5c333a43037c59295e77c25cbe6d70941"
+      "sha256": "sha256:0045bfe922ab571df8186cf99dd4c5fa81404699888f4ac0c707406b2f487d02"
     },
     {
       "path": "packages/cli/src/usage.ts",
-      "sha256": "sha256:28339d45b923d80375b81c852806e2e9735975cc68d3b4566800bfb483be7b75"
+      "sha256": "sha256:16c4b99f274a20074b830efe8fd8af67ab0ed248540d8a33a0eaa6ee888203f1"
     },
     {
       "path": "packages/cli/src/userinfo-client.ts",
-      "sha256": "sha256:78832b1f8720cae6daded6b61e037bd83b1fa01b7152897d269d8504d161727e"
+      "sha256": "sha256:9ec3d40ca3d01158c81a3a5809f4acd22be662501ad5b0d070d72f92aecc11b8"
     },
     {
       "path": "packages/create-rakomi-app/src/env.ts",
@@ -710,7 +746,7 @@
     },
     {
       "path": "packages/react/src/styles/base.css",
-      "sha256": "sha256:6deef24d91ecbd335b506a97c3c36469e9cceff70439185d58c70fe878e5e614"
+      "sha256": "sha256:deb84efbc9f54ea8fb8d1de8e9b862cc919a90cba6b661c090fb1cb12c621cb6"
     },
     {
       "path": "packages/react/src/tab-sync.ts",
@@ -873,6 +909,10 @@
       "sha256": "sha256:9ac3d0e0cc99113e3cf9628465950443c617c8d677dbb1435994c6725c47ac07"
     },
     {
+      "path": "packages/sdk/src/authz.ts",
+      "sha256": "sha256:410f52a2416cbf8d802b925e50555513400dbbf367c137de713b88050db9f5bd"
+    },
+    {
       "path": "packages/sdk/src/ciba.ts",
       "sha256": "sha256:82aad6a3c47b8954cee009175210cee5697c16fca5b32fbbde5f459db7c167fe"
     },
@@ -882,7 +922,7 @@
     },
     {
       "path": "packages/sdk/src/client.ts",
-      "sha256": "sha256:e63e38a5f327eb3e5239e0c040d50831642668358e2f2bb3a619151bcb419899"
+      "sha256": "sha256:14bcc3cfdd793c2efefd73cd755401e4c4c0400fd1a05da29def99427a1e1536"
     },
     {
       "path": "packages/sdk/src/credentials.ts",
@@ -930,7 +970,7 @@
     },
     {
       "path": "packages/sdk/src/index.ts",
-      "sha256": "sha256:3a58b10841cade2a6525452b7a5d87360166818c4f0c10a7579f442935927cc7"
+      "sha256": "sha256:112a016bd77f86284bca18141043eb64564182a8a5a265505d27c33e05df5f25"
     },
     {
       "path": "packages/sdk/src/internal/canonical-url.ts",
@@ -942,7 +982,7 @@
     },
     {
       "path": "packages/sdk/src/jwks-cache.ts",
-      "sha256": "sha256:982565639e31591bf7c7652e8fcdb758f85d8b4553b13cc7a663e697d00af35f"
+      "sha256": "sha256:74360feabbb778ebc130ff7175fd75929a86187a27c32b1f3db4697b8a4b1cb4"
     },
     {
       "path": "packages/sdk/src/link.ts",

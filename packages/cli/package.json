@@ -1,6 +1,6 @@
 {
   "name": "rakomi",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "description": "The Rakomi CLI — sign in, connect an AI agent (Claude Code, Claude Desktop) to your tenant, and provision tenants. EU-native auth-as-a-service.",
   "keywords": [
     "rakomi",
