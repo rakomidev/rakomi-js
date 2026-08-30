@@ -37,6 +37,9 @@ permissions:
 env:
   WINDOW_HOURS: "6"
   STALE_LOOKBACK_DAYS: "30"
+  # No checkout in this job — gh cannot infer the repo from git (measured 2026-08-30, first
+  # scheduled run: "failed to determine base repo: … not a git repository"). GH_REPO pins it.
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   dispatch:
