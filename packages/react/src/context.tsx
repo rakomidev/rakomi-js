@@ -336,7 +336,7 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
           const ok: string[] = [];
 
           try {
-            const res = await sdkFetch(`${baseUrl}/health`, {
+            const res = await sdkFetch(`${baseUrl}/healthz`, {
               method: 'HEAD',
               signal: AbortSignal.timeout(5000),
             });

@@ -1,6 +1,6 @@
 {
   "name": "create-rakomi-app",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Scaffold a Rakomi quickstart app. EU-native auth-as-a-service. npx create-rakomi-app --template <slug>",
   "keywords": [
     "rakomi",

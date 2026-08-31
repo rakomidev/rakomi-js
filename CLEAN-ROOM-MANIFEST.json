@@ -36,7 +36,7 @@
     },
     {
       "name": "@rakomi/react",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -86,7 +86,7 @@
     },
     {
       "name": "create-rakomi-app",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "tagPrefix": "create-rakomi-app",
       "emittedSymbols": [],
       "fileCount": 8
@@ -134,11 +134,11 @@
     },
     {
       "path": "packages/cli/src/commands/use.ts",
-      "sha256": "sha256:4fdd22eecf8aa88d5abe82e691b0952a3287d40f175e0f30858626c187acb44c"
+      "sha256": "sha256:aaaa6ec4fb37e7e25c7e558e362d085e9fe12c7342506ccfc74d6be429d67576"
     },
     {
       "path": "packages/cli/src/commands/whoami.ts",
-      "sha256": "sha256:aa259e862e72fe7352a63e7f613e37b1f2a8c32ba47a28c5e2cf63c2b8fb6a59"
+      "sha256": "sha256:d002cb0194b9057c9b0cb8c4ab86831342a790225082896a7154b48ca520c457"
     },
     {
       "path": "packages/cli/src/connect-client.ts",
@@ -206,7 +206,7 @@
     },
     {
       "path": "packages/cli/src/tenant-config.ts",
-      "sha256": "sha256:6d0d411e1ec821ed101f4c926a51d4b2f693f8607528c60136dd97a8a11d05f4"
+      "sha256": "sha256:acd09c937f2d6fd1625df9525e1191652f94c5bc3e3ddc5970ad3a19b143dce3"
     },
     {
       "path": "packages/cli/src/tenants-client.ts",
@@ -230,7 +230,7 @@
     },
     {
       "path": "packages/create-rakomi-app/src/index.ts",
-      "sha256": "sha256:43a66d291683f91a3c8e50f48127520f264f8bbfdbd7ee89731e8916dc937fff"
+      "sha256": "sha256:a2da5f632bea12a13de49e1721648185c8b2a169d54ea0fdf83b49d0f8a6cbbb"
     },
     {
       "path": "packages/create-rakomi-app/src/prompt.ts",
@@ -474,7 +474,7 @@
     },
     {
       "path": "packages/react/src/context.tsx",
-      "sha256": "sha256:c83e35ef0d1741880fdb77a17de9ec6efdbb28ad66798272b4e76bfabb2e52f5"
+      "sha256": "sha256:876ebb66fc8fc0870931c8d1646639d7d91f513861a6ef826fcffa906d66859a"
     },
     {
       "path": "packages/react/src/event-log.ts",
@@ -754,7 +754,7 @@
     },
     {
       "path": "packages/react/src/token-manager.ts",
-      "sha256": "sha256:d0571083f64c8771f8455107eae8a918f50661e2ffdecf236babee6be085acee"
+      "sha256": "sha256:2c5fc3cac008854fb3d3e07cbb809e32ee79f4d33653c32b7edfc5980ca08786"
     },
     {
       "path": "packages/react/src/types.ts",
