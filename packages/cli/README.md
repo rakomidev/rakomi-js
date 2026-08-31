@@ -15,7 +15,8 @@ session to get a short code to enter on another device instead. If you don't alr
 Rakomi administrator for the right value.
 
 `rakomi whoami` shows the tenant you signed in against ("Home tenant") and the tenant your other
-commands should treat as active ("Active tenant"). `rakomi tenants memberships` lists every tenant
+commands should treat as active ("Active tenant") — including whether that active selection was
+confirmed by the server or only remembered locally. `rakomi tenants memberships` lists every tenant
 your account is a verified member of, with your role in each. `rakomi use <slug>` looks one up from
 that list and remembers it — a slug you don't belong to fails with a plain "not found" rather than
 confirming the tenant exists; `rakomi use <tenant-id>` (a full id) remembers it directly without a

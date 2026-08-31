@@ -18,6 +18,26 @@ export interface WhoamiDeps extends HttpDeps {
   readonly explicitTenant?: string;
 }
 
+/**
+ * How the active tenant got selected, said plainly. The three states are genuinely different and a
+ * user acting on the wrong one is the reason this is not a single string:
+ *   • verified — `rakomi use <slug>`: the server confirmed the membership before it was stored.
+ *   • remembered — `rakomi use <tenant-id>`: a bare UUID, which cannot be server-verified.
+ *   • override — `--tenant <id>`: this invocation only, nothing stored, nothing confirmed.
+ */
+function describeActiveTenant(
+  deps: WhoamiDeps,
+  activeTenantId: string | undefined,
+): string {
+  if (!activeTenantId) return 'none set (run `rakomi use <tenant-slug>`)';
+  if (deps.explicitTenant) return `${activeTenantId} (--tenant override for this command only — not verified)`;
+  const active = deps.tenantConfig.readActive?.() ?? null;
+  if (active && active.tenantId === activeTenantId && active.verifiedViaSlug) {
+    return `${activeTenantId} (verified member of "${active.verifiedViaSlug}")`;
+  }
+  return `${activeTenantId} (remembered locally — membership not verified; re-run \`rakomi use <tenant-slug>\` to verify)`;
+}
+
 export async function runWhoami(deps: WhoamiDeps): Promise<void> {
   const session = deps.session.read();
   if (!session) throw new NotLoggedInError();
@@ -45,7 +65,7 @@ export async function runWhoami(deps: WhoamiDeps): Promise<void> {
   if (info.org_id) lines.push(`Organization: ${info.org_id}${info.org_role ? ` (${info.org_role})` : ''}`);
   lines.push(`API: ${session.api_base_url}`);
   lines.push(`Home tenant: ${session.home_tenant_id ?? 'unknown (this session did not authenticate via the CIMD-default flow)'}`);
-  lines.push(`Active tenant: ${activeTenantId ?? 'none set (run `rakomi use <tenant-id>`)'}`);
+  lines.push(`Active tenant: ${describeActiveTenant(deps, activeTenantId)}`);
   lines.push(`Session stored in: ${deps.session.describePath()}`);
   lines.push(`Token type: ${session.token_type}`);
   deps.stdout.write(lines.join('\n') + '\n');

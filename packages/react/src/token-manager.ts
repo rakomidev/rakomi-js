@@ -390,6 +390,21 @@ export class TokenManager {
    * Broadcasts SIGNED_OUT signal to other tabs.
    */
   async clear(error: AuthError | null = null): Promise<void> {
+    await this.clearInternal(error, true);
+  }
+
+  /**
+   * Shared erasure path for clear(). `broadcast` is false ONLY when this call is itself
+   * reacting to a SIGNED_OUT signal received FROM another instance on the same tab-sync
+   * channel (see setupTabSync() below) — re-broadcasting there would echo back to the
+   * sender, which would clear() again and re-broadcast again: an unbounded ping-pong
+   * between co-resident instances (multiple providers on one page/tab share one channel).
+   * Also skips the broadcast when already signed out, so a second clear() call (or a late
+   * storage-event echo of the fallback sync path) is a no-op signal-wise.
+   */
+  private async clearInternal(error: AuthError | null, broadcast: boolean): Promise<void> {
+    const wasSignedOut = this.accessToken === null && this.cachedSnapshot.isSignedIn !== true;
+
     this.accessToken = null;
     this.expiresAt = null;
     this.refreshPromise = null;
@@ -419,7 +434,9 @@ export class TokenManager {
 
     this.eventLog.clear();
 
-    this.tabSync.broadcast({ type: 'SIGNED_OUT' });
+    if (broadcast && !wasSignedOut) {
+      this.tabSync.broadcast({ type: 'SIGNED_OUT' });
+    }
 
     this.cachedSnapshot = this.makeSignedOutSnapshot(error);
     this.notifySubscribers();
@@ -753,7 +770,7 @@ export class TokenManager {
           severity: 'info',
           metadata: { event: 'SIGNED_OUT' },
         });
-        void this.clear();
+        void this.clearInternal(null, false);
       }
     });
   }

@@ -42,6 +42,6 @@ export async function runUse(deps: UseDeps, args: UseArgs): Promise<void> {
     );
   }
 
-  deps.tenantConfig.write(membership.id);
+  deps.tenantConfig.write(membership.id, membership.slug);
   deps.stdout.write(`Active tenant set to ${membership.slug} (${membership.id}) — role: ${membership.role}.\n`);
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MIT
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { appendFile, readFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import process from 'node:process';
@@ -186,6 +186,22 @@ async function main(): Promise<void> {
   });
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+/**
+ * Whether this module is the process entry point. npm/npx invoke the bin through a symlink in
+ * `node_modules/.bin`, and `pathToFileURL` does not resolve symlinks — comparing against the raw
+ * `argv[1]` is false under npx, so the CLI exits 0 having done nothing. Resolve the real path
+ * first; fall back to the raw path when it cannot be resolved.
+ */
+function isProcessEntry(argv1: string | undefined): boolean {
+  if (!argv1) return false;
+  let real = argv1;
+  try {
+    real = realpathSync(argv1);
+  } catch {
+  }
+  return import.meta.url === pathToFileURL(real).href || import.meta.url === pathToFileURL(argv1).href;
+}
+
+if (isProcessEntry(process.argv[1])) {
   void main();
 }
