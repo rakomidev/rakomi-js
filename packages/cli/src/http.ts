@@ -7,9 +7,36 @@ export type FetchLike = (url: string, init: RequestInit & { signal: AbortSignal 
 
 export const DEFAULT_TIMEOUT_MS = 15_000;
 
+/**
+ * Story cli-silent-token-refresh-and-whoami-honesty — the credentials a caller-supplied
+ * `onUnauthorized()` hands back after a successful silent refresh. `accessToken` always changes on
+ * a refresh; the DPoP key itself never rotates (the server's `cnf.jkt` binding stays on the SAME
+ * install key across a refresh — only the token rotates), so there is no key field here — a
+ * DPoP-bound retry simply keeps `req.dpop.key` and swaps `req.dpop.accessToken`.
+ */
+export interface RefreshedCredentials {
+  readonly accessToken: string;
+}
+
 export interface HttpDeps {
   readonly fetchImpl: FetchLike;
   readonly timeoutMs?: number;
+  /**
+   * Story cli-silent-token-refresh-and-whoami-honesty — the ONE chokepoint for silent token
+   * refresh, wired ONCE at the CLI's composition root (`index.ts`'s `httpDeps`) rather than
+   * threaded through every client (`tenants-client.ts`, `userinfo-client.ts`, `connect-client.ts`,
+   * `billing-client.ts`, `lease-client.ts`, …) individually — see `token-refresh.ts`'s module doc
+   * for the full rationale. `request()` below calls this AT MOST ONCE per logical call, and ONLY
+   * when the response was a genuine 401 on an AUTHENTICATED request (a `Bearer`/`DPoP` credential
+   * was actually sent — see `isAuthenticatedRequest`) — never on the DPoP §8 nonce-challenge 401,
+   * which already has its own single retry above, and never on a request with no credential at all
+   * (the token endpoint itself, an anonymous probe). Returns `undefined` when no refresh is
+   * possible or the refresh itself failed (no `refresh_token` on the session, `invalid_grant`, a
+   * network error) — `request()` then returns the ORIGINAL 401 result unchanged, and every
+   * existing per-client "Your session has expired" handling fires exactly as it did before this
+   * story. Never throws.
+   */
+  readonly onUnauthorized?: () => Promise<RefreshedCredentials | undefined>;
 }
 
 /**
@@ -54,7 +81,7 @@ export interface HttpResult<T> {
  * one helper works for every endpoint this CLI calls — `/oauth/*` (login, device grant, userinfo) and
  * `/v1/*` (tenants) alike. */
 export interface ErrorEnvelope {
-  readonly error: string | { code: string; message: string; [k: string]: unknown };
+  readonly error: string | { code: string; message: string; details?: Record<string, unknown>; [k: string]: unknown };
   readonly error_description?: string;
 }
 
@@ -69,6 +96,9 @@ export interface ProblemDetailsBody {
   readonly code?: string;
   readonly message_localized?: string;
   readonly suggested_fix?: string;
+  /** Extension member (RFC 9457 §3.2) — carries e.g. `upgrade_url` on a `plan/feature_unavailable`
+   * 403 (`entitlement-guard.ts`'s `AppError(..., { upgrade_url })`). See `upsellFromProblem`. */
+  readonly details?: Record<string, unknown>;
 }
 
 function isErrorEnvelope(v: unknown): v is ErrorEnvelope {
@@ -79,9 +109,50 @@ function isProblemDetails(v: unknown): v is ProblemDetailsBody {
   return typeof v === 'object' && v !== null && !('error' in v) && ('code' in v || 'detail' in v || 'title' in v);
 }
 
+/** The `details` object from either error envelope shape, wherever it lives (`error.details` on the
+ * RFC 6749 §5.2 envelope, `details` at the top level of an RFC 9457 problem) — or `undefined` if
+ * the body carries none. Shared by `errorCode`'s siblings and `upsellFromProblem` below, never
+ * re-derived per call-site. */
+function errorDetails(body: unknown): Record<string, unknown> | undefined {
+  if (isErrorEnvelope(body) && typeof body.error === 'object') {
+    const d = body.error.details;
+    return d && typeof d === 'object' ? d : undefined;
+  }
+  if (isProblemDetails(body)) {
+    return body.details && typeof body.details === 'object' ? body.details : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Story funnel-cli-upgrade-command-and-403-upsell — the ONE place that recognizes a plan-upsell-
+ * eligible 403: status 403 AND the error's `details.upgrade_url` is a non-empty string. Deliberately
+ * NOT keyed to a specific error `code` (`plan/feature_unavailable`, `organization/plan_limit_reached`,
+ * …) — every upsell-eligible throw site across the API sets `details.upgrade_url` from the SAME
+ * `config.PLAN_UPGRADE_URL`, and a code-keyed allow-list here would need updating every time a new
+ * call-site adopts the pattern server-side. A 403 WITHOUT `upgrade_url` (e.g. `requireEntitlementLimit`'s
+ * `{resource}/plan_limit_reached`, which sets `{ limit: 0 }` — no URL) never matches; neither does a
+ * plain 404 or any other status. Never fabricates a "which plan unlocks this" detail — the API does
+ * not return one today, so none is shown.
+ */
+export function upsellFromProblem(body: unknown, status: number): { readonly upgradeUrl: string } | undefined {
+  if (status !== 403) return undefined;
+  const url = errorDetails(body)?.upgrade_url;
+  return typeof url === 'string' && url.length > 0 ? { upgradeUrl: url } : undefined;
+}
+
 /** Human-readable message from any error envelope this CLI's endpoints can return, never a stack
- * trace or internal detail. */
+ * trace or internal detail. When the error is plan-upsell-eligible (see `upsellFromProblem`), the
+ * upgrade hint is appended here — the ONE call site every command's error message already routes
+ * through, so no command has to duplicate the upsell rendering itself. */
 export function describeError(body: unknown, status: number): string {
+  const base = describeErrorBase(body, status);
+  const upsell = upsellFromProblem(body, status);
+  if (!upsell) return base;
+  return `${base}\nUpgrade: ${upsell.upgradeUrl}\nRun \`rakomi upgrade\` to open this in your browser.`;
+}
+
+function describeErrorBase(body: unknown, status: number): string {
   if (isErrorEnvelope(body)) {
     if (typeof body.error === 'string') return body.error_description || body.error;
     if (typeof body.error === 'object') return body.error.message || body.error.code;
@@ -169,19 +240,9 @@ function isDpopNonceChallenge(result: HttpResult<unknown>): string | undefined {
   return nonce && nonce.length > 0 ? nonce : undefined;
 }
 
-/**
- * Perform one HTTP call with a hard timeout, returning the parsed JSON body regardless of status
- * (the caller decides what a given status means). Throws `CliError` ONLY for a transport-level
- * failure (network error, timeout, non-JSON body) — never for a 4xx/5xx, which is a normal,
- * typed `HttpResult`.
- *
- * Story rakomi-cli-dpop-token-binding — when `req.dpop` is present, a server RFC 9449 §8 nonce
- * challenge (`use_dpop_nonce`) is retried EXACTLY ONCE with a fresh proof carrying the challenge nonce.
- * A SECOND consecutive challenge (a persistently-demanded nonce) is not retried again — it surfaces as
- * a `CliError`, never an infinite loop. Absent `req.dpop`, this function is byte-identical to before
- * this story (no extra round trip, no new failure mode).
- */
-export async function request<T = unknown>(deps: HttpDeps, req: HttpRequest): Promise<HttpResult<T>> {
+/** One attempt through the whole DPoP-nonce-retry machinery — extracted so `request()` below can
+ * run it a SECOND time, unchanged, after a silent token refresh (see `onUnauthorized`). */
+async function performWithNonceRetry<T>(deps: HttpDeps, req: HttpRequest): Promise<HttpResult<T>> {
   const first = await performOnce<T>(deps, req);
   if (!req.dpop) return first;
 
@@ -196,4 +257,55 @@ export async function request<T = unknown>(deps: HttpDeps, req: HttpRequest): Pr
     );
   }
   return retry;
+}
+
+/** `true` iff `req` actually carries a credential — a resource-server call, never the anonymous
+ * token-endpoint request itself (no `Authorization` header, `req.dpop.accessToken` absent). Only an
+ * authenticated request's 401 is eligible for the silent-refresh retry — refreshing in response to,
+ * say, a token-endpoint `invalid_grant` would be nonsensical. */
+function isAuthenticatedRequest(req: HttpRequest): boolean {
+  if (req.dpop?.accessToken !== undefined) return true;
+  return typeof req.headers?.authorization === 'string' && req.headers.authorization.length > 0;
+}
+
+/** Rebuilds `req` with `credentials.accessToken` swapped in, preserving every other field — the DPoP
+ * key itself (if any) is UNCHANGED (see `RefreshedCredentials`'s doc comment for why). */
+function withRefreshedCredentials(req: HttpRequest, credentials: RefreshedCredentials): HttpRequest {
+  if (req.dpop?.accessToken !== undefined) {
+    return { ...req, dpop: { ...req.dpop, accessToken: credentials.accessToken } };
+  }
+  return { ...req, headers: { ...req.headers, authorization: `Bearer ${credentials.accessToken}` } };
+}
+
+/**
+ * Perform one HTTP call with a hard timeout, returning the parsed JSON body regardless of status
+ * (the caller decides what a given status means). Throws `CliError` ONLY for a transport-level
+ * failure (network error, timeout, non-JSON body) — never for a 4xx/5xx, which is a normal,
+ * typed `HttpResult`.
+ *
+ * Story rakomi-cli-dpop-token-binding — when `req.dpop` is present, a server RFC 9449 §8 nonce
+ * challenge (`use_dpop_nonce`) is retried EXACTLY ONCE with a fresh proof carrying the challenge nonce.
+ * A SECOND consecutive challenge (a persistently-demanded nonce) is not retried again — it surfaces as
+ * a `CliError`, never an infinite loop. Absent `req.dpop`, this function is byte-identical to before
+ * this story (no extra round trip, no new failure mode).
+ *
+ * Story cli-silent-token-refresh-and-whoami-honesty — a genuine 401 on an AUTHENTICATED request
+ * (§ `isAuthenticatedRequest`) is retried EXACTLY ONCE via `deps.onUnauthorized()`, IFF that hook is
+ * present. This is the ONE chokepoint every client (`tenants-client.ts`, `userinfo-client.ts`,
+ * `connect-client.ts`, `billing-client.ts`, `lease-client.ts`, …) gets silent-refresh-then-retry
+ * through — none of them changed for this story; they still throw their own "Your session has
+ * expired" `CliError` on a 401 exactly as before, and now simply see that 401 less often, because it
+ * already got a silent retry with a rotated token first. When `onUnauthorized()` returns
+ * `undefined` (no refresh possible, or the refresh itself failed), the ORIGINAL 401 `HttpResult` is
+ * returned unchanged and every existing per-client 401 branch fires exactly as before this story.
+ */
+export async function request<T = unknown>(deps: HttpDeps, req: HttpRequest): Promise<HttpResult<T>> {
+  const first = await performWithNonceRetry<T>(deps, req);
+  if (first.status !== 401) return first;
+  if (!deps.onUnauthorized || !isAuthenticatedRequest(req)) return first;
+
+  const refreshed = await deps.onUnauthorized();
+  if (!refreshed) return first;
+
+  return performWithNonceRetry<T>(deps, withRefreshedCredentials(req, refreshed));
 }

@@ -199,6 +199,7 @@ async function runLoopbackLogin(
       scope: LOGIN_SCOPE,
       tenantId,
     });
+    deps.stdout.write('Signing you in to your Rakomi developer account (separate from your tenants\' end-user accounts)…\n');
     deps.stdout.write(`Opening your browser to sign in:\n  ${authorizeUrl}\n`);
     await deps.openBrowser(authorizeUrl);
 

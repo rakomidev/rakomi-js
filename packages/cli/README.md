@@ -2,6 +2,16 @@
 
 The [Rakomi](https://rakomi.com) CLI. EU-native authentication as a service.
 
+## Ask your agent
+
+Add the Rakomi MCP server to your coding agent, then ask it directly:
+
+```sh
+claude mcp add --transport http rakomi https://mcp.rakomi.com/mcp
+```
+
+"List the AI agents connected to my Rakomi tenant."
+
 ## Getting started
 
 ```sh
@@ -28,10 +38,12 @@ lookup, and `--tenant <tenant-id>` overrides it for one command.
 npx rakomi connect
 ```
 
-Detects Claude Code and writes the `.mcp.json` entry for you, or prints Claude Desktop's
-Custom-Connectors instructions when run with `--client claude-desktop`. Read access works
-immediately once the client finishes its own sign-in; write access is a separate step your
-tenant owner approves — see the [Connect an AI Agent guide](https://docs.rakomi.dev/guides/connect-an-ai-agent).
+Detects Claude Code and writes its config entry for you. Pass `--client <name>` for any other known
+client — a config file is written in that client's own shape for one that supports it, or its own
+connection steps are printed for a UI-only client (Claude Desktop, ChatGPT, JetBrains). Run
+`rakomi --help` for the current client list. Read access works immediately once the client finishes
+its own sign-in; write access is a separate step your tenant owner approves — see the
+[Connect an AI Agent guide](https://docs.rakomi.dev/guides/connect-an-ai-agent).
 
 Pass `--cimd-url <url>` (find it in your MCP client's own connection diagnostics) and `rakomi`
 confirms the connection for you instead of leaving you to check the dashboard; add `--write` to
@@ -58,7 +70,7 @@ token), sends a real invitation e-mail, and is refused under `--ci` — see
 | `logout` | clear the local session |
 | `whoami` | show the signed-in account, home tenant, and active tenant |
 | `use <tenant-id-or-slug>` | remember a tenant locally for `whoami`/future commands; a slug is server-verified |
-| `connect` | connect Claude Code / Claude Desktop to your tenant (read access) |
+| `connect` | connect an MCP client (Claude Code, Claude Desktop, and others — see `--help`) to your tenant (read access) |
 | `tenants create <name>` | create a tenant (`--owner me\|<email>`, `--slug <slug>`) |
 | `tenants list` | list tenants you provisioned |
 | `tenants memberships` | list tenants you're a verified member of |
@@ -74,10 +86,11 @@ token), sends a real invitation e-mail, and is refused under `--ci` — see
 | `--no-keychain` | store the session in a `0600` file instead of the OS keychain |
 | `--tenant-id <uuid>` | (`login`) the tenant to sign in against, if `RAKOMI_PLATFORM_TENANT_ID` isn't set for you |
 | `--tenant <tenant-id>` | override the active tenant for a single command (`whoami` today) |
-| `--client <name>` | `claude-code` or `claude-desktop` — required when more than one applies |
-| `--undo` | restore the `.mcp.json` `connect` last backed up |
+| `--client <name>` | one of the known MCP clients (`connect --help` prints the current list) — required when more than one applies |
+| `--name <server-name>` | (`connect`) the config key to write the entry under (default `rakomi`) — one name per workspace on a machine; a client keeps one login per server name |
+| `--undo` | restore the config file `connect` last backed up (for the same `--name`) |
 | `--cimd-url <url>` | (`connect`) the connecting client's own CIMD document URL — confirms/re-checks the connection |
-| `--status` | (`connect`) re-check status only — needs `--cimd-url`, never rewrites `.mcp.json` |
+| `--status` | (`connect`) re-check status only — needs `--cimd-url`, never rewrites the config file |
 | `-h`, `--help` | show help |
 | `-V`, `--version` | print the version |
 

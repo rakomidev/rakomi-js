@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/react",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "React SDK for Rakomi authentication — hooks and prebuilt UI components.",
   "keywords": [
     "rakomi",
@@ -120,7 +120,7 @@
     "build": "NODE_OPTIONS=--max-old-space-size=4096 tsup && node ../../scripts/copy-dir.mjs src/styles dist/styles",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.typetest.json",
     "lint": "eslint src/ test/ --max-warnings=0",
-    "test": "vitest run"
+    "test": "node ../../scripts/ci/vitest-fork-crash-retry.mjs --results ./test-results.json -- vitest run"
   },
   "peerDependencies": {
     "react": ">=18",

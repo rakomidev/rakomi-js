@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -14,14 +15,16 @@ import { runLogin, runLoginCi } from './commands/login.js';
 import { runLogout } from './commands/logout.js';
 import { runMcpToolsCi } from './commands/mcp.js';
 import { runTenantsClaim, runTenantsCreate, runTenantsList, runTenantsMemberships, runTenantsRelease } from './commands/tenants.js';
+import { runUpgrade } from './commands/upgrade.js';
 import { runUse } from './commands/use.js';
 import { runWhoami } from './commands/whoami.js';
 import { apiBaseUrl, type CliEnv, DEFAULT_MCP_URL } from './env.js';
 import { CliError, EXIT, type ExitCode, UsageError } from './errors.js';
-import type { FetchLike } from './http.js';
+import type { FetchLike, RefreshedCredentials } from './http.js';
 import { startLoopbackListener } from './loopback-server.js';
 import { type KeyStore, type ResolvedStores, resolveStores, type SessionStore } from './session.js';
 import { FileTenantConfigStore, type TenantConfigStore } from './tenant-config.js';
+import { refreshSession } from './token-refresh.js';
 import { helpText, type OutputStream, usageLine } from './usage.js';
 
 export interface RunDeps {
@@ -66,6 +69,7 @@ const GLOBAL_OPTIONS = {
   label: { type: 'string' },
   'cimd-url': { type: 'string' },
   status: { type: 'boolean' },
+  name: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'V' },
 } as const;
@@ -123,6 +127,12 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
   const dryRun = values['dry-run'] === true;
   const json = values.json === true;
   const httpDeps = { fetchImpl: deps.fetchImpl };
+  const onUnauthorized = async (): Promise<RefreshedCredentials | undefined> => {
+    const current = deps.session.read();
+    if (!current) return undefined;
+    return refreshSession({ fetchImpl: deps.fetchImpl }, current, deps.keys, deps.session, () => Date.now());
+  };
+  const authHttpDeps = { ...httpDeps, onUnauthorized };
 
   const [command, ...rest] = positionals;
   switch (command) {
@@ -163,7 +173,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
 
     case 'whoami':
       await runWhoami({
-        ...httpDeps,
+        ...authHttpDeps,
         session: deps.session,
         keys: deps.keys,
         json,
@@ -177,18 +187,31 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
       const tenantId = rest[0];
       if (!tenantId) throw new UsageError('Usage: rakomi use <tenant-id-or-slug>');
       await runUse(
-        { ...httpDeps, session: deps.session, keys: deps.keys, tenantConfig: deps.tenantConfig, stdout: deps.stdout },
+        { ...authHttpDeps, session: deps.session, keys: deps.keys, tenantConfig: deps.tenantConfig, stdout: deps.stdout },
         { tenantId },
       );
       return EXIT.OK;
     }
 
+    case 'upgrade':
+      await runUpgrade({
+        ...authHttpDeps,
+        session: deps.session,
+        keys: deps.keys,
+        tenantConfig: deps.tenantConfig,
+        explicitTenant: typeof values.tenant === 'string' ? values.tenant : undefined,
+        openBrowser: systemBrowserOpener(),
+        stdout: deps.stdout,
+      });
+      return EXIT.OK;
+
     case 'connect':
       await runConnect({
-        ...httpDeps,
+        ...authHttpDeps,
         session: deps.session,
         keys: deps.keys,
         cwd: deps.cwd,
+        homeDir: homedir(),
         apiBaseUrl: apiBaseUrl(deps.env),
         mcpUrl: deps.env.RAKOMI_API_URL ? `${apiBaseUrl(deps.env)}/mcp` : DEFAULT_MCP_URL,
         detectClaudeCode: deps.detectClaudeCode,
@@ -200,6 +223,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         explicitClient: typeof values.client === 'string' ? values.client : undefined,
         cimdUrl: typeof values['cimd-url'] === 'string' ? values['cimd-url'] : undefined,
         status: values.status === true,
+        serverName: typeof values.name === 'string' ? values.name : undefined,
       });
       return EXIT.OK;
 
@@ -230,17 +254,17 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         const name = tenantArgs[0];
         if (!name) throw new UsageError('Usage: rakomi tenants create <name> [--owner me|<email>] [--slug <slug>]');
         await runTenantsCreate(
-          { ...httpDeps, session: deps.session, keys: deps.keys, json, dryRun, ci, stdout: deps.stdout },
+          { ...authHttpDeps, session: deps.session, keys: deps.keys, json, dryRun, ci, stdout: deps.stdout },
           { name, slug: typeof values.slug === 'string' ? values.slug : undefined, owner: typeof values.owner === 'string' ? values.owner : 'me' },
         );
         return EXIT.OK;
       }
       if (sub === 'list') {
-        await runTenantsList({ ...httpDeps, session: deps.session, keys: deps.keys, json, stdout: deps.stdout });
+        await runTenantsList({ ...authHttpDeps, session: deps.session, keys: deps.keys, json, stdout: deps.stdout });
         return EXIT.OK;
       }
       if (sub === 'memberships') {
-        await runTenantsMemberships({ ...httpDeps, session: deps.session, keys: deps.keys, json, stdout: deps.stdout });
+        await runTenantsMemberships({ ...authHttpDeps, session: deps.session, keys: deps.keys, json, stdout: deps.stdout });
         return EXIT.OK;
       }
       if (sub === 'claim') {
@@ -248,7 +272,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
           throw new UsageError('rakomi tenants claim requires --ci (no interactive form exists yet).');
         }
         await runTenantsClaim(
-          { ...httpDeps, session: deps.session, keys: deps.keys, tenantConfig: deps.tenantConfig, json, stdout: deps.stdout },
+          { ...authHttpDeps, session: deps.session, keys: deps.keys, tenantConfig: deps.tenantConfig, json, stdout: deps.stdout },
           {
             parentTenantId: typeof values.tenant === 'string' ? values.tenant : undefined,
             ttlSeconds: parseTtlSeconds(values['ttl-seconds']),
@@ -264,7 +288,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         const tenantId = tenantArgs[0];
         if (!tenantId) throw new UsageError('Usage: rakomi tenants release --ci <tenant-id> [--tenant <parent-tenant-id>]');
         await runTenantsRelease(
-          { ...httpDeps, session: deps.session, keys: deps.keys, tenantConfig: deps.tenantConfig, json, stdout: deps.stdout },
+          { ...authHttpDeps, session: deps.session, keys: deps.keys, tenantConfig: deps.tenantConfig, json, stdout: deps.stdout },
           { tenantId, parentTenantId: typeof values.tenant === 'string' ? values.tenant : undefined },
         );
         return EXIT.OK;
