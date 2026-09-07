@@ -24,6 +24,16 @@ React Native / Expo SDK for [Rakomi](https://rakomi.com) — EU-native auth-as-a
 > Token-manager runtime, JWKS verification, social-provider deep-link auto-handler, a bare-RN adapter
 > example, and a demo app land in subsequent 0.x releases.
 
+## Ask your agent
+
+Add the Rakomi MCP server to your coding agent, then ask it directly:
+
+```sh
+claude mcp add --transport http rakomi https://mcp.rakomi.com/mcp
+```
+
+"List the AI agents connected to my Rakomi tenant."
+
 ## Install
 
 ```sh

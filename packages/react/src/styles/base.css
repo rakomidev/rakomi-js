@@ -148,8 +148,9 @@
 [data-rakomi-sign-up-submit-button],
 [data-rakomi-user-profile-submit] {
   padding: 0.625rem 1rem;
-  background: var(--rakomi-color-primary);
-  color: #ffffff;
+  background: var(--rakomi-color-primary-fill, var(--rakomi-color-primary));
+  
+  color: var(--rakomi-color-primary-foreground, #ffffff);
   border: none;
   border-radius: var(--rakomi-radius);
   font-size: var(--rakomi-font-size);
@@ -309,8 +310,8 @@
   inline-size: 2rem;
   block-size: 2rem;
   border-radius: 50%;
-  background: var(--rakomi-color-primary);
-  color: #ffffff;
+  background: var(--rakomi-color-primary-fill, var(--rakomi-color-primary));
+  color: var(--rakomi-color-primary-foreground, #ffffff);
   font-weight: 600;
   font-size: 0.875rem;
 }
@@ -404,8 +405,8 @@
 [data-rakomi-error-boundary] button {
   margin-block-start: var(--rakomi-spacing-md);
   padding: 0.5rem 1rem;
-  background: var(--rakomi-color-primary);
-  color: #ffffff;
+  background: var(--rakomi-color-primary-fill, var(--rakomi-color-primary));
+  color: var(--rakomi-color-primary-foreground, #ffffff);
   border: none;
   border-radius: var(--rakomi-radius);
   cursor: pointer;

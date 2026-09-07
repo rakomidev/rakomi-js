@@ -48,16 +48,21 @@ export function helpText(): string {
     '  --template <slug>        which quickstart to scaffold (required)',
     '  --region <value>         data region (default: eu-central)',
     '  --tenant-id <value>      your tenant id',
+    '  --client-id <value>      your OAuth client_id (dashboard -> Integration -> Applications)',
     '  --template-source <url>  override the archive base (mirror / offline)',
     '  --yes                    accept defaults, never prompt (non-interactive)',
     '  --connect                print next steps for connecting an AI agent (the rakomi CLI)',
+    "  --no-mcp                 don't scaffold .mcp.json / AGENTS.md (written by default — agent-ready on first run)",
     '  -h, --help               show this help and exit',
     '  -V, --version            print the version and exit',
     '',
     'Environment variables collected into the new project\'s .env:',
-    '  RAKOMI_REGION, RAKOMI_TENANT_ID, RAKOMI_API_KEY',
+    '  RAKOMI_REGION, RAKOMI_TENANT_ID, RAKOMI_API_KEY, RAKOMI_CLIENT_ID',
     '  (RAKOMI_API_KEY is read from the prompt or the environment, never a flag,',
-    '   and is written only to your local .env — never transmitted.)',
+    '   and is written only to your local .env — never transmitted. RAKOMI_CLIENT_ID is',
+    "   written under the target template's own convention, e.g. NEXT_PUBLIC_RAKOMI_CLIENT_ID.",
+    '   Your tenant signup auto-provisions a default OAuth client for you — find its Client ID in',
+    '   your Rakomi dashboard: Settings -> Development credentials.)',
     '',
     `After scaffolding, the next-step walkthrough lives at ${PORTAL_HOST}/quickstart/<slug>.`,
     '',
@@ -74,18 +79,30 @@ export function usageLine(): string {
  * manager-aware command list. The install step is framed as the user's own next step that
  * depends on the public npm registry, not a guarantee. No color is emitted (NO_COLOR-safe by
  * construction) and the copy is stack-neutral so a tutorial can quote it verbatim.
+ *
+ * `mcpConfigWritten` (default `true`) reports whether `.mcp.json` + `AGENTS.md` were scaffolded
+ * into the new project (they are, unless `--no-mcp` was passed) — when they were, one extra line
+ * tells the user the project is already agent-ready and what to run to finish sign-in, plus a
+ * pointer to AGENTS.md for a fuller briefing.
  */
-export function postInstallMessage(slug: string, directory: string, pm: PackageManager): string {
-  return [
+export function postInstallMessage(slug: string, directory: string, pm: PackageManager, mcpConfigWritten = true): string {
+  const lines = [
     '',
     `Done. Your Rakomi ${slug} app is ready in ${directory}`,
     '',
     'Next steps:',
     `  1. cd ${directory}`,
-    `  2. ${installCommand(pm)}   (installs @rakomi/node from the public npm registry)`,
+    `  2. ${installCommand(pm)}   (installs the Rakomi SDK from the public npm registry)`,
     `  3. ${runCommand(pm)}`,
     '',
-    `Walkthrough: ${portalUrl(slug)}`,
-    '',
-  ].join('\n');
+  ];
+  if (mcpConfigWritten) {
+    lines.push(
+      'Agent-ready: .mcp.json points Claude Code at the Rakomi MCP server — run `claude mcp login rakomi` to finish sign-in.',
+      'See AGENTS.md for the full briefing any AI agent working in this project can read.',
+      '',
+    );
+  }
+  lines.push(`Walkthrough: ${portalUrl(slug)}`, '');
+  return lines.join('\n');
 }

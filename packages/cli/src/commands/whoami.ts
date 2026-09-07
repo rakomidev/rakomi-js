@@ -16,6 +16,26 @@ export interface WhoamiDeps extends HttpDeps {
   readonly tenantConfig: TenantConfigStore;
   /** `--tenant <id>` — a per-invocation override; takes precedence over `tenantConfig.read()` for THIS call only (never persisted). */
   readonly explicitTenant?: string;
+  /**
+   * Story cli-silent-token-refresh-and-whoami-honesty — injectable clock for the LOCAL
+   * expiry/status computation below (`describeTokenStatus`), same idiom as `login.ts`'s `now`.
+   * Defaults to `Date.now` so every pre-existing `WhoamiDeps` fixture in the test suite keeps
+   * compiling unchanged.
+   */
+  readonly now?: () => number;
+}
+
+/**
+ * `valid`/`expired`, computed ENTIRELY from the LOCAL `expires_at` this CLI already persisted at
+ * login/refresh — no network round trip is made (or needed) to answer this. `whoami` used to give
+ * no local answer to "is my session still good" at all, leaving the live `fetchUserInfo` call below
+ * as the only signal — which meant a session could read as fine right up to the 401 that a
+ * network-degraded/interactive-less invocation might not even surface clearly. `expired` is not a
+ * dead end any more (see `token-refresh.ts`): the NEXT authenticated call this CLI makes silently
+ * refreshes it, which is why the message says so rather than telling the user to `rakomi login` again.
+ */
+function describeTokenStatus(expiresAt: number, now: number): string {
+  return now >= expiresAt ? 'expired (will auto-refresh on next use)' : 'valid';
 }
 
 /**
@@ -39,11 +59,14 @@ function describeActiveTenant(
 }
 
 export async function runWhoami(deps: WhoamiDeps): Promise<void> {
-  const session = deps.session.read();
-  if (!session) throw new NotLoggedInError();
+  const initialSession = deps.session.read();
+  if (!initialSession) throw new NotLoggedInError();
 
-  const dpop = resolveDpopKey(deps.keys, session);
-  const info = await fetchUserInfo(deps, { apiBaseUrl: session.api_base_url, accessToken: session.access_token, dpop });
+  const dpop = resolveDpopKey(deps.keys, initialSession);
+  const info = await fetchUserInfo(deps, { apiBaseUrl: initialSession.api_base_url, accessToken: initialSession.access_token, dpop });
+  const session = deps.session.read() ?? initialSession;
+  const now = (deps.now ?? Date.now)();
+  const tokenStatus = describeTokenStatus(session.expires_at, now);
   const activeTenantId = deps.explicitTenant ?? deps.tenantConfig.read() ?? undefined;
 
   if (deps.json) {
@@ -55,6 +78,8 @@ export async function runWhoami(deps: WhoamiDeps): Promise<void> {
         org_role: info.org_role,
         session_store: deps.session.describePath(),
         token_type: session.token_type,
+        expires_at: new Date(session.expires_at).toISOString(),
+        token_status: tokenStatus,
         home_tenant_id: session.home_tenant_id,
         active_tenant_id: activeTenantId,
       }) + '\n',
@@ -68,5 +93,6 @@ export async function runWhoami(deps: WhoamiDeps): Promise<void> {
   lines.push(`Active tenant: ${describeActiveTenant(deps, activeTenantId)}`);
   lines.push(`Session stored in: ${deps.session.describePath()}`);
   lines.push(`Token type: ${session.token_type}`);
+  lines.push(`Token expires: ${new Date(session.expires_at).toISOString()} (${tokenStatus})`);
   deps.stdout.write(lines.join('\n') + '\n');
 }

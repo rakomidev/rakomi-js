@@ -28,7 +28,18 @@ export const FIELDS: readonly FieldSpec[] = [
   { key: 'RAKOMI_REGION', label: 'Data region', defaultValue: DEFAULT_REGION },
   { key: 'RAKOMI_TENANT_ID', label: 'Tenant ID' },
   { key: 'RAKOMI_API_KEY', label: 'API key' },
+  { key: 'RAKOMI_CLIENT_ID', label: 'OAuth Client ID' },
 ];
+
+/**
+ * Extra guidance appended to a field's prompt line — where to GET a value the wizard cannot
+ * derive on its own. Only `RAKOMI_CLIENT_ID` needs this today: every tenant signup auto-provisions
+ * a default OAuth client at creation time, so the value already exists — find it rather than
+ * create it.
+ */
+const FIELD_HINTS: Partial<Record<EnvKey, string>> = {
+  RAKOMI_CLIENT_ID: 'from your Rakomi dashboard -> Settings -> Development credentials',
+};
 
 /**
  * Resolve all env values by precedence: explicit flag > `RAKOMI_*` env var > interactive
@@ -61,8 +72,9 @@ export async function collectEnv(deps: PromptDeps): Promise<Partial<Record<EnvKe
 
 function promptText(field: FieldSpec): string {
   const secret = SECRET_KEYS.has(field.key) ? ' (kept local, never sent anywhere)' : '';
+  const hint = FIELD_HINTS[field.key] ? ` (${FIELD_HINTS[field.key]})` : '';
   const dflt = field.defaultValue !== undefined ? ` [${field.defaultValue}]` : '';
-  return `${field.label}${secret}${dflt}: `;
+  return `${field.label}${secret}${hint}${dflt}: `;
 }
 
 /** A real-TTY prompt backed by `node:readline/promises`. */

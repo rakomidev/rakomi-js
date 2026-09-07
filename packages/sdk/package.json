@@ -55,7 +55,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.typetest.json",
     "lint": "eslint src/ test/ --max-warnings=0",
-    "test": "vitest run"
+    "test": "node ../../scripts/ci/vitest-fork-crash-retry.mjs --results ./test-results.json -- vitest run"
   },
   "dependencies": {
     "jose": "^6.2.3"

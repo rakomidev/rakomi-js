@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: MIT
 
-export type KnownClient = 'claude-code' | 'claude-desktop';
+import { CLIENT_REGISTRY, type ClientRegistryEntry, KNOWN_CLIENTS,type KnownClient } from './client-registry.generated.js';
+import { CliError, EXIT } from './errors.js';
 
-export const KNOWN_CLIENTS: readonly KnownClient[] = ['claude-code', 'claude-desktop'];
+export type { ClientRegistryEntry, KnownClient };
+export { CLIENT_REGISTRY, KNOWN_CLIENTS };
 
 export function isKnownClient(value: string): value is KnownClient {
   return (KNOWN_CLIENTS as readonly string[]).includes(value);
 }
 
+/** Throws if `id` is not a known client — callers that already validated via `isKnownClient` never hit this. */
+export function clientRegistryEntry(id: KnownClient): ClientRegistryEntry {
+  const entry = CLIENT_REGISTRY.find((c) => c.id === id);
+  if (!entry) throw new CliError(`clientRegistryEntry: unknown client '${id}' — this should be unreachable, isKnownClient() gates every caller`, EXIT.FAIL);
+  return entry;
+}
+
 export function clientDisplayName(client: KnownClient): string {
-  return client === 'claude-code' ? 'Claude Code' : 'Claude Desktop';
+  return clientRegistryEntry(client).displayName;
 }
 
 /** Whether the `claude` CLI is on PATH — injectable so detection never actually spawns a process in tests. */
