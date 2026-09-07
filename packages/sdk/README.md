@@ -11,6 +11,16 @@ signatures in a trusted Node.js runtime.
   `{ ok: true, data }` or `{ ok: false, error }`.
 - **Type-safe** — full TypeScript types with generic payload support.
 
+## Ask your agent
+
+Add the Rakomi MCP server to your coding agent, then ask it directly:
+
+```sh
+claude mcp add --transport http rakomi https://mcp.rakomi.com/mcp
+```
+
+"List the AI agents connected to my Rakomi tenant."
+
 ## Install
 
 ```bash

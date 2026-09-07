@@ -224,6 +224,13 @@ export interface SdkError {
   suggestion: string;
   docs_url: string;
   fix_command?: string;
+  /**
+   * The server's per-request correlation id (same id the API logs and returns via
+   * `X-Request-Id`), when the failed call's response body carried one — present on any error
+   * built from an actual HTTP response (see `internal/request-id.ts`); absent for purely local
+   * errors (a network failure, a malformed response with no parseable body, config validation).
+   */
+  request_id?: string;
 }
 
 /**

@@ -26,7 +26,7 @@ export const de: Translations = {
 
   'signIn.mfa.title': 'Zwei-Faktor-Authentifizierung',
   'signIn.mfa.codeLabel': 'Authentifizierungscode',
-  'signIn.mfa.tooManyAttempts': 'Zu viele Versuche. Bitte warten Sie {seconds}s.',
+  'signIn.mfa.tooManyAttempts': 'Zu viele Versuche. Erneut versuchen in {seconds}s.',
   'signIn.mfa.recoveryCode': 'Wiederherstellungscode verwenden',
   'signIn.mfa.expired': 'Code abgelaufen. Bitte erneut anmelden.',
   'signIn.mfa.back': 'Zurück zur Anmeldung',

@@ -6,6 +6,16 @@ React SDK for Rakomi Auth — `<RakomiProvider>`, hooks, pre-built UI components
 - Typed public API (`AuthState`, `UserResource`, `SessionResource`, …).
 - Pre-built `<SignIn>`, `<SignUp>`, `<UserButton>`, `<UserProfile>` with localisation.
 
+## Ask your agent
+
+Add the Rakomi MCP server to your coding agent, then ask it directly:
+
+```sh
+claude mcp add --transport http rakomi https://mcp.rakomi.com/mcp
+```
+
+"List the AI agents connected to my Rakomi tenant."
+
 ## Install
 
 ```bash

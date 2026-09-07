@@ -624,13 +624,6 @@ export class TokenManager {
       return false;
     }
 
-    if (!raw.startsWith('v1:')) {
-      this.eventLog.push({ type: 'restore_failed', severity: 'warning', metadata: { reason: 'invalid_storage_prefix' } });
-      await this.clear();
-      return false;
-    }
-    const storedRefresh = raw.slice(3);
-
     this.eventLog.push({ type: 'refresh_started', severity: 'info' });
     const startTime = Date.now();
 
@@ -642,6 +635,19 @@ export class TokenManager {
     }
 
     this.eventLog.push({ type: 'lock_acquired', severity: 'info' });
+
+    const raw2 = await this.storage.getItem(this.refreshKey);
+    if (!raw2) {
+      release();
+      return false;
+    }
+    if (!raw2.startsWith('v1:')) {
+      release();
+      this.eventLog.push({ type: 'restore_failed', severity: 'warning', metadata: { reason: 'invalid_storage_prefix' } });
+      await this.clear();
+      return false;
+    }
+    const storedRefresh = raw2.slice(3);
 
     try {
       const result = await doRefreshToken({

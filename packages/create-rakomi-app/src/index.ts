@@ -8,8 +8,10 @@ import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
+import { writeAgentContext } from './agent-context.js';
 import { type EnvKey, writeEnvFile } from './env.js';
 import { CliError, EXIT, type ExitCode, UsageError } from './errors.js';
+import { writeMcpConfig } from './mcp-config.js';
 import { collectEnv, createTtyAsk } from './prompt.js';
 import { assertTargetWritable, GithubCodeloadSource, materializeArchive, type TemplateSource } from './source.js';
 import { findTemplate, slugList } from './templates.js';
@@ -62,9 +64,11 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         template: { type: 'string' },
         region: { type: 'string' },
         'tenant-id': { type: 'string' },
+        'client-id': { type: 'string' },
         'template-source': { type: 'string' },
         yes: { type: 'boolean' },
         connect: { type: 'boolean' },
+        'no-mcp': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'V' },
       },
@@ -100,17 +104,24 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
   const flags: Partial<Record<EnvKey, string>> = {};
   if (typeof values.region === 'string') flags.RAKOMI_REGION = values.region;
   if (typeof values['tenant-id'] === 'string') flags.RAKOMI_TENANT_ID = values['tenant-id'];
+  if (typeof values['client-id'] === 'string') flags.RAKOMI_CLIENT_ID = values['client-id'];
   const interactive = deps.isTTY && values.yes !== true && !deps.env.CI;
-  const envValues = await collectEnv({ flags, env: deps.env, interactive, ask: deps.ask });
+  const envValues = await collectEnv({ flags, env: deps.env, interactive, ask: deps.ask }, template.slug);
 
   const source = deps.source ?? makeDefaultSource(values, deps.env);
   const archive = await source.fetchArchive(template);
   await materializeArchive(archive, targetDir);
   await ensureEnvIgnored(targetDir);
-  await writeEnvFile(targetDir, envValues);
+  await writeEnvFile(targetDir, envValues, template.slug);
+
+  const mcpConfigWritten = values['no-mcp'] !== true;
+  if (mcpConfigWritten) {
+    await writeMcpConfig(targetDir);
+    await writeAgentContext(targetDir);
+  }
 
   const pm = detectPackageManager(deps.env.npm_config_user_agent);
-  deps.stdout.write(postInstallMessage(template.slug, rawTarget, pm));
+  deps.stdout.write(postInstallMessage(template.slug, rawTarget, pm, mcpConfigWritten));
   if (values.connect === true) {
     deps.stdout.write(connectInstructions());
   }

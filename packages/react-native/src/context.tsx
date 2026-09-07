@@ -223,8 +223,12 @@ export function RakomiProvider(props: RakomiProviderProps): ReactNode {
     });
   }, [adapter, http, props.publishableKey, props.tenantId, props.baseUrl, props.tokenEndpoint, props.biometric, props.biometricStrict, props.biometricPrompt, events, dpopSession]);
 
+  const restoreStarted = useRef(false);
   useEffect(() => {
-    void runtime.restore();
+    if (!restoreStarted.current) {
+      restoreStarted.current = true;
+      void runtime.restore();
+    }
     return () => runtime.destroy();
   }, [runtime]);
 

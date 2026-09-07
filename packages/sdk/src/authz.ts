@@ -26,6 +26,7 @@
  * with zero runtime dependencies beyond `jose`.
  */
 
+import { extractRequestId } from './internal/request-id.js';
 import type { SdkError, VerifyResult } from './types.js';
 
 export interface AuthzenSubject {
@@ -179,14 +180,18 @@ export class AuthzRateLimitedError extends Error {
   }
 }
 
-/** RFC 9457 `application/problem+json` — `code`/`detail` at the top level (same convention as
- * agents.ts / link.ts). `message` is also read defensively — this endpoint family's own 400 body
- * (`AppError`) uses `{ error: { code, message } }`, but the response is read leniently either way. */
+/** RFC 9457 `application/problem+json` — `code`/`detail`/`request_id` at the top level (same
+ * convention as agents.ts / link.ts). `message` is also read defensively — this endpoint family's
+ * own 400 body (`AppError`) uses the legacy `{ error: { code, message, request_id } }` envelope
+ * (this route's path does not start with `/v1/`, so it never gets the RFC 9457 shape — see this
+ * package's `authzen-evaluation-route.ts` doc comment) — the response is read leniently either
+ * way, and `extractRequestId()` already knows both shapes. */
 interface ApiErrorBody {
   code?: string;
   detail?: string;
   message?: string;
-  error?: { code?: string; message?: string };
+  request_id?: string;
+  error?: { code?: string; message?: string; request_id?: string };
 }
 
 async function safeJson<T>(res: Response): Promise<T | null> {
@@ -216,82 +221,89 @@ function networkError(message: string): SdkError {
   };
 }
 
-function unauthorizedError(): SdkError {
+function unauthorizedError(requestId?: string): SdkError {
   return {
     code: 'authz/unauthorized',
     message: 'Missing or invalid access token',
     suggestion: 'Pass a valid bearer JWT (end-user or M2M/agent token) in `accessToken`.',
     docs_url: DOCS_URL,
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function forbiddenError(): SdkError {
+function forbiddenError(requestId?: string): SdkError {
   return {
     code: 'authz/forbidden',
     message: 'Access token missing the authz:evaluate scope',
     suggestion: 'Grant the calling token the `authz:evaluate` scope.',
     docs_url: DOCS_URL,
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function disabledError(): SdkError {
+function disabledError(requestId?: string): SdkError {
   return {
     code: 'authz/disabled',
     message: 'AuthZEN PDP endpoints are disabled in this environment (AUTHZEN_PDP_ENABLED off)',
     suggestion: 'These endpoints are experimental and gated per environment — confirm availability with Rakomi before relying on them.',
     docs_url: DOCS_URL,
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function invalidRequestError(message: string): SdkError {
+function invalidRequestError(message: string, requestId?: string): SdkError {
   return {
     code: 'authz/invalid_request',
     message,
     suggestion: 'Every evaluations[] item must resolve a subject, resource and action — either on the item itself or via a top-level default.',
     docs_url: DOCS_URL,
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function payloadTooLargeError(): SdkError {
+function payloadTooLargeError(requestId?: string): SdkError {
   return {
     code: 'authz/payload_too_large',
     message: "Request body exceeds the endpoint's documented size limit",
     suggestion: 'Reduce the number of boxcarred evaluations[] items, or the size of subject/resource/action properties.',
     docs_url: DOCS_URL,
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function rateLimitedError(retryAfter?: number): SdkError {
+function rateLimitedError(retryAfter?: number, requestId?: string): SdkError {
   return {
     code: 'authz/rate_limited',
     message: 'Rate limit exceeded for an AuthZEN PDP endpoint',
     suggestion: retryAfter !== undefined ? `Wait ${retryAfter}s and retry.` : 'Slow down and retry after a short back-off.',
     docs_url: DOCS_URL,
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function genericError(status: number, body: ApiErrorBody | null): SdkError {
+function genericError(status: number, body: ApiErrorBody | null, requestId?: string): SdkError {
   return {
     code: body?.code ?? body?.error?.code ?? `authz/http_${status}`,
     message: body?.detail ?? body?.message ?? body?.error?.message ?? `HTTP ${status}`,
     suggestion: 'Inspect the response body and retry if appropriate.',
     docs_url: DOCS_URL,
+    ...(requestId && { request_id: requestId }),
   };
 }
 
 /** Shared non-2xx status -> typed-error mapping for the three POST evaluation-shaped endpoints. */
 async function mapEvaluationError(res: Response): Promise<SdkError> {
-  if (res.status === 401) return unauthorizedError();
-  if (res.status === 403) return forbiddenError();
-  if (res.status === 404) return disabledError();
-  if (res.status === 413) return payloadTooLargeError();
-  if (res.status === 429) return rateLimitedError(parseRetryAfter(res));
-  if (res.status === 400) {
-    const body = await safeJson<ApiErrorBody>(res);
-    return invalidRequestError(body?.detail ?? body?.message ?? body?.error?.message ?? 'Malformed request body');
-  }
   const body = await safeJson<ApiErrorBody>(res);
-  return genericError(res.status, body);
+  const requestId = extractRequestId(body);
+  if (res.status === 401) return unauthorizedError(requestId);
+  if (res.status === 403) return forbiddenError(requestId);
+  if (res.status === 404) return disabledError(requestId);
+  if (res.status === 413) return payloadTooLargeError(requestId);
+  if (res.status === 429) return rateLimitedError(parseRetryAfter(res), requestId);
+  if (res.status === 400) {
+    return invalidRequestError(body?.detail ?? body?.message ?? body?.error?.message ?? 'Malformed request body', requestId);
+  }
+  return genericError(res.status, body, requestId);
 }
 
 /**
@@ -428,8 +440,9 @@ export class AuthzClient {
       return { ok: true, data: parsed };
     }
 
-    if (res.status === 404) return { ok: false, error: disabledError() };
     const body = await safeJson<ApiErrorBody>(res);
-    return { ok: false, error: genericError(res.status, body) };
+    const requestId = extractRequestId(body);
+    if (res.status === 404) return { ok: false, error: disabledError(requestId) };
+    return { ok: false, error: genericError(res.status, body, requestId) };
   }
 }

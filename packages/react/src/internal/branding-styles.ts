@@ -188,6 +188,9 @@ export function applyBranding(branding: BrandingConfig | null | undefined, optio
       }
     }
     const fill = palette.buttonColor ?? palette.primaryColor;
+    if (fill && HEX_COLOR_REGEX.test(fill)) {
+      vars['--rakomi-color-primary-fill'] = fill;
+    }
     const onFill = palette.buttonTextColor
       ?? (fill && HEX_COLOR_REGEX.test(fill) ? readableTextOn(fill) : undefined);
     if (onFill) {

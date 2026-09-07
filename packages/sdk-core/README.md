@@ -12,6 +12,16 @@ stay thin and stay in lockstep. Most application developers depend on it transit
 - No DOM and no React — pure logic (auth state machine, JWKS cache, JWT decode, OAuth PKCE/authorize,
   RBAC helpers, i18n translator, tenant storage-key derivation).
 
+## Ask your agent
+
+Add the Rakomi MCP server to your coding agent, then ask it directly:
+
+```sh
+claude mcp add --transport http rakomi https://mcp.rakomi.com/mcp
+```
+
+"List the AI agents connected to my Rakomi tenant."
+
 ## Install
 
 ```bash

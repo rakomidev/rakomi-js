@@ -42,6 +42,6 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ test/ --max-warnings=0",
-    "test": "vitest run"
+    "test": "node ../../scripts/ci/vitest-fork-crash-retry.mjs --results ./test-results.json -- vitest run"
   }
 }

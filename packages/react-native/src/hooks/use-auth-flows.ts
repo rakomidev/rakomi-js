@@ -111,7 +111,7 @@ export function useMfa(): UseMfaResult {
   return {
     verifyTotp: async (challengeToken, code, endpoint) => {
       const url = endpoint ?? `${ctx.baseUrl}/v1/auth/mfa/verify-login`;
-      const result = await coreVerifyTotp({ http: ctx.http, endpoint: url, challengeToken, code });
+      const result = await coreVerifyTotp({ http: ctx.http, endpoint: url, apiKey: ctx.publishableKey, challengeToken, code });
       if (result.ok) {
         const nonce = await ctx.beginAuthFlow();
         await ctx.submitOAuthTokens({

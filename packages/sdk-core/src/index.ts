@@ -37,6 +37,14 @@ export type {
 } from './types/auth.js';
 export type { AuthError } from './types/auth-error.js';
 export { getErrorMessage } from './types/auth-error.js';
+/**
+ * Shared parser behind `AuthError.requestId` — reads the server's per-request correlation id
+ * from either shape the API uses (RFC 9457 top-level, or the legacy nested `error.request_id`
+ * envelope). Exported so `@rakomi/react` and `@rakomi/react-native`'s OWN independent fetch-error
+ * handling (the endpoints they call directly rather than through this package's helpers) attach
+ * the same field the same way, rather than re-declaring the parser per platform.
+ */
+export { extractRequestId } from './internal/request-id.js';
 
 export { parseAuthConfigResponse } from './auth-config-parser.js';
 export type { MachineAction, MachineSnapshot } from './auth-machine.js';

@@ -9,6 +9,8 @@
  * `pid_attribute_forbidden`.
  */
 
+import { extractRequestId } from './internal/request-id.js';
+
 /**
  * VC issuer SDK errors are thrown as `VcSdkError` (extending Error). Code semantics align
  * with the Rakomi API error codes (e.g. `vc/tenant_disabled`, `vc/invalid_claims`).
@@ -18,6 +20,8 @@ export class VcSdkError extends Error {
     readonly code: string,
     message: string,
     readonly httpStatus: number,
+    /** The server's per-request correlation id (RFC 9457 `request_id`), when present. */
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = 'VcSdkError';
@@ -156,13 +160,15 @@ export class CredentialsClient {
     if (!res.ok) {
       let code = `vc/${op}_failed`;
       let message = `VC ${op} failed with HTTP ${res.status}`;
+      let requestId: string | undefined;
       try {
-        const body = (await res.json()) as { code?: string; detail?: string };
+        const body = (await res.json()) as { code?: string; detail?: string; request_id?: string };
         if (body.code) code = body.code;
         if (body.detail) message = body.detail;
+        requestId = extractRequestId(body);
       } catch {
       }
-      throw new VcSdkError(code, message, res.status);
+      throw new VcSdkError(code, message, res.status, requestId);
     }
     return (await res.json()) as T;
   }

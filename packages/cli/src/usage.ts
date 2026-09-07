@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 
+import { KNOWN_CLIENTS } from './clients.js';
+
 export interface OutputStream {
   write(text: string): void;
 }
 
 export function helpText(): string {
+  const clientList = KNOWN_CLIENTS.join(' | ');
   return [
     'rakomi — the Rakomi CLI: sign in, connect an AI agent, and provision tenants',
     '',
@@ -19,12 +22,14 @@ export function helpText(): string {
     '  logout                   clear the local session',
     '  whoami                   show the signed-in account, home tenant, and active tenant',
     '  use <tenant-id-or-slug>  remember a tenant locally (whoami/future commands); a UUID is stored as-is, a slug is server-verified',
-    '  connect                  connect Claude Code / Claude Desktop to your tenant (read access)',
+    '  upgrade                  open your current tenant\'s upgrade page in the browser',
+    '  connect                  connect an MCP client to your tenant (read access)',
     '    --write                also request write access for the connected client',
-    '    --client <name>        claude-code | claude-desktop (required if more than one applies)',
-    '    --undo                 restore the .mcp.json this command last backed up',
+    `    --client <name>        ${clientList} (required if more than one applies)`,
+    '    --name <server-name>   the config key to write the entry under (default: rakomi) — one name per workspace on a machine',
+    '    --undo                 restore the config file this command last backed up (for the same --name)',
     '    --cimd-url <url>       the connecting client\'s own CIMD document URL — confirms the connection',
-    '    --status               re-check status only (needs --cimd-url; never rewrites .mcp.json)',
+    '    --status               re-check status only (needs --cimd-url; never rewrites the config file)',
     '  tenants create <name>    create a tenant (parent-tenant only; depth-1 enforced server-side)',
     '    --owner <me|email>     who becomes the new tenant\'s owner (default: me)',
     '    --slug <slug>          optional; auto-derived + suffixed if omitted',
@@ -44,7 +49,7 @@ export function helpText(): string {
     '  --dry-run                print what would happen, make no writes or mutating calls',
     '  --no-browser             use the RFC 8628 device-code flow instead of opening a browser',
     '  --no-keychain            store the session in a 0600 file instead of the OS keychain',
-    '  --tenant <id>            the tenant for this invocation (whoami, tenants claim/release)',
+    '  --tenant <id>            the tenant for this invocation (whoami, upgrade, tenants claim/release)',
     '  -h, --help               show this help and exit',
     '  -V, --version            print the version and exit',
     '',

@@ -68,16 +68,16 @@ export async function exchangeAuthCode(input: ExchangeAuthCodeInput): Promise<To
       body,
     });
   } catch (err) {
-    return { ok: false, error: networkError(err instanceof Error ? err.message : 'fetch failed') };
+    return { ok: false, error: { code: 'CODE_EXCHANGE_FAILED', message: err instanceof Error ? err.message : 'fetch failed' } };
   }
 
   if (!response.ok) {
-    let body: { error?: string; error_description?: string } = {};
+    let body: { error?: string; error_description?: string; request_id?: string } = {};
     try {
-      body = (await response.json()) as { error?: string; error_description?: string };
+      body = (await response.json()) as { error?: string; error_description?: string; request_id?: string };
     } catch {
     }
-    return { ok: false, error: parseTokenEndpointError(response.status, body) };
+    return { ok: false, error: parseTokenEndpointError(response.status, body, 'exchange') };
   }
 
   try {
@@ -128,7 +128,7 @@ export async function refreshAccessToken(input: {
     return { ok: false, error: networkError(err instanceof Error ? err.message : 'fetch failed') };
   }
   if (!response.ok) {
-    let parsed: { error?: string; error_description?: string } = {};
+    let parsed: { error?: string; error_description?: string; request_id?: string } = {};
     try {
       parsed = (await response.json()) as typeof parsed;
     } catch {

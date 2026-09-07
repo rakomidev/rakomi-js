@@ -149,6 +149,11 @@ export function loadDenylist(repoRoot = REPO_ROOT) {
   return { id: data.version, buckets, source: flat, hashed }
 }
 
+export function blankSvgPathData(text) {
+  if (!text.includes('<')) return text
+  return text.replace(/(\s(?:d|points)=)("[^"'>]*"|'[^"'>]*')/g, (_m, lead, quoted) => `${lead}${quoted[0]}${' '.repeat(quoted.length - 2)}${quoted[0]}`)
+}
+
 export function scanText(compiled, text) {
   const hits = []
   for (const bucket of compiled.buckets) {

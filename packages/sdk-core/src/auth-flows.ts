@@ -13,10 +13,24 @@
  * via the discriminated `MagicLinkVerifyResult` / `EmailOtpVerifyResult` shapes.
  */
 
-import { networkError, parseTokenEndpointError } from './oauth/errors.js';
+import { extractRequestId } from './internal/request-id.js';
+import { networkError } from './oauth/errors.js';
 import type { HttpClient } from './types/adapters.js';
 import type { OAuthTokenResponse } from './types/auth.js';
 import type { AuthError } from './types/auth-error.js';
+
+/**
+ * `/v1/auth/*` non-2xx responses are `application/problem+json` (RFC 9457) — `code`/`detail`/
+ * `request_id` are top-level fields. None of these endpoints carry the `/oauth/` prefix, so —
+ * unlike the `/oauth/token` grant endpoints this module also drives — they never use the RFC 6749
+ * §5.2 `{error, error_description}` shape. Parsing them with the OAuth-family parser silently drops
+ * the server's actual message and mislabels the failure as `REFRESH_FAILED`/`CODE_EXCHANGE_FAILED`
+ * even though no session or code exchange is involved in a magic-link/email-OTP/register call.
+ */
+function parseAuthEndpointError(status: number, body: { detail?: string; request_id?: string }): AuthError {
+  const requestId = extractRequestId(body);
+  return { code: 'SIGN_IN_FAILED', message: body.detail ?? `Request failed with HTTP ${status}`, ...(requestId && { requestId }) };
+}
 
 export interface RequestMagicLinkInput {
   http: HttpClient;
@@ -107,9 +121,9 @@ async function postNoContent(http: HttpClient, url: string, clientId: string, bo
     return { ok: false, error: networkError(err instanceof Error ? err.message : 'fetch failed') };
   }
   if (!response.ok) {
-    let parsed: { error?: string; error_description?: string } = {};
+    let parsed: { detail?: string; request_id?: string } = {};
     try { parsed = (await response.json()) as typeof parsed; } catch { }
-    return { ok: false, error: parseTokenEndpointError(response.status, parsed) };
+    return { ok: false, error: parseAuthEndpointError(response.status, parsed) };
   }
   return { ok: true };
 }
@@ -126,9 +140,9 @@ async function postAuthVerify(http: HttpClient, url: string, clientId: string, b
     return { ok: false, error: networkError(err instanceof Error ? err.message : 'fetch failed') };
   }
   if (!response.ok) {
-    let parsed: { error?: string; error_description?: string } = {};
+    let parsed: { detail?: string; request_id?: string } = {};
     try { parsed = (await response.json()) as typeof parsed; } catch { }
-    return { ok: false, error: parseTokenEndpointError(response.status, parsed) };
+    return { ok: false, error: parseAuthEndpointError(response.status, parsed) };
   }
   let data: Record<string, unknown>;
   try {

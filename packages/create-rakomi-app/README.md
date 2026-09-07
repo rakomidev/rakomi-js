@@ -3,6 +3,16 @@
 Scaffold a [Rakomi](https://rakomi.com) quickstart app in seconds. Rakomi is EU-native
 authentication as a service.
 
+## Ask your agent
+
+Add the Rakomi MCP server to your coding agent, then ask it directly:
+
+```sh
+claude mcp add --transport http rakomi https://mcp.rakomi.com/mcp
+```
+
+"List the AI agents connected to my Rakomi tenant."
+
 ## Getting started
 
 ```sh
@@ -35,6 +45,8 @@ npm create @rakomi/rakomi-app@latest -- --template nextjs my-app
 | `--tenant-id <value>`     | your tenant id                                     |
 | `--template-source <url>` | override the archive base (mirror / offline)       |
 | `--yes`                   | accept defaults, never prompt (non-interactive)    |
+| `--connect`               | print next steps for connecting an AI agent (the `rakomi` CLI) |
+| `--no-mcp`                | skip scaffolding `.mcp.json` / `AGENTS.md` (written by default) |
 | `-h`, `--help`            | show help                                          |
 | `-V`, `--version`         | print the version                                  |
 
@@ -42,6 +54,11 @@ The CLI prompts for `RAKOMI_REGION`, `RAKOMI_TENANT_ID`, and `RAKOMI_API_KEY` an
 local `.env` in the new project. Value precedence is: flag > environment variable > prompt >
 default. In a non-interactive context (a pipe, a continuous-integration job, or `--yes`) it never
 blocks — it uses flags / environment values / defaults and leaves the rest for you to fill in.
+
+A project-scope `.mcp.json` and an `AGENTS.md` briefing are scaffolded alongside your new app by
+default, so it is agent-ready on first run — open it in Claude Code and run `claude mcp login rakomi`
+to finish sign-in, or point any other AI coding agent at `AGENTS.md` for the same information (the
+MCP server URL, the connect step, and where credentials live). Pass `--no-mcp` to skip both files.
 
 `RAKOMI_REGION` defaults to `eu-central` — a visible data-residency stance, not a mandate. Override
 it with `--region` or the `RAKOMI_REGION` environment variable for any other region.
