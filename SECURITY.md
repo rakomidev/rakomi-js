@@ -9,8 +9,8 @@ While these packages remain pre-1.0 (`0.x`), they carry **no stability or suppor
 (SemVer 2.0.0 §4); the latest `0.x` line receives security updates on a best-effort basis.
 
 From version **1.0** onward, Rakomi maintains the current (N) and previous (N-1) MAJOR in parallel, with N-1 receiving
-security-only fixes. The CRA support period for each MAJOR is determined in accordance with
-**CRA Art. 13(8)** — at least five years, or the product's expected use time where shorter. The authoritative, machine-readable support windows are published at
+security-only fixes. For each MAJOR version of the Rakomi SDKs, CRE8EVE commits to a CRA support period of
+**at least five years (60 months)**, meeting the support-period requirement of **CRA Art. 13(8)**. The authoritative, machine-readable support windows are published at
 [`https://api.rakomi.com/.well-known/sdk-support.json`](https://api.rakomi.com/.well-known/sdk-support.json)
 and rendered for humans on the [SDK Support & Lifecycle page](https://rakomi.com/sdk-support). This
 document points at that single source rather than re-typing dated rows.

@@ -106,7 +106,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
   if (typeof values['tenant-id'] === 'string') flags.RAKOMI_TENANT_ID = values['tenant-id'];
   if (typeof values['client-id'] === 'string') flags.RAKOMI_CLIENT_ID = values['client-id'];
   const interactive = deps.isTTY && values.yes !== true && !deps.env.CI;
-  const envValues = await collectEnv({ flags, env: deps.env, interactive, ask: deps.ask });
+  const envValues = await collectEnv({ flags, env: deps.env, interactive, ask: deps.ask }, template.slug);
 
   const source = deps.source ?? makeDefaultSource(values, deps.env);
   const archive = await source.fetchArchive(template);

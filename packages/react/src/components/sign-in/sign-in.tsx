@@ -535,6 +535,7 @@ function SignInInner(props: SignInProps): React.ReactElement {
       internals.emitEvent({ type: 'sign_in_attempted', severity: 'info', metadata: { method: 'mfa_totp' } });
       const result = await verifyMfaLogin({
         baseUrl: internals.baseUrl,
+        apiKey: internals.clientId,
         challengeToken: state.challengeToken,
         code,
       });

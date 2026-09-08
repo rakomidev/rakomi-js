@@ -13,7 +13,7 @@
 
 import { type ReactNode,useState } from 'react';
 
-import { type AuthError, isSafeUrl, scorePassword } from '@rakomi/sdk-core';
+import { type AuthError, extractRequestId, isSafeUrl, scorePassword } from '@rakomi/sdk-core';
 
 import { useRakomiContext } from '../context.js';
 import { loadRnPrimitives as loadRn } from '../internal/rn-primitives.js';
@@ -46,11 +46,20 @@ export function SignUp(props: SignUpProps): ReactNode {
     try {
       const response = await ctx.http.fetch(props.registerEndpoint ?? '/v1/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-API-Key': ctx.publishableKey },
         body: JSON.stringify({ email, password, returnTo }),
       });
       if (!response.ok) {
-        setStep({ kind: 'error', error: { code: 'SIGN_IN_FAILED', message: `Register failed (${response.status})` } });
+        let parsed: { detail?: string; request_id?: string } = {};
+        try {
+          parsed = (await response.json()) as typeof parsed;
+        } catch {
+        }
+        const requestId = extractRequestId(parsed);
+        setStep({
+          kind: 'error',
+          error: { code: 'SIGN_IN_FAILED', message: parsed.detail ?? `Register failed (${response.status})`, ...(requestId && { requestId }) },
+        });
       } else {
         setStep({ kind: 'verification_required' });
       }

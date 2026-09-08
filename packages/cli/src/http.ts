@@ -81,7 +81,7 @@ export interface HttpResult<T> {
  * one helper works for every endpoint this CLI calls — `/oauth/*` (login, device grant, userinfo) and
  * `/v1/*` (tenants) alike. */
 export interface ErrorEnvelope {
-  readonly error: string | { code: string; message: string; details?: Record<string, unknown>; [k: string]: unknown };
+  readonly error: string | { code: string; message: string; request_id?: string; details?: Record<string, unknown>; [k: string]: unknown };
   readonly error_description?: string;
 }
 
@@ -94,6 +94,10 @@ export interface ProblemDetailsBody {
   readonly detail?: string;
   readonly instance?: string;
   readonly code?: string;
+  /** Extension member — same request id as the `X-Request-Id` response header, repeated here.
+   * `describeError` surfaces this so a user can quote it in a support ticket, matching the
+   * dashboard's own error-display behaviour — see `requestIdFromError` below. */
+  readonly request_id?: string;
   readonly message_localized?: string;
   readonly suggested_fix?: string;
   /** Extension member (RFC 9457 §3.2) — carries e.g. `upgrade_url` on a `plan/feature_unavailable`
@@ -141,15 +145,33 @@ export function upsellFromProblem(body: unknown, status: number): { readonly upg
   return typeof url === 'string' && url.length > 0 ? { upgradeUrl: url } : undefined;
 }
 
+/** The request id from either error envelope shape (`error.request_id` on the RFC 6749 §5.2 /
+ * legacy `AppError` envelope, or the RFC 9457 top-level `request_id`) — or `undefined` if the body
+ * carries none (an older API build, or a transport-level failure body that never reached the
+ * server). Matches the `X-Request-Id` response header, so a user can quote either one in a
+ * support ticket. */
+export function requestIdFromError(body: unknown): string | undefined {
+  if (isErrorEnvelope(body) && typeof body.error === 'object') {
+    const id = body.error.request_id;
+    return typeof id === 'string' && id.length > 0 ? id : undefined;
+  }
+  if (isProblemDetails(body)) {
+    return typeof body.request_id === 'string' && body.request_id.length > 0 ? body.request_id : undefined;
+  }
+  return undefined;
+}
+
 /** Human-readable message from any error envelope this CLI's endpoints can return, never a stack
  * trace or internal detail. When the error is plan-upsell-eligible (see `upsellFromProblem`), the
- * upgrade hint is appended here — the ONE call site every command's error message already routes
- * through, so no command has to duplicate the upsell rendering itself. */
+ * upgrade hint is appended here; when the body carries a `request_id` (see `requestIdFromError`),
+ * a support-correlation line is appended last. This is the ONE call site every command's error
+ * message already routes through, so no command has to duplicate either rendering itself. */
 export function describeError(body: unknown, status: number): string {
   const base = describeErrorBase(body, status);
   const upsell = upsellFromProblem(body, status);
-  if (!upsell) return base;
-  return `${base}\nUpgrade: ${upsell.upgradeUrl}\nRun \`rakomi upgrade\` to open this in your browser.`;
+  const withUpsell = upsell ? `${base}\nUpgrade: ${upsell.upgradeUrl}\nRun \`rakomi upgrade\` to open this in your browser.` : base;
+  const id = requestIdFromError(body);
+  return id ? `${withUpsell}\nRequest ID: ${id}` : withUpsell;
 }
 
 function describeErrorBase(body: unknown, status: number): string {

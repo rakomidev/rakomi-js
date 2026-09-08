@@ -3,6 +3,8 @@
  * Send magic link email and verify tokens from email links.
  */
 
+import { extractRequestId } from '@rakomi/sdk-core';
+
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError, OAuthTokenResponse } from '../types.js';
 import { requiresHttpsUpgrade } from '../utils/safe-url.js';
@@ -46,8 +48,8 @@ export async function sendMagicLink(options: {
   }
 
   if (!response.ok) {
-    const body = json as { detail?: string };
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Magic link request failed' } };
+    const body = json as { detail?: string; request_id?: string };
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Magic link request failed', ...(extractRequestId(body) && { requestId: extractRequestId(body) }) } };
   }
 
   const r = json as Record<string, unknown>;
@@ -84,8 +86,8 @@ export async function verifyMagicLinkToken(options: {
   }
 
   if (!response.ok) {
-    const body = json as { detail?: string };
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Magic link verification failed' } };
+    const body = json as { detail?: string; request_id?: string };
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Magic link verification failed', ...(extractRequestId(body) && { requestId: extractRequestId(body) }) } };
   }
 
   const r = json as Record<string, unknown>;

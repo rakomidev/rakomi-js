@@ -13,6 +13,7 @@
  * consumed BY agents and end users, not by tenant admins managing agents.
  */
 
+import { extractRequestId } from './internal/request-id.js';
 import type { SdkError, VerifyResult } from './types.js';
 
 /**
@@ -88,10 +89,11 @@ export class AgentsRateLimitedError extends Error {
   }
 }
 
-/** RFC 9457 `application/problem+json` — `code`/`detail` at the top level. */
+/** RFC 9457 `application/problem+json` — `code`/`detail`/`request_id` at the top level. */
 interface ApiErrorBody {
   code?: string;
   detail?: string;
+  request_id?: string;
 }
 
 async function safeJson<T>(res: Response): Promise<T | null> {
@@ -119,25 +121,27 @@ function networkError(message: string): SdkError {
   };
 }
 
-function notFoundError(): SdkError {
+function notFoundError(requestId?: string): SdkError {
   return {
     code: 'agents/not_found',
     message: 'Agent not found in this tenant',
     suggestion: 'Verify the agentClientId matches an agent that has acted on this user before.',
     docs_url: 'https://docs.rakomi.dev/guides/ai-agents',
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function unauthorizedError(): SdkError {
+function unauthorizedError(requestId?: string): SdkError {
   return {
     code: 'agents/unauthorized',
     message: 'Missing or invalid user token',
     suggestion: 'Pass a valid end-user JWT in `userToken`. API keys are NOT accepted on /v1/users/me routes.',
     docs_url: 'https://docs.rakomi.dev/guides/ai-agents',
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function rateLimitedError(retryAfter?: number): SdkError {
+function rateLimitedError(retryAfter?: number, requestId?: string): SdkError {
   return {
     code: 'agents/rate_limited',
     message: 'Rate limit exceeded for /v1/users/me/agents',
@@ -145,15 +149,17 @@ function rateLimitedError(retryAfter?: number): SdkError {
       ? `Wait ${retryAfter}s and retry.`
       : 'Slow down and retry after a short back-off.',
     docs_url: 'https://docs.rakomi.dev/guides/ai-agents',
+    ...(requestId && { request_id: requestId }),
   };
 }
 
-function genericError(status: number, body: ApiErrorBody | null): SdkError {
+function genericError(status: number, body: ApiErrorBody | null, requestId?: string): SdkError {
   return {
     code: body?.code ?? `agents/http_${status}`,
     message: body?.detail ?? `HTTP ${status}`,
     suggestion: 'Inspect the response body and retry if appropriate.',
     docs_url: 'https://docs.rakomi.dev/guides/ai-agents',
+    ...(requestId && { request_id: requestId }),
   };
 }
 
@@ -202,11 +208,12 @@ export class AgentsClient {
       return { ok: true, data: body };
     }
 
-    if (res.status === 401) return { ok: false, error: unauthorizedError() };
-    if (res.status === 429) return { ok: false, error: rateLimitedError(parseRetryAfter(res)) };
+    const errorBody = await safeJson<ApiErrorBody>(res);
+    const requestId = extractRequestId(errorBody);
+    if (res.status === 401) return { ok: false, error: unauthorizedError(requestId) };
+    if (res.status === 429) return { ok: false, error: rateLimitedError(parseRetryAfter(res), requestId) };
 
-    const body = await safeJson<ApiErrorBody>(res);
-    return { ok: false, error: genericError(res.status, body) };
+    return { ok: false, error: genericError(res.status, errorBody, requestId) };
   }
 
   /**
@@ -259,11 +266,12 @@ export class AgentsClient {
       return { ok: true, data: body };
     }
 
-    if (res.status === 401) return { ok: false, error: unauthorizedError() };
-    if (res.status === 404) return { ok: false, error: notFoundError() };
-    if (res.status === 429) return { ok: false, error: rateLimitedError(parseRetryAfter(res)) };
+    const errorBody = await safeJson<ApiErrorBody>(res);
+    const requestId = extractRequestId(errorBody);
+    if (res.status === 401) return { ok: false, error: unauthorizedError(requestId) };
+    if (res.status === 404) return { ok: false, error: notFoundError(requestId) };
+    if (res.status === 429) return { ok: false, error: rateLimitedError(parseRetryAfter(res), requestId) };
 
-    const body = await safeJson<ApiErrorBody>(res);
-    return { ok: false, error: genericError(res.status, body) };
+    return { ok: false, error: genericError(res.status, errorBody, requestId) };
   }
 }

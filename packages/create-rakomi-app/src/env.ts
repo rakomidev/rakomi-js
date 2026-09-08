@@ -5,19 +5,56 @@ import { join } from 'node:path';
 
 import type { TemplateSlug } from './templates.generated.js';
 
-/** Keys the scaffolder collects, in written order. Names follow `RAKOMI_[A-Z0-9_]+`. */
-export const ENV_KEYS = ['RAKOMI_REGION', 'RAKOMI_TENANT_ID', 'RAKOMI_API_KEY', 'RAKOMI_CLIENT_ID'] as const;
+/**
+ * Keys the scaffolder collects, in written order. Names follow `RAKOMI_[A-Z0-9_]+`.
+ * `RAKOMI_CLIENT_SECRET`/`RAKOMI_REDIRECT_URI` are collected ONLY for the `node` template — see
+ * `NODE_ONLY_KEYS` below; every other template's dev server never reads either.
+ */
+export const ENV_KEYS = [
+  'RAKOMI_REGION',
+  'RAKOMI_TENANT_ID',
+  'RAKOMI_API_KEY',
+  'RAKOMI_CLIENT_ID',
+  'RAKOMI_CLIENT_SECRET',
+  'RAKOMI_REDIRECT_URI',
+] as const;
 export type EnvKey = (typeof ENV_KEYS)[number];
 
 /** The default EU region — a visible, overridable data-residency stance, not a mandate. */
 export const DEFAULT_REGION = 'eu-central';
+
+/** The node quickstart's own `.env.example` default — an OAuth client registered for local dev
+ * typically has this exact redirect URI, so it doubles as a working starting point. */
+export const DEFAULT_NODE_REDIRECT_URI = 'http://localhost:3000/callback';
 
 /**
  * Keys whose value is a credential and must never be echoed to stdout / logs / summaries.
  * `RAKOMI_CLIENT_ID` is deliberately absent — an OAuth client_id is a PUBLIC, publishable
  * identifier (PKCE public clients ship it in bundled JS), not a secret.
  */
-export const SECRET_KEYS = new Set<EnvKey>(['RAKOMI_API_KEY']);
+export const SECRET_KEYS = new Set<EnvKey>(['RAKOMI_API_KEY', 'RAKOMI_CLIENT_SECRET']);
+
+/**
+ * The `node` quickstart is the only template whose OWN server performs a confidential-client
+ * OAuth code exchange (`examples/quickstarts/node/src/config.ts`) — `RAKOMI_REDIRECT_URI` is
+ * REQUIRED there (`loadConfig()` throws a `ConfigError` at boot without it: the scaffolder used
+ * to omit it entirely, so a freshly-scaffolded node app never started) and `RAKOMI_CLIENT_SECRET`
+ * is read for the confidential-client case node's own README instructs the user to set up
+ * (optional — an unset value degrades to a public/PKCE-only client, per that file's own comment).
+ * Every browser-based template (nextjs/react/expo) drives its OAuth flow through `@rakomi/react`
+ * client-side and never reads either var — collecting/writing them there would be a meaningless
+ * prompt and a dead `.env` line for those templates.
+ */
+const NODE_ONLY_KEYS = new Set<EnvKey>(['RAKOMI_CLIENT_SECRET', 'RAKOMI_REDIRECT_URI']);
+
+/** The keys actually relevant to a given template — `ENV_KEYS` minus the `node`-only keys for
+ * every other template (or an absent/unknown slug — the conservative default), unchanged (full
+ * set) for `node` itself. Drives both what the wizard prompts for (`prompt.ts`'s `collectEnv`)
+ * and what `renderDotenv` writes. */
+export function keysForTemplate(templateSlug: TemplateSlug | undefined): readonly EnvKey[] {
+  if (templateSlug === 'node') return ENV_KEYS;
+  return ENV_KEYS.filter((key) => !NODE_ONLY_KEYS.has(key));
+}
 
 /**
  * Every scaffolded template reads `RAKOMI_REGION` / `RAKOMI_TENANT_ID` / `RAKOMI_API_KEY` under
@@ -63,13 +100,15 @@ export function dotenvLine(key: string, rawValue: string): string {
 }
 
 /**
- * Render a full `.env` body from collected values. Always LF-terminated, one key per line,
- * in `ENV_KEYS` order. A missing value is written as an empty assignment so the file lists
- * every key for the user to complete. Each key is written under the NAME the given template
- * actually reads (`envKeyNameForTemplate`) — not necessarily its canonical `RAKOMI_*` form.
+ * Render a full `.env` body from collected values. Always LF-terminated, one key per line, in
+ * `ENV_KEYS` order restricted to `keysForTemplate(templateSlug)` — a key the given template never
+ * reads is never written at all, rather than left as a dead empty assignment. A missing value for
+ * a key the template DOES read is still written as an empty assignment so the file lists it for
+ * the user to complete. Each key is written under the NAME the given template actually reads
+ * (`envKeyNameForTemplate`) — not necessarily its canonical `RAKOMI_*` form.
  */
 export function renderDotenv(values: Partial<Record<EnvKey, string>>, templateSlug: TemplateSlug): string {
-  const lines = ENV_KEYS.map((key) => dotenvLine(envKeyNameForTemplate(templateSlug, key), values[key] ?? ''));
+  const lines = keysForTemplate(templateSlug).map((key) => dotenvLine(envKeyNameForTemplate(templateSlug, key), values[key] ?? ''));
   return lines.join('\n') + '\n';
 }
 

@@ -1,7 +1,12 @@
 /**
  * MFA verification — POST /v1/auth/mfa/verify-login.
  * Returns OAuthTokenResponse on successful MFA verification.
+ *
+ * Like every other `/v1/auth/*` endpoint this route requires the `X-API-Key` header, and its
+ * request body field is `mfa_challenge_token` (not `challenge_token`).
  */
+
+import { extractRequestId } from '@rakomi/sdk-core';
 
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError, OAuthTokenResponse } from '../types.js';
@@ -16,18 +21,19 @@ type MfaVerifyResult =
  */
 export async function verifyMfaLogin(options: {
   baseUrl: string;
+  apiKey: string;
   challengeToken: string;
   code: string;
   signal?: AbortSignal;
 }): Promise<MfaVerifyResult> {
-  const { baseUrl, challengeToken, code, signal } = options;
+  const { baseUrl, apiKey, challengeToken, code, signal } = options;
 
   let response: Response;
   try {
     response = await sdkFetch(`${baseUrl}/v1/auth/mfa/verify-login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ challenge_token: challengeToken, code }),
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({ mfa_challenge_token: challengeToken, code }),
       signal,
     });
   } catch (err) {
@@ -42,9 +48,9 @@ export async function verifyMfaLogin(options: {
   }
 
   if (!response.ok) {
-    const body = json as { detail?: string };
+    const body = json as { detail?: string; request_id?: string };
     const message = body?.detail ?? 'MFA verification failed';
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message } };
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message, ...(extractRequestId(body) && { requestId: extractRequestId(body) }) } };
   }
 
   const r = json as Record<string, unknown>;

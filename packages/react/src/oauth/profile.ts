@@ -3,6 +3,8 @@
  * Used by <UserProfile /> component.
  */
 
+import { extractRequestId } from '@rakomi/sdk-core';
+
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError, SessionInfo } from '../types.js';
 
@@ -42,8 +44,8 @@ async function authFetch(url: string, token: string, options?: RequestInit): Pro
 }
 
 function parseError(json: unknown, fallback: string): AuthError {
-  const body = json as { detail?: string } | undefined;
-  return { code: 'PROVIDER_ERROR' as const, message: body?.detail ?? fallback };
+  const body = json as { detail?: string; request_id?: string } | undefined;
+  return { code: 'PROVIDER_ERROR' as const, message: body?.detail ?? fallback, ...(extractRequestId(body) && { requestId: extractRequestId(body) }) };
 }
 
 export async function changePassword(options: {

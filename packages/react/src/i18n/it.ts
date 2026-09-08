@@ -87,7 +87,7 @@ export const it: Translations = {
   'userProfile.sessionCurrent': 'Sessione corrente',
   'userProfile.sessionRevoke': 'Revoca',
   'userProfile.sessionRevokeAll': 'Revoca tutte le altre sessioni',
-  'userProfile.sessionRevokePartial': 'Impossibile revocare {count} sessione/i',
+  'userProfile.sessionRevokePartial': 'Impossibile revocare {count} sessioni',
   'userProfile.sessionExpired': 'La sessione è scaduta. Effettui nuovamente l\'accesso.',
   'userProfile.noOtherSessions': 'Nessun\'altra sessione attiva',
   'userProfile.currentPassword': 'Password attuale',

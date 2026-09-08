@@ -3,6 +3,8 @@
  * Always returns success-shaped response (email enumeration prevention).
  */
 
+import { extractRequestId } from '@rakomi/sdk-core';
+
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError } from '../types.js';
 import { requiresHttpsUpgrade } from '../utils/safe-url.js';
@@ -38,8 +40,8 @@ export async function registerUser(options: {
   if (!response.ok) {
     let json: unknown;
     try { json = await response.json(); } catch { }
-    const body = json as { detail?: string } | undefined;
-    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Registration failed' } };
+    const body = json as { detail?: string; request_id?: string } | undefined;
+    return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Registration failed', ...(extractRequestId(body) && { requestId: extractRequestId(body) }) } };
   }
 
   return { ok: true };

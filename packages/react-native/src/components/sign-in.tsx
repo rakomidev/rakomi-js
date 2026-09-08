@@ -110,6 +110,7 @@ export function SignIn(props: SignInProps): ReactNode {
     const result = await verifyTotp({
       http: ctx.http,
       endpoint: totpVerifyEndpoint,
+      apiKey: ctx.publishableKey,
       challengeToken: step.challengeToken,
       code,
     });

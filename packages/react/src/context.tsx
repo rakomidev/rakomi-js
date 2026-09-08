@@ -206,6 +206,7 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
 
   const codeExchangeStarted = useRef(false);
   const preflightStarted = useRef(false);
+  const restoredInstance = useRef<TokenManager | null>(null);
 
   useEffect(() => {
     if (tokenManagerRef.current === null) {
@@ -326,7 +327,10 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
       }
     }
 
-    void tm.restore();
+    if (restoredInstance.current !== tm) {
+      restoredInstance.current = tm;
+      void tm.restore();
+    }
 
     if (getNextEnv()['NODE_ENV'] !== 'production' && !preflightStarted.current) {
       preflightStarted.current = true;
@@ -336,7 +340,7 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
           const ok: string[] = [];
 
           try {
-            const res = await sdkFetch(`${baseUrl}/healthz`, {
+            const res = await sdkFetch(`${baseUrl}/.well-known/openid-configuration`, {
               method: 'HEAD',
               signal: AbortSignal.timeout(5000),
             });
@@ -355,7 +359,7 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
               }
             }
           } catch {
-            issues.push('API unreachable — check baseUrl and CORS');
+            issues.push('API unreachable — check baseUrl and network connectivity');
           }
 
           if (typeof crypto === 'undefined' || typeof crypto.subtle === 'undefined') {

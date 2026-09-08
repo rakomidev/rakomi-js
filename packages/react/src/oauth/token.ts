@@ -36,7 +36,7 @@ export async function exchangeCode(options: {
     code_verifier: options.codeVerifier,
   });
 
-  return tokenRequest(baseUrl, body);
+  return tokenRequest(baseUrl, body, 'exchange');
 }
 
 /**
@@ -55,10 +55,22 @@ export async function refreshToken(options: {
     client_id: options.clientId,
   });
 
-  return tokenRequest(baseUrl, body);
+  return tokenRequest(baseUrl, body, 'refresh');
 }
 
-async function tokenRequest(baseUrl: string, body: URLSearchParams): Promise<TokenResult> {
+/**
+ * `context` distinguishes the two callers above (see `parseTokenEndpointError`'s own doc
+ * comment for the full rationale): `'exchange'` is a brand-new sign-in with no established
+ * session yet, so every failure here — network, malformed response, or a rejected grant — is
+ * `CODE_EXCHANGE_FAILED`, never `REFRESH_FAILED`. `'refresh'` keeps this function's original
+ * behavior unchanged.
+ */
+async function tokenRequest(baseUrl: string, body: URLSearchParams, context: 'exchange' | 'refresh'): Promise<TokenResult> {
+  const failure = (message: string): TokenResult =>
+    context === 'exchange'
+      ? { ok: false, error: { code: 'CODE_EXCHANGE_FAILED', message } }
+      : { ok: false, error: networkError(message) };
+
   let response: Response;
   try {
     response = await sdkFetch(`${baseUrl}/oauth/token`, {
@@ -67,19 +79,19 @@ async function tokenRequest(baseUrl: string, body: URLSearchParams): Promise<Tok
       body,
     });
   } catch (err) {
-    return { ok: false, error: networkError(normalizeNetworkError(err)) };
+    return failure(normalizeNetworkError(err));
   }
 
   let json: unknown;
   try {
     json = await response.json();
   } catch {
-    return { ok: false, error: networkError('Invalid JSON response from token endpoint') };
+    return failure('Invalid JSON response from token endpoint');
   }
 
   if (!response.ok) {
-    const errorBody = json as { error?: string; error_description?: string };
-    return { ok: false, error: parseTokenEndpointError(response.status, errorBody) };
+    const errorBody = json as { error?: string; error_description?: string; request_id?: string };
+    return { ok: false, error: parseTokenEndpointError(response.status, errorBody, context) };
   }
 
   const r = json as Record<string, unknown>;
@@ -90,7 +102,7 @@ async function tokenRequest(baseUrl: string, body: URLSearchParams): Promise<Tok
     typeof r['expires_in'] !== 'number' ||
     typeof r['token_type'] !== 'string'
   ) {
-    return { ok: false, error: networkError('Invalid token response shape from token endpoint') };
+    return failure('Invalid token response shape from token endpoint');
   }
 
   const data: OAuthTokenResponse = {

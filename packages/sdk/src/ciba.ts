@@ -11,6 +11,7 @@
  * RakomiClient config. Browser/edge runtimes that cannot keep a secret MUST
  * use the device-grant flow instead.
  */
+import { extractRequestId } from './internal/request-id.js';
 import { CIBA_GRANT_TYPE } from './internal/shared-constants.js';
 import type { SdkError, VerifyResult } from './types.js';
 
@@ -44,45 +45,48 @@ export interface CibaPollResponse {
 export class CibaError extends Error {
   readonly code: string;
   readonly description: string;
-  constructor(code: string, description: string) {
+  /** The server's per-request correlation id (top-level `request_id` on the `/oauth/*` error body), when present. */
+  readonly requestId?: string;
+  constructor(code: string, description: string, requestId?: string) {
     super(`${code}: ${description}`);
     this.code = code;
     this.description = description;
+    this.requestId = requestId;
   }
 }
 
 export class CibaAuthorizationPendingError extends CibaError {
-  constructor(d = 'authorization_pending') { super('authorization_pending', d); }
+  constructor(d = 'authorization_pending', requestId?: string) { super('authorization_pending', d, requestId); }
 }
 export class CibaSlowDownError extends CibaError {
-  constructor(d = 'slow_down') { super('slow_down', d); }
+  constructor(d = 'slow_down', requestId?: string) { super('slow_down', d, requestId); }
 }
 export class CibaAccessDeniedError extends CibaError {
-  constructor(d = 'access_denied') { super('access_denied', d); }
+  constructor(d = 'access_denied', requestId?: string) { super('access_denied', d, requestId); }
 }
 export class CibaExpiredTokenError extends CibaError {
-  constructor(d = 'expired_token') { super('expired_token', d); }
+  constructor(d = 'expired_token', requestId?: string) { super('expired_token', d, requestId); }
 }
 export class CibaReplayError extends CibaError {
-  constructor(d: string) { super('invalid_grant', d); }
+  constructor(d: string, requestId?: string) { super('invalid_grant', d, requestId); }
 }
 export class CibaInvalidClientError extends CibaError {
-  constructor(d: string) { super('invalid_client', d); }
+  constructor(d: string, requestId?: string) { super('invalid_client', d, requestId); }
 }
 export class CibaInvalidScopeError extends CibaError {
-  constructor(d: string) { super('invalid_scope', d); }
+  constructor(d: string, requestId?: string) { super('invalid_scope', d, requestId); }
 }
 export class CibaUnauthorizedClientError extends CibaError {
-  constructor(d: string) { super('unauthorized_client', d); }
+  constructor(d: string, requestId?: string) { super('unauthorized_client', d, requestId); }
 }
 export class CibaUnknownUserError extends CibaError {
-  constructor(d: string) { super('unknown_user_id', d); }
+  constructor(d: string, requestId?: string) { super('unknown_user_id', d, requestId); }
 }
 export class CibaUserCapReachedError extends CibaError {
-  constructor(d: string) { super('user_cap_reached', d); }
+  constructor(d: string, requestId?: string) { super('user_cap_reached', d, requestId); }
 }
 export class CibaInvalidRequestError extends CibaError {
-  constructor(d: string) { super('invalid_request', d); }
+  constructor(d: string, requestId?: string) { super('invalid_request', d, requestId); }
 }
 
 interface CibaContext {
@@ -97,7 +101,7 @@ function basicAuth(clientId: string, secret: string): string {
   return `Basic ${btoa(raw)}`;
 }
 
-function makeError(code: string, description: string): SdkError {
+function makeError(code: string, description: string, requestId?: string): SdkError {
   return {
     code: `ciba/${code}`,
     message: description,
@@ -112,6 +116,7 @@ function makeError(code: string, description: string): SdkError {
               ? 'Requested scope is empty after intersection. Reduce the scope set or extend the client allowlist.'
               : 'See description; consult Starlight docs for CIBA grant.',
     docs_url: 'https://docs.rakomi.dev/oauth/ciba',
+    ...(requestId && { request_id: requestId }),
   };
 }
 
@@ -190,7 +195,7 @@ export async function initiateCiba(
 
   const code = (body.error as string | undefined) ?? `http_${res.status}`;
   const description = (body.error_description as string | undefined) ?? `HTTP ${res.status}`;
-  return { ok: false, error: makeError(code, description) };
+  return { ok: false, error: makeError(code, description, extractRequestId(body)) };
 }
 
 /**
@@ -271,7 +276,7 @@ export async function pollCiba(
 
   const code = (body.error as string | undefined) ?? `http_${res.status}`;
   const description = (body.error_description as string | undefined) ?? `HTTP ${res.status}`;
-  return { ok: false, error: makeError(code, description) };
+  return { ok: false, error: makeError(code, description, extractRequestId(body)) };
 }
 
 export interface CibaAwaitDecisionOptions {
@@ -313,21 +318,21 @@ export async function awaitCibaDecision(
         await sleep(interval, options.signal);
         continue;
       case 'access_denied':
-        throw new CibaAccessDeniedError(result.error.message);
+        throw new CibaAccessDeniedError(result.error.message, result.error.request_id);
       case 'expired_token':
-        throw new CibaExpiredTokenError(result.error.message);
+        throw new CibaExpiredTokenError(result.error.message, result.error.request_id);
       case 'invalid_grant':
-        throw new CibaReplayError(result.error.message);
+        throw new CibaReplayError(result.error.message, result.error.request_id);
       case 'invalid_scope':
-        throw new CibaInvalidScopeError(result.error.message);
+        throw new CibaInvalidScopeError(result.error.message, result.error.request_id);
       case 'unauthorized_client':
-        throw new CibaUnauthorizedClientError(result.error.message);
+        throw new CibaUnauthorizedClientError(result.error.message, result.error.request_id);
       case 'invalid_client':
-        throw new CibaInvalidClientError(result.error.message);
+        throw new CibaInvalidClientError(result.error.message, result.error.request_id);
       case 'invalid_request':
-        throw new CibaInvalidRequestError(result.error.message);
+        throw new CibaInvalidRequestError(result.error.message, result.error.request_id);
       default:
-        throw new CibaError(code, result.error.message);
+        throw new CibaError(code, result.error.message, result.error.request_id);
     }
   }
 }

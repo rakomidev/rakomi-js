@@ -29,6 +29,7 @@ import {
   MfaStepUpRequiredError,
   MfaStepUpUnavailableError,
 } from './errors.js';
+import { extractRequestId } from './internal/request-id.js';
 import type { SdkError, VerifyResult } from './types.js';
 
 export type AccountLinkingProvider =
@@ -90,6 +91,7 @@ export interface LinkClientContext {
 interface ApiErrorBody {
   code?: string;
   detail?: string;
+  request_id?: string;
   next_action?: string;
   mfa_challenge_token?: string;
   available_methods?: string[];
@@ -258,8 +260,21 @@ export class LinkClient {
     return { ok: false, error: await this.mapError(res, 'remove') };
   }
 
+  /**
+   * Parses the error body ONCE, extracts the request id (if the server sent one), delegates to
+   * `resolveError` for the actual code/status → typed-error mapping, then merges the request id
+   * onto whatever `SdkError` shape comes back — so every branch of `resolveError` (typed-class
+   * bridge, inline literal, or a factory call) carries it without each one threading it through
+   * by hand.
+   */
   private async mapError(res: Response, op: 'list' | 'initiate' | 'remove'): Promise<SdkError> {
     const body = await parseErrorBody(res);
+    const requestId = extractRequestId(body);
+    const error = this.resolveError(res, op, body);
+    return requestId ? { ...error, request_id: requestId } : error;
+  }
+
+  private resolveError(res: Response, op: 'list' | 'initiate' | 'remove', body: ApiErrorBody): SdkError {
     const code = body.code ?? '';
 
     switch (res.status) {

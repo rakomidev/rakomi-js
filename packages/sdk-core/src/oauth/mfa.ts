@@ -3,9 +3,15 @@
  *
  * Contract:
  * - Request body: `{ mfa_challenge_token, code }`.
+ * - `POST /v1/auth/mfa/verify-login` requires the `X-API-Key` header like every other `/v1/auth/*`
+ *   endpoint — it is NOT optional.
+ * - Non-2xx responses are `application/problem+json` (RFC 9457) — `detail` carries the
+ *   occurrence-specific message, never the OAuth-family `{error, error_description}` shape (this
+ *   endpoint has no `/oauth/` prefix, so it does not follow that convention).
  * - `MfaStepUpRequiredError` and `MfaStepUpUnavailableError` partition the 401 space.
  */
 
+import { extractRequestId } from '../internal/request-id.js';
 import type { HttpClient } from '../types/adapters.js';
 import type { AuthError } from '../types/auth-error.js';
 import { networkError } from './errors.js';
@@ -40,6 +46,8 @@ export interface VerifyTotpInput {
   http: HttpClient;
   /** Canonical: `${baseUrl}/v1/auth/mfa/verify-login`. */
   endpoint: string;
+  /** Tenant publishable key — sent as `X-API-Key` (this endpoint rejects the request without it). */
+  apiKey: string;
   challengeToken: string;
   code: string;
 }
@@ -57,14 +65,22 @@ export async function verifyTotp(input: VerifyTotpInput): Promise<VerifyTotpResu
   try {
     response = await input.http.fetch(input.endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-API-Key': input.apiKey },
       body: JSON.stringify({ mfa_challenge_token: input.challengeToken, code }),
     });
   } catch (err) {
     return { ok: false, error: networkError(err instanceof Error ? err.message : 'network') };
   }
   if (!response.ok) {
-    return { ok: false, error: { code: 'SIGN_IN_FAILED', message: `MFA verification failed (${response.status})` } };
+    let detail: string | undefined;
+    let requestId: string | undefined;
+    try {
+      const body = (await response.json()) as { detail?: string; request_id?: string };
+      detail = body?.detail;
+      requestId = extractRequestId(body);
+    } catch {
+    }
+    return { ok: false, error: { code: 'SIGN_IN_FAILED', message: detail ?? `MFA verification failed (${response.status})`, ...(requestId && { requestId }) } };
   }
   try {
     const json = (await response.json()) as {
