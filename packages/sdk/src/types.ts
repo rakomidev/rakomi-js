@@ -448,7 +448,10 @@ export type PublisherEventType =
   | 'publisher.verified'
   | 'publisher.deverified'
   | 'publisher.subscription_activated'
-  | 'publisher.subscription_lapsed';
+  | 'publisher.subscription_lapsed'
+  | 'app.version_pending_review'
+  | 'app.pending_version_approved'
+  | 'app.pending_version_rejected';
 
 /**
  * Open-set publisher event type: the known-literal union widened with the base string so a delivery

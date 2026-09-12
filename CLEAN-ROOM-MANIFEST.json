@@ -36,7 +36,7 @@
     },
     {
       "name": "@rakomi/react",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -378,7 +378,7 @@
     },
     {
       "path": "packages/react-native/src/internal/webhook-verify.ts",
-      "sha256": "sha256:74180da57874b6b7a5b9132b3cdbf5d53f314e463e075124c0bac6df39e29247"
+      "sha256": "sha256:a5f491d31a8ec807570f5cfeaf37f9b0aecbaeb4294fcd28cbcceb08c7b0df32"
     },
     {
       "path": "packages/react-native/src/native/bare-rn-example.ts",
@@ -650,7 +650,7 @@
     },
     {
       "path": "packages/react/src/i18n/pl.ts",
-      "sha256": "sha256:2f708aed83c912e23da109179f66a33590d45c702db1446c5c138689afe2f2a7"
+      "sha256": "sha256:9735d2b5c30e6d0f13a34fbcfe3ab136bbca9824e5e8338f8fb738f3c37ef986"
     },
     {
       "path": "packages/react/src/i18n/pt.ts",
@@ -1054,7 +1054,7 @@
     },
     {
       "path": "packages/sdk/src/types.ts",
-      "sha256": "sha256:e88acab6dd72a29d24467b64cf592f059d145f3c1581f2d0cd0db80bd934cdba"
+      "sha256": "sha256:1b8aa8468b08cbecdb52ef57c3c64dd86337461c80f7d53b5dde247266ac59cc"
     },
     {
       "path": "packages/sdk/src/verify-publisher-webhook.ts",

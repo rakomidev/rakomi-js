@@ -55,7 +55,7 @@ export const pl: Translations = {
   'signUp.resend': 'Wyślij ponownie e-mail weryfikacyjny',
   'signUp.hasAccount': 'Masz już konto? {link}',
   'signUp.dataLocation': 'Twoje dane są przechowywane w UE',
-  'signUp.existingAccountHint': 'Nie otrzymałeś? Jeśli masz już konto, {link}.',
+  'signUp.existingAccountHint': 'Wiadomość nie dotarła? Jeśli masz już konto, {link}.',
   'signUp.passwordMismatch': 'Hasła nie są zgodne',
   'signUp.passwordTooShort': 'Hasło musi mieć co najmniej 12 znaków',
   'signUp.consentRequired': 'Musisz zaakceptować regulamin',

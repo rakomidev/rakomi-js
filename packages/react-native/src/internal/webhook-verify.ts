@@ -33,7 +33,10 @@ export type PublisherEventType =
   | 'publisher.verified'
   | 'publisher.deverified'
   | 'publisher.subscription_activated'
-  | 'publisher.subscription_lapsed';
+  | 'publisher.subscription_lapsed'
+  | 'app.version_pending_review'
+  | 'app.pending_version_approved'
+  | 'app.pending_version_rejected';
 
 export type PublisherWebhookEventType = PublisherEventType | (string & {});
 
