@@ -1,3 +1,7 @@
+## 0.4.1 — 2026-09-12
+
+- Polish copy: the sign-up "resend verification e-mail" hint no longer assumes the reader is a man ("Wiadomość nie dotarła?" replaces a gendered past-tense form).
+
 ## 0.4.0 — 2026-09-07
 
 - `AuthError` (the shared error type returned by `@rakomi/react` and `@rakomi/react-native`'s sign-in, sign-up, magic-link, email-OTP, MFA, password-reset, and profile calls) now carries an optional `requestId` — the same per-request correlation id the API logs and returns via `X-Request-Id` — when the failed call's response provided one. Hand it back to Rakomi support to correlate a caught error with a server-side log line. Additive and absent (never fabricated) when the server did not emit one; no existing `AuthError` variant changes shape otherwise.
