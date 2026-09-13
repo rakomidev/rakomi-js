@@ -71,6 +71,11 @@ export const ERROR_CODES = {
   WEBHOOK_MISSING_HEADER: 'webhook/missing_header',
   WEBHOOK_INVALID_BODY: 'webhook/invalid_body',
   OAUTH_AUTHORIZATION_ENDPOINT_UNRESOLVED: 'oauth/authorization_endpoint_unresolved',
+  LOGOUT_TOKEN_MISSING_CLAIMS: 'logout_token/missing_claims',
+  LOGOUT_TOKEN_MISSING_SUBJECT: 'logout_token/missing_subject',
+  LOGOUT_TOKEN_INVALID_EVENTS: 'logout_token/invalid_events',
+  LOGOUT_TOKEN_NONCE_PRESENT: 'logout_token/nonce_present',
+  LOGOUT_TOKEN_SESSION_MISMATCH: 'logout_token/session_mismatch',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -332,6 +337,41 @@ export const WEBHOOK_INVALID_BODY = () =>
     'webhook/invalid_body',
     'Webhook body is not valid JSON',
     'Use express.raw() or express.text() middleware to preserve the raw body for webhook routes',
+  );
+
+export const LOGOUT_TOKEN_MISSING_CLAIMS = () =>
+  createError(
+    'logout_token/missing_claims',
+    'Required Logout Token claims missing (iss, aud, iat, exp, jti)',
+    'Ensure the token was delivered by Rakomi to your backchannel_logout_uri, unmodified',
+  );
+
+export const LOGOUT_TOKEN_MISSING_SUBJECT = () =>
+  createError(
+    'logout_token/missing_subject',
+    'Logout Token carries neither a sub nor a sid claim',
+    'A valid Logout Token has at least one (OIDC Back-Channel Logout 1.0 §2.4/§2.6 step 5) — reject the request with HTTP 400',
+  );
+
+export const LOGOUT_TOKEN_INVALID_EVENTS = () =>
+  createError(
+    'logout_token/invalid_events',
+    'Logout Token is missing the required events claim member (http://schemas.openid.net/event/backchannel-logout)',
+    'This is not a valid Back-Channel Logout token (OIDC Back-Channel Logout 1.0 §2.4/§2.6 step 6) — reject the request with HTTP 400',
+  );
+
+export const LOGOUT_TOKEN_NONCE_PRESENT = () =>
+  createError(
+    'logout_token/nonce_present',
+    'Logout Token carries a nonce claim, which OIDC Back-Channel Logout 1.0 §2.4/§2.6 step 7 forbids',
+    'Reject the token — a nonce here signals a forged or misissued Logout Token. Return HTTP 400',
+  );
+
+export const LOGOUT_TOKEN_SESSION_MISMATCH = (detail?: string) =>
+  createError(
+    'logout_token/session_mismatch',
+    `Logout Token does not match the expected session${detail ? `: ${detail}` : ''}`,
+    'Verify expectedSid/expectedSub matches the session you intend to end, or drop the pin and resolve the session by sub/sid lookup yourself',
   );
 
 export const CONFIG_MISSING_API_KEY = () =>

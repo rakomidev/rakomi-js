@@ -29,10 +29,10 @@
   "packages": [
     {
       "name": "@rakomi/node",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "tagPrefix": "sdk",
       "emittedSymbols": [],
-      "fileCount": 32
+      "fileCount": 33
     },
     {
       "name": "@rakomi/react",
@@ -994,7 +994,7 @@
     },
     {
       "path": "packages/sdk/src/errors.ts",
-      "sha256": "sha256:f9099bdc22c76eaabbea27d40bef5fbdd298ef213ee2bcd5d9af9a32d1635ca3"
+      "sha256": "sha256:1942e6d7f66fa004d2ca9dd9565b49ec3ad9968403c5968d04624c8064db4809"
     },
     {
       "path": "packages/sdk/src/eudi.ts",
@@ -1010,7 +1010,7 @@
     },
     {
       "path": "packages/sdk/src/index.ts",
-      "sha256": "sha256:112a016bd77f86284bca18141043eb64564182a8a5a265505d27c33e05df5f25"
+      "sha256": "sha256:2a8a63a01087413cde7ed16a83845e5d303b7c9117cc9640ff2737beb2681935"
     },
     {
       "path": "packages/sdk/src/internal/canonical-url.ts",
@@ -1054,7 +1054,11 @@
     },
     {
       "path": "packages/sdk/src/types.ts",
-      "sha256": "sha256:1b8aa8468b08cbecdb52ef57c3c64dd86337461c80f7d53b5dde247266ac59cc"
+      "sha256": "sha256:0c7fd0135ef5b640b5f315a5b65353f3336fc7f40c19284c9751595f1a2fca63"
+    },
+    {
+      "path": "packages/sdk/src/verify-logout-token.ts",
+      "sha256": "sha256:a2d3a5a0d2d70f81ccc9effe0b832b5b4ad741cefa587dc1f331b6c382f4d402"
     },
     {
       "path": "packages/sdk/src/verify-publisher-webhook.ts",

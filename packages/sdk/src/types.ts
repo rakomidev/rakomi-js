@@ -344,6 +344,59 @@ export interface ProtectedResourceMetadata {
 }
 
 /**
+ * OIDC Back-Channel Logout 1.0 §2.4 Logout Token claims, after `verifyLogoutToken()` has verified
+ * the signature and every §2.6 validation step this SDK can decide on its own. `sub`/`sid` are each
+ * optional on the wire, but at least one is always present here — a token missing both fails
+ * verification (§2.6 step 5) before this shape is ever returned.
+ */
+export interface LogoutTokenPayload {
+  iss: string;
+  aud: string;
+  iat: number;
+  exp: number;
+  jti: string;
+  /** Always contains the member `http://schemas.openid.net/event/backchannel-logout` (§2.4). */
+  events: Record<string, unknown>;
+  /** The affected user's id, when the OP included one. */
+  sub?: string;
+  /**
+   * The session identifier the OP is asking you to end. Use it to look up your own session
+   * record — never as a credential or a value you authenticate a request with.
+   */
+  sid?: string;
+}
+
+/**
+ * Options for `verifyLogoutToken()`. `issuer`/`jwksUrl` default to the Rakomi platform values,
+ * same defaults and same https-only validation as `verifyRakomiToken()`.
+ */
+export interface VerifyLogoutTokenOptions {
+  /** Expected `iss` claim. Default: `https://api.rakomi.com`. Must be an https: URL. */
+  issuer?: string;
+  /**
+   * Full URL of the JWKS document used to verify the signature.
+   * Default: `https://api.rakomi.com/.well-known/jwks.json`. Must be an https: URL.
+   */
+  jwksUrl?: string;
+  /** Clock skew tolerance in seconds. Default 30, clamped to [0, 120]. */
+  clockTolerance?: number;
+  /**
+   * Your OAuth `client_id` — the Logout Token's `aud` claim MUST equal this exactly
+   * (OIDC Back-Channel Logout 1.0 §2.6 step 4, literal string equality). REQUIRED: accepting a
+   * Logout Token without checking `aud` would let one RP's logout event be replayed against
+   * another RP sharing the same OP.
+   */
+  audience: string;
+  /**
+   * When provided, the token's `sid` claim MUST equal this exactly (§2.6 step 11) — the RP-side
+   * check you make when you already know which local session this event should end.
+   */
+  expectedSid?: string;
+  /** When provided, the token's `sub` claim MUST equal this exactly (§2.6 step 10). */
+  expectedSub?: string;
+}
+
+/**
  * RFC 6750 §3.1 challenge error codes emittable by a resource server.
  * `invalid_request` is deliberately excluded: a 400 response does not carry
  * this challenge (see `buildChallenge()`).
