@@ -62,6 +62,11 @@ export {
   JWKS_INVALID_RESPONSE,
   JWKS_NO_MATCHING_KEY,
   LinkStateExpiredError,
+  LOGOUT_TOKEN_INVALID_EVENTS,
+  LOGOUT_TOKEN_MISSING_CLAIMS,
+  LOGOUT_TOKEN_MISSING_SUBJECT,
+  LOGOUT_TOKEN_NONCE_PRESENT,
+  LOGOUT_TOKEN_SESSION_MISMATCH,
   MfaStepUpRequiredError,
   MfaStepUpUnavailableError,
   OAUTH_AUTHORIZATION_ENDPOINT_UNRESOLVED,
@@ -203,6 +208,7 @@ export type {
   AuthorizeUrlOptions,
   ChallengeErrorCode,
   ChallengeOptions,
+  LogoutTokenPayload,
   MiddlewareOptions,
   OAuthExchangeOptions,
   OAuthRefreshOptions,
@@ -221,6 +227,7 @@ export type {
   SdkEnvironment,
   SdkError,
   TokenPayload,
+  VerifyLogoutTokenOptions,
   VerifyRakomiTokenAudienceOptions,
   VerifyRakomiTokenBaseOptions,
   VerifyRakomiTokenOptions,
@@ -230,5 +237,6 @@ export type {
   WebhookHeaders,
   WebhookVerifyData,
 } from './types.js';
+export { verifyLogoutToken } from './verify-logout-token.js';
 export { verifyPublisherWebhook } from './verify-publisher-webhook.js';
 export { verifyWebhook } from './verify-webhook.js';
