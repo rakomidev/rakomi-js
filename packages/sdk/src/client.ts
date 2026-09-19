@@ -18,6 +18,7 @@ import { CredentialsClient } from './credentials.js';
 import { resolveAuthorizationEndpoint as resolveAuthorizationEndpointImpl } from './discovery.js';
 import {
   CONFIG_INVALID_BASE_URL,
+  CONFIG_INVALID_URL,
   CONFIG_MISSING_API_KEY,
   CONFIG_MISSING_WEBHOOK_SECRET,
   OAUTH_MISSING_CLIENT_ID,
@@ -68,6 +69,7 @@ const API_KEY_PREFIXES = ['ca_live_', 'ca_test_', 'akm_live_', 'akm_test_'];
 export class RakomiClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly jwksUrl?: string;
   private readonly clockTolerance: number;
   private readonly environment?: SdkEnvironment;
   private readonly webhookSecret?: string;
@@ -116,6 +118,20 @@ export class RakomiClient {
       this.baseUrl = DEFAULT_BASE_URL;
     }
 
+    if (config.jwksUrl !== undefined) {
+      let jwksUrl: URL;
+      try {
+        jwksUrl = new URL(config.jwksUrl);
+      } catch {
+        throw new RakomiError(CONFIG_INVALID_URL('jwksUrl'));
+      }
+      const jwksUrlIsLocalhost = jwksUrl.hostname === '127.0.0.1' || jwksUrl.hostname === 'localhost';
+      if (jwksUrl.protocol !== 'https:' && !jwksUrlIsLocalhost) {
+        throw new RakomiError(CONFIG_INVALID_URL('jwksUrl'));
+      }
+      this.jwksUrl = config.jwksUrl;
+    }
+
     const tolerance = config.clockTolerance ?? DEFAULT_CLOCK_TOLERANCE;
     this.clockTolerance = Math.min(Math.max(0, tolerance), MAX_CLOCK_TOLERANCE);
 
@@ -143,11 +159,11 @@ export class RakomiClient {
     token: string,
   ): Promise<VerifyResult<T>> {
     if (!this.jwksCache) {
-      this.jwksCache = new JwksCache(this.baseUrl);
+      this.jwksCache = new JwksCache(this.baseUrl, this.jwksUrl);
     }
 
     const sdkEnv = this.apiKey.startsWith('akm_test_') ? 'test' : 'live';
-    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv);
+    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv, this.baseUrl);
   }
 
   async verifyWebhook<T = WebhookEvent>(

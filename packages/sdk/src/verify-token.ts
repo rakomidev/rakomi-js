@@ -25,12 +25,32 @@ import {
   TOKEN_REVOKED,
   TOKEN_TENANT_MISMATCH,
 } from './errors.js';
+import { resolveExpectedIssuer } from './internal/issuer.js';
 import type { JwksCache } from './jwks-cache.js';
 import type { SessionMetadata, TokenMetadata, TokenPayload, VerifyResult } from './types.js';
 
-const ISSUER = 'https://api.rakomi.com';
+const DEFAULT_ISSUER = 'https://api.rakomi.com';
 const AUDIENCE = 'https://api.rakomi.com';
 const ALLOWED_ALGORITHMS = ['RS256'] as const;
+
+/**
+ * Derive the default expected `iss` for offline JWT verification.
+ *
+ * Trust anchor is `baseUrl` — `RakomiClient`'s own configured value (already validated as an
+ * absolute URL by the constructor), resolved via `resolveExpectedIssuer`. Falls back to
+ * {@link DEFAULT_ISSUER} only when `baseUrl` is absent or fails to parse — `RakomiClient` always
+ * passes a valid one, so this fallback exists only for a caller invoking `verifyToken()` directly
+ * without going through `RakomiClient`.
+ */
+function deriveDefaultIssuer(baseUrl: string | undefined): string {
+  if (!baseUrl) return DEFAULT_ISSUER;
+  try {
+    new URL(baseUrl);
+  } catch {
+    return DEFAULT_ISSUER;
+  }
+  return resolveExpectedIssuer(baseUrl);
+}
 
 const REQUIRED_CLAIMS = ['sub', 'tenant_id', 'iss', 'aud', 'exp', 'iat', 'jti'];
 const USER_REQUIRED_CLAIMS = ['email', 'sid'];
@@ -103,9 +123,10 @@ export async function verifyToken<T extends TokenPayload = TokenPayload>(
   jwksCache: JwksCache,
   clockTolerance: number,
   sdkEnvironment?: 'live' | 'test',
+  baseUrl?: string,
 ): Promise<VerifyResult<T>> {
   return verifyTokenWithOptions<T>(token, jwksCache, {
-    issuer: ISSUER,
+    issuer: deriveDefaultIssuer(baseUrl),
     audience: AUDIENCE,
     clockTolerance,
     sdkEnvironment,

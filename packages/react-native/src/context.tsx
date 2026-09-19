@@ -198,6 +198,7 @@ export function RakomiProvider(props: RakomiProviderProps): ReactNode {
       clientId: props.publishableKey,
       tenantId: props.tenantId ?? props.publishableKey,
       tokenEndpoint,
+      baseUrl: props.baseUrl,
       storage: adapter.storage,
       http,
       crypto: adapter.crypto,

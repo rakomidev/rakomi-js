@@ -26,6 +26,8 @@ const DIST_TEST_FILE_RE = /\.(test|spec)\.(c?js|mjs)$/
 
 const OBFUSCATION_TELLS = Object.freeze(['atob(', 'String.fromCharCode', "Buffer.from"])
 
+const NON_KEY_ENDPOINT_NAMES = Object.freeze(['authorization_endpoint', 'token_endpoint', 'userinfo_endpoint'])
+
 const REJECTED_ALGS = Object.freeze(['HS256', 'HS384', 'HS512'])
 
 function hostOf(url) {
@@ -203,9 +205,10 @@ export function inspectBundle({ blessed, bundleText, pkgName, version = '', isOw
   }
   const altUrls = Object.values(blessed.alternates ?? {}).flat()
   const presentEndpointUrls = [...Object.values(blessed.endpoints), ...altUrls].filter((u) => norm.includes(normalizeBundle(u)))
-  const NON_KEY_ENDPOINTS = [blessed.endpoints.authorization_endpoint, blessed.endpoints.token_endpoint, blessed.endpoints.userinfo_endpoint,
-    ...(blessed.alternates?.authorization_endpoint ?? [])]
-  const shipsEndpointMetadata = NON_KEY_ENDPOINTS.some((u) => norm.includes(normalizeBundle(u)))
+  const presentNonKeySlots = NON_KEY_ENDPOINT_NAMES.filter((name) => {
+    const accepted = [blessed.endpoints[name], ...(blessed.alternates?.[name] ?? [])]
+    return accepted.some((u) => norm.includes(normalizeBundle(u)))
+  })
   return {
     violations,
     norm,
@@ -215,7 +218,7 @@ export function inspectBundle({ blessed, bundleText, pkgName, version = '', isOw
     sawAlg: norm.includes(blessed.alg),
     sawWellKnownPath: norm.includes('.well-known/jwks.json'),
     presentEndpointUrls,
-    shipsEndpointMetadata,
+    presentNonKeySlots,
   }
 }
 
@@ -232,7 +235,7 @@ export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, 
     violations.push(relGateMessage(code, 'FROZEN-DRIFT', pkgName, version, finding, SIGNOFF))
 
   const issuerLitSomewhere = fileReports.some((r) => r.sawIssuerLit)
-  if (!issuerLitSomewhere) return { violations, requireBlessedApplied: false }
+  if (!issuerLitSomewhere) return { violations, requireBlessedApplied: false, endpointMetadataStatus: 'none', partialSlots: [] }
 
   const issuerAssignedSomewhere = fileReports.some((r) => r.sawIssuerAssigned)
   if (!issuerAssignedSomewhere) {
@@ -241,8 +244,9 @@ export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, 
   if (!fileReports.some((r) => r.sawAlg)) {
     fail('REL-GATE-N35', `FROZEN-CRYPTO-DRIFT: blessed ALG "${blessed.alg}" absent from a package that ships platform identity (RS256-only guard dropped)`)
   }
-  const shipsMetadata = fileReports.some((r) => r.shipsEndpointMetadata)
-  if (shipsMetadata) {
+  const slotUnion = new Set(fileReports.flatMap((r) => r.presentNonKeySlots))
+  const endpointMetadataStatus = slotUnion.size === 0 ? 'none' : slotUnion.size === 1 ? 'partial' : 'full'
+  if (endpointMetadataStatus === 'full') {
     const presentUrls = new Set(fileReports.flatMap((r) => r.presentEndpointUrls))
     for (const [name, url] of Object.entries(blessed.endpoints)) {
       const accepted = [url, ...(blessed.alternates?.[name] ?? [])]
@@ -255,7 +259,7 @@ export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, 
       fail('REL-GATE-N32', 'FROZEN-MISSING-BLESSED: ".well-known/jwks.json" path absent from a metadata-bearing dist')
     }
   }
-  return { violations, requireBlessedApplied: true }
+  return { violations, requireBlessedApplied: true, endpointMetadataStatus, partialSlots: endpointMetadataStatus === 'partial' ? [...slotUnion] : [] }
 }
 
 const violationsAll = []
@@ -373,7 +377,16 @@ function main() {
       agg.violations.forEach(fail)
       pkgViolations += agg.violations.length
       if (pkgViolations === 0) {
-        const scope = agg.requireBlessedApplied ? 'require-blessed + deny-foreign + RS256-only' : 'no platform-identity in dist — deny-foreign/non-ASCII/obfuscation only'
+        let scope
+        if (!agg.requireBlessedApplied) {
+          scope = 'no platform-identity in dist — deny-foreign/non-ASCII/obfuscation only'
+        } else if (agg.endpointMetadataStatus === 'full') {
+          scope = 'require-blessed + deny-foreign + RS256-only (full RFC 8414 metadata: every endpoint URL + jwks path required)'
+        } else if (agg.endpointMetadataStatus === 'partial') {
+          scope = `require-blessed (issuer + RS256) + deny-foreign — PARTIAL-ENDPOINT-METADATA (1 of 3: ${agg.partialSlots.join(', ')}) NOT held to the full-metadata requirement`
+        } else {
+          scope = 'require-blessed (issuer + RS256) + deny-foreign — no endpoint metadata'
+        }
         ok(`${pkg.name}: ${members.length} dist bundle(s) clean (${scope})`)
       }
     }

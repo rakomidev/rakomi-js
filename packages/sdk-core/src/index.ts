@@ -137,8 +137,11 @@ export type {
 export {
   createAuthorizationEndpointCache,
   deriveAuthorizationEndpointFallback,
+  discoveryIssuerMatchesBaseUrl,
+  UntrustedDiscoveryIssuerError,
 } from './oauth/discovery.js';
 export { networkError, parseOAuthCallbackError, parseTokenEndpointError } from './oauth/errors.js';
+export { resolveExpectedIssuer } from './oauth/issuer.js';
 export type { VerifyTotpInput, VerifyTotpResult } from './oauth/mfa.js';
 export { MfaStepUpRequiredError, MfaStepUpUnavailableError, verifyTotp } from './oauth/mfa.js';
 export type { PkceChallenge } from './oauth/pkce.js';

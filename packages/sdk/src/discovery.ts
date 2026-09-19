@@ -6,17 +6,51 @@
  * where that UI actually lives (`authorization_endpoint`), and it can differ from `baseUrl`.
  * Sending a top-level browser navigation (e.g. a server-side redirect built with
  * {@link buildAuthorizeUrl}) to the wrong host lands on a JSON API response instead of a login
- * form. This module fetches the discovery document once, caches the result, and falls back to a
- * deterministic host-naming convention only when live discovery is unreachable.
+ * form. This module fetches the discovery document once (caching the result), and falls back to a
+ * deterministic host-naming convention (see {@link deriveAuthorizationEndpointFallback}) only
+ * when live discovery is unreachable.
+ *
+ * Trust model (RFC 8414 §3.3): a fetched discovery document is used only after its `issuer` field
+ * is confirmed identical to the EXPECTED issuer for `baseUrl` — see
+ * {@link discoveryIssuerMatchesBaseUrl} and `./internal/issuer.js`'s `resolveExpectedIssuer`. A
+ * bound custom domain genuinely mints a per-tenant `issuer` (a resolver-derived value); a
+ * platform-hosted deployment (any rakomi.com-family or local-dev host) still mints the SAME frozen
+ * platform constant it always did, regardless of which specific such host `baseUrl` names — so the
+ * expectation this comparison checks against is `resolveExpectedIssuer(baseUrl)`, never `baseUrl`
+ * verbatim. Either way this is a real trust anchor, not a tautology — the earlier
+ * host-naming-convention substitute this module relied on before any of this was true is gone; see
+ * {@link deriveAuthorizationEndpointFallback}'s own docstring for the one place a host-naming
+ * convention is still used (the discovery-unreachable fallback, unaffected by this trust model).
+ *
+ * An untrusted discovery response (a missing/empty `issuer`, or one that does not match the
+ * expected issuer) is NOT treated as "discovery unreachable" — it is a distinct failure class that
+ * never falls through to the host-naming derivation. A server that answers but disclaims being the
+ * expected issuer (or omits the REQUIRED §3.1 `issuer` field entirely) is a real
+ * misconfiguration-or-attack signal, not a transport hiccup; swallowing it into the same
+ * safe-but-silent fallback path used for "the network was down" would hide that signal from the
+ * caller. See {@link UntrustedDiscoveryIssuerError} and `resolveFresh`'s handling of it below.
  */
 
-import { OAUTH_AUTHORIZATION_ENDPOINT_UNRESOLVED } from './errors.js';
+import { OAUTH_AUTHORIZATION_ENDPOINT_UNRESOLVED, OAUTH_DISCOVERY_UNTRUSTED_ISSUER } from './errors.js';
+import { resolveExpectedIssuer, stripTrailingSlash } from './internal/issuer.js';
 import type { SdkError, VerifyResult } from './types.js';
 
 const DEFAULT_BASE_URL = 'https://api.rakomi.com';
 
 interface AuthorizationEndpointDiscoveryDocument {
+  issuer?: unknown;
   authorization_endpoint?: unknown;
+}
+
+/**
+ * The single matcher for the "api." <-> "accounts." host-naming convention used ONLY by the
+ * discovery-unreachable fallback below — unrelated to, and unaffected by, the discovery TRUST
+ * model ({@link discoveryIssuerMatchesBaseUrl}).
+ * Returns `null` when `hostname`'s leading label is not `api` — no convention to derive from.
+ */
+function deriveAccountsHostname(hostname: string): string | null {
+  if (!/^api([.-]|$)/.test(hostname)) return null;
+  return hostname.replace(/^api/, 'accounts');
 }
 
 /**
@@ -27,18 +61,10 @@ interface AuthorizationEndpointDiscoveryDocument {
  * environment-prefixed `api-<env>.rakomi.com` -> `accounts-<env>.rakomi.com`). This never invents
  * a mapping — a host whose leading label is not `api` has no documented convention to fall back
  * to, and is refused rather than guessed.
+ *
+ * This is a fallback for when discovery is UNREACHABLE — it is unrelated to, and unaffected by,
+ * the discovery TRUST model ({@link discoveryIssuerMatchesBaseUrl}) below.
  */
-/**
- * The single matcher for the "api." <-> "accounts." host-naming convention — shared by the
- * fallback derivation (below) AND the discovery-side trust check (see
- * {@link authorizationEndpointHostIsTrusted}), so the two can never independently drift.
- * Returns `null` when `hostname`'s leading label is not `api` — no convention to derive from.
- */
-function deriveAccountsHostname(hostname: string): string | null {
-  if (!/^api([.-]|$)/.test(hostname)) return null;
-  return hostname.replace(/^api/, 'accounts');
-}
-
 export function deriveAuthorizationEndpointFallback(baseUrl: string): string {
   let parsed: URL;
   try {
@@ -59,26 +85,59 @@ export function deriveAuthorizationEndpointFallback(baseUrl: string): string {
 }
 
 /**
- * Defence-in-depth against a compromised or misconfigured discovery response. RFC 8414 §3.3
- * requires a discovery document's `issuer` field to be checked against the issuer identifier
- * used to build the well-known request URL — but on this platform `issuer` is not guaranteed to
- * vary per deployment host, so a literal `issuer === baseUrl` check is not a safe substitute
- * here. The host-naming convention below is the invariant actually guaranteed per environment.
+ * RFC 8414 §3.3 discovery-response validation: *"The 'issuer' value returned MUST be identical to
+ * the authorization server's issuer identifier value into which the well-known URI string was
+ * inserted to create the URL used to retrieve the metadata... If these values are not identical,
+ * the data contained in the response MUST NOT be used."*
  *
- * When `baseUrl`'s host follows the "api." <-> "accounts." convention, the discovery-returned
- * `authorization_endpoint` MUST resolve to the SAME accounts host the deterministic fallback
- * would have produced — an arbitrary attacker-or-misconfiguration-controlled host is refused
- * (falls through to the fallback / a typed error) rather than silently navigated to. When
- * `baseUrl` has no established convention (a custom/enterprise domain), there is no expectation
- * to check against and discovery is trusted as-is, same as before this hardening.
+ * The "issuer identifier value" this SDK compares against is NOT `baseUrl` verbatim — it is
+ * `resolveExpectedIssuer`'s platform-host-aware resolution of it (`./internal/issuer.js`; see its
+ * own docstring for why: the platform's issuer is frozen to the same constant across every
+ * physical deployment, so a `baseUrl` pointed at any rakomi.com-family or local-dev host must
+ * still expect that constant, never `baseUrl` itself). Only for a genuinely bound custom domain
+ * does the expected value become `baseUrl` itself. Either way, the comparison against the
+ * discovery document's actual `issuer` claim is STRICT string equality after normalizing away a
+ * single trailing slash on each side — never a prefix/suffix/substring match, which would let
+ * `https://acme.com.attacker.test` (or an issuer that is merely a path-prefix of the expectation,
+ * e.g. claiming `/prod` while served from `/staging`) pass as legitimate.
  */
-export function authorizationEndpointHostIsTrusted(authorizationEndpoint: string, baseUrl: string): boolean {
-  const expectedAccountsHostname = deriveAccountsHostname(new URL(baseUrl).hostname);
-  if (expectedAccountsHostname === null) return true;
-  return new URL(authorizationEndpoint).hostname === expectedAccountsHostname;
+export function discoveryIssuerMatchesBaseUrl(issuer: string, baseUrl: string): boolean {
+  return stripTrailingSlash(issuer) === resolveExpectedIssuer(baseUrl);
 }
 
+/**
+ * Thrown for an RFC 8414 §3.3 issuer-trust failure — a missing/empty `issuer` (§3.1 marks it
+ * REQUIRED, so its absence is itself non-conformance, not a benign gap) or one that does not
+ * identify `baseUrl`. A DISTINCT class from every other extraction failure below (malformed/
+ * missing `authorization_endpoint`, wrong scheme): `resolveFresh` catches this one specifically
+ * and fails closed — no host-naming fallback, no silent substitution — because, unlike an
+ * unreachable server or an incomplete-but-authentic document, a server that answers but disclaims
+ * being `baseUrl`'s issuer (or omits the field required to say so) is a real
+ * misconfiguration-or-attack signal that must reach the caller, not a gap a safe guess can paper
+ * over. A missing issuer is grouped with a mismatched one, not with "malformed document": treating
+ * it as a mere shape gap would let an attacker bypass the mismatch check simply by omitting the
+ * field instead of forging a wrong value.
+ */
+export class UntrustedDiscoveryIssuerError extends Error {}
+
 function extractAuthorizationEndpoint(doc: unknown, baseUrl: string): string {
+  const issuer = (doc as AuthorizationEndpointDiscoveryDocument | null)?.issuer;
+  if (typeof issuer !== 'string' || issuer.length === 0) {
+    throw new UntrustedDiscoveryIssuerError(
+      `discovery document for base URL "${baseUrl}" is missing a non-empty string \`issuer\` field ` +
+        '(RFC 8414 §3.1 REQUIRED, §3.3 forbids using a response that cannot confirm it) — refusing ' +
+        'to trust this discovery response',
+    );
+  }
+  if (!discoveryIssuerMatchesBaseUrl(issuer, baseUrl)) {
+    throw new UntrustedDiscoveryIssuerError(
+      `discovery document issuer "${issuer}" does not match the expected issuer ` +
+        `"${resolveExpectedIssuer(baseUrl)}" for base URL "${baseUrl}" ` +
+        '(RFC 8414 §3.3: "the data contained in the response MUST NOT be used") — refusing to trust ' +
+        'this discovery response',
+    );
+  }
+
   const endpoint = (doc as AuthorizationEndpointDiscoveryDocument | null)?.authorization_endpoint;
   if (typeof endpoint !== 'string' || endpoint.length === 0) {
     throw new Error('discovery document is missing a non-empty string authorization_endpoint field');
@@ -87,12 +146,6 @@ function extractAuthorizationEndpoint(doc: unknown, baseUrl: string): string {
   const isLocalhost = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
   if (parsed.protocol !== 'https:' && !isLocalhost) {
     throw new Error('authorization_endpoint must use https (except on localhost)');
-  }
-  if (!isLocalhost && !authorizationEndpointHostIsTrusted(endpoint, baseUrl)) {
-    throw new Error(
-      `authorization_endpoint host "${parsed.hostname}" is untrusted for base URL "${baseUrl}" — refusing ` +
-        'to navigate a browser to an unexpected host (does not match the "api." <-> "accounts." convention)',
-    );
   }
   return endpoint;
 }
@@ -134,6 +187,10 @@ async function resolveFresh(
     const doc: unknown = await res.json();
     result = { ok: true, data: extractAuthorizationEndpoint(doc, baseUrl) };
   } catch (discoveryErr) {
+    if (discoveryErr instanceof UntrustedDiscoveryIssuerError) {
+      const error: SdkError = OAUTH_DISCOVERY_UNTRUSTED_ISSUER(discoveryErr.message);
+      return { ok: false, error };
+    }
     try {
       result = { ok: true, data: deriveAuthorizationEndpointFallback(baseUrl) };
     } catch (fallbackErr) {

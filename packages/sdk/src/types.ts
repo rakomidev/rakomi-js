@@ -7,8 +7,20 @@ export type SdkEnvironment = 'development' | 'production';
 export interface RakomiConfig {
   /** API key (must start with `ca_live_` or `ca_test_`) */
   apiKey: string;
-  /** Base URL for the Rakomi API (defaults to https://api.rakomi.com) */
+  /**
+   * Base URL for the Rakomi API (defaults to https://api.rakomi.com). Also the offline
+   * token-verification trust anchor: `verifyToken()`'s default expected `iss` derives from this
+   * value (a tenant that has bound its own custom domain as its issuer host is issued tokens
+   * whose `iss` is that host).
+   */
   baseUrl?: string;
+  /**
+   * Override where `verifyToken()` fetches the JWKS document from (defaults to
+   * `<baseUrl>/.well-known/jwks.json`). Rare in production (e.g. a JWKS reverse-proxy) — decouples
+   * the JWKS fetch location from `baseUrl`'s role as the issuer trust anchor, matching the split
+   * `verifyRakomiToken()`'s standalone `issuer`/`jwksUrl` options already expose.
+   */
+  jwksUrl?: string;
   /** Clock tolerance in seconds for JWT expiry checks (default: 30, max: 120) */
   clockTolerance?: number;
   /** Override environment detection (default: auto-detect from request hostname) */
