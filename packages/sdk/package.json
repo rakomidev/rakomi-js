@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/node",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Server-side Node.js SDK for Rakomi — verify access tokens and webhook signatures. EU-native auth-as-a-service.",
   "keywords": [
     "rakomi",
@@ -55,9 +55,12 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.typetest.json",
     "lint": "eslint src/ test/ --max-warnings=0",
-    "test": "node ../../scripts/ci/vitest-fork-crash-retry.mjs --results ./test-results.json -- vitest run"
+    "test": "node ../../scripts/assert-not-story-agent-worktree.mjs test && node ../../scripts/ci/vitest-fork-crash-retry.mjs --results ./test-results.json -- vitest run"
   },
   "dependencies": {
     "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@rakomi/sdk-core": "workspace:*"
   }
 }

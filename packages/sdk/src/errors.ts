@@ -71,6 +71,7 @@ export const ERROR_CODES = {
   WEBHOOK_MISSING_HEADER: 'webhook/missing_header',
   WEBHOOK_INVALID_BODY: 'webhook/invalid_body',
   OAUTH_AUTHORIZATION_ENDPOINT_UNRESOLVED: 'oauth/authorization_endpoint_unresolved',
+  OAUTH_DISCOVERY_UNTRUSTED_ISSUER: 'oauth/discovery_untrusted_issuer',
   LOGOUT_TOKEN_MISSING_CLAIMS: 'logout_token/missing_claims',
   LOGOUT_TOKEN_MISSING_SUBJECT: 'logout_token/missing_subject',
   LOGOUT_TOKEN_INVALID_EVENTS: 'logout_token/invalid_events',
@@ -509,6 +510,20 @@ export const OAUTH_AUTHORIZATION_ENDPOINT_UNRESOLVED = (detail?: string) =>
     'oauth/authorization_endpoint_unresolved',
     `Could not resolve the OAuth authorization_endpoint${detail ? `: ${detail}` : ''}`,
     'Pass an explicit authorizationEndpoint to buildAuthorizeUrl(), or use a baseUrl following the api./accounts. host-naming convention',
+  );
+
+/**
+ * `resolveAuthorizationEndpoint()` fetched a discovery document whose `issuer` field is missing or
+ * does not identify the `baseUrl` it was fetched for (RFC 8414 §3.3: "If these values are not
+ * identical, the data contained in the response MUST NOT be used"). Distinct from
+ * `oauth/authorization_endpoint_unresolved` — this is a resolved-but-UNTRUSTED response, not an
+ * unreachable one, so it fails closed rather than falling through to the host-naming fallback.
+ */
+export const OAUTH_DISCOVERY_UNTRUSTED_ISSUER = (detail?: string) =>
+  createError(
+    'oauth/discovery_untrusted_issuer',
+    `The discovery response could not be trusted for this base URL${detail ? `: ${detail}` : ''}`,
+    'Verify the OAuth server at this baseUrl advertises an `issuer` field identical to baseUrl (RFC 8414 §3.3), or pass an explicit authorizationEndpoint to buildAuthorizeUrl() instead of relying on discovery',
   );
 
 export const OAUTH_MISSING_CLIENT_ID = () =>

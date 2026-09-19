@@ -26,8 +26,10 @@ export {
 export type { ResolveAuthorizationEndpointOptions } from './discovery.js';
 export {
   deriveAuthorizationEndpointFallback,
+  discoveryIssuerMatchesBaseUrl,
   invalidateAuthorizationEndpointCache,
   resolveAuthorizationEndpoint,
+  UntrustedDiscoveryIssuerError,
 } from './discovery.js';
 export { detectEnvironment } from './env-detect.js';
 export type { ErrorCode } from './errors.js';
@@ -70,6 +72,7 @@ export {
   MfaStepUpRequiredError,
   MfaStepUpUnavailableError,
   OAUTH_AUTHORIZATION_ENDPOINT_UNRESOLVED,
+  OAUTH_DISCOVERY_UNTRUSTED_ISSUER,
   OAUTH_INVALID_CLIENT,
   OAUTH_INVALID_GRANT,
   OAUTH_INVALID_REQUEST,

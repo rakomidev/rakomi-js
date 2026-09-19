@@ -33,6 +33,7 @@ import {
   type MachineAction,
   type OAuthTokenResponse,
   refreshAccessToken,
+  resolveExpectedIssuer,
   type SessionResource,
   type TokenResult,
   type UserResource,
@@ -67,19 +68,59 @@ function deriveDefaultJwksUri(tokenEndpoint: string): string {
 }
 
 /**
- * Default expected `iss` and `aud` claims — frozen platform identifiers.
- * Rakomi-issued user-flow tokens carry `iss = aud = https://api.rakomi.com`
- * regardless of which subdomain or custom domain the request was routed
- * through (custom domain is routing only, not identity).
+ * Default expected `iss` and `aud` claims.
  *
- * Defaults remain enforced — the audience expectation is NOT made overridable
- * through a bypass; consumer-supplied override is for legitimate multi-issuer
- * test harnesses only.
+ * The platform's `issuer` identifier is a real, per-tenant value ONLY for a tenant that has bound
+ * its own custom domain as its issuer host — that tenant's tokens carry `iss` = that host
+ * (optionally path-suffixed for a non-default environment). A PLATFORM-HOSTED tenant's `iss` stays
+ * the SAME frozen constant across every physical deployment (dev/staging/prod alike — the
+ * platform's issuer-signing configuration is validated equal to it everywhere), regardless of
+ * which specific rakomi.com host or local-dev host this SDK's configured `baseUrl` names. This SDK
+ * only knows its OWN `baseUrl`, never which physical deployment served it, so `baseUrl` alone is
+ * NOT a reliable proxy for "this tenant has bound a custom domain" — deriving the expectation from
+ * `baseUrl` verbatim for a rakomi.com-family or local-dev host would reject every real token a
+ * non-production such deployment actually mints. `deriveDefaultIssuer` below therefore delegates
+ * to `@rakomi/sdk-core`'s `resolveExpectedIssuer` (the ONE shared implementation of this two-tier
+ * resolution — see that function's own docstring), never re-deriving the platform-host recognition
+ * locally.
+ *
+ * `aud`, in contrast, stays the FROZEN platform identity regardless of host — for Rakomi user-flow
+ * (control-plane) access tokens the platform itself is the resource server, so `aud` never varies
+ * with the deployment host. Do NOT derive `aud` from `baseUrl` — that would diverge from what the
+ * platform actually issues and reject every legitimate token.
+ *
+ * Defaults remain enforced — neither expectation is made overridable through a bypass;
+ * consumer-supplied override is for legitimate multi-issuer test harnesses only.
  */
 const RAKOMI_PLATFORM_ISSUER_DEFAULT = 'https://api.rakomi.com';
 const RAKOMI_PLATFORM_AUDIENCE_DEFAULT = 'https://api.rakomi.com';
-function deriveDefaultIssuer(_tokenEndpoint: string): string {
-  return RAKOMI_PLATFORM_ISSUER_DEFAULT;
+
+/**
+ * Derive the default expected `iss` for offline verification.
+ *
+ * Trust anchor is `baseUrl` (the value the consumer configured the provider with), resolved via
+ * `@rakomi/sdk-core`'s platform-host-aware `resolveExpectedIssuer`. When `baseUrl` is absent or
+ * not a valid absolute URL (a caller constructing `TokenRuntime` directly without it — backward
+ * compatibility for an embedder that has not passed it yet), fall back to `tokenEndpoint`'s own
+ * origin (the common case, since `tokenEndpoint` defaults to `${baseUrl}/oauth/token`) — this
+ * degrades to the byte-identical frozen platform constant for a platform-hosted tenant either way,
+ * since its `baseUrl`/`tokenEndpoint` origin is itself a platform host. A last-resort fallback to
+ * the hardcoded constant only fires when NEITHER parses as an absolute URL, so construction never
+ * throws on a malformed config.
+ */
+function deriveDefaultIssuer(options: { baseUrl?: string; tokenEndpoint: string }): string {
+  if (options.baseUrl) {
+    try {
+      new URL(options.baseUrl);
+      return resolveExpectedIssuer(options.baseUrl);
+    } catch {
+    }
+  }
+  try {
+    return new URL(options.tokenEndpoint).origin;
+  } catch {
+    return RAKOMI_PLATFORM_ISSUER_DEFAULT;
+  }
 }
 
 const REFRESH_TOKEN_PREFIX = 'v1:';
@@ -94,6 +135,13 @@ export interface TokenRuntimeOptions {
   jwksUri?: string;
   /** TTL for the cached JWKS document. Default 24h, clamped to 7 days. */
   jwksTtlMs?: number;
+  /**
+   * The consumer-configured API base URL (same value passed to `<RakomiProvider baseUrl>`) — the
+   * trust anchor the default `expectedIssuer` is derived from. Omit only for backward compatibility
+   * with a caller that constructs `TokenRuntime` directly without it; `tokenEndpoint`'s own origin is
+   * then used instead (see `deriveDefaultIssuer`'s doc comment).
+   */
+  baseUrl?: string;
   /** Expected `iss` and `aud` for jwtVerify (offline). When unset, verify only signature + exp. */
   expectedIssuer?: string;
   expectedAudience?: string | string[];
@@ -187,7 +235,8 @@ export class TokenRuntime {
     this.clearTimeoutFn = options.clearTimeout ?? globalThis.clearTimeout.bind(globalThis);
     this.jwksUri = options.jwksUri ?? deriveDefaultJwksUri(options.tokenEndpoint);
     this.jwksTtlMs = options.jwksTtlMs ?? 24 * 60 * 60 * 1000;
-    this.expectedIssuer = options.expectedIssuer ?? deriveDefaultIssuer(options.tokenEndpoint);
+    this.expectedIssuer = options.expectedIssuer
+      ?? deriveDefaultIssuer({ baseUrl: options.baseUrl, tokenEndpoint: options.tokenEndpoint });
     this.expectedAudience = options.expectedAudience ?? RAKOMI_PLATFORM_AUDIENCE_DEFAULT;
   }
 
@@ -390,10 +439,32 @@ export class TokenRuntime {
     return this.storageKeyResolved;
   }
 
+  /**
+   * The persisted JWKS-cache slot, scoped per-host in addition to per-tenant.
+   *
+   * `deriveTenantStorageKey`'s own domain separation is tenant-only, which was correct while every
+   * tenant verified against ONE platform-wide JWKS document. Now that a tenant's issuer host can
+   * change across the app's lifetime (a custom domain bound after this SDK version first shipped, or
+   * simply a dev pointed at a different host between builds), a slot keyed by tenant alone would
+   * silently reuse a PREVIOUS host's persisted document as this instance's "fresh" cache on cold
+   * start — cross-host reuse this offline-verification path must never do. The host segment is not
+   * secret (it is the caller's own `jwksUri` configuration), so a plain suffix is enough; this only
+   * needs to be a stable, DIFFERENT key per host, not a cryptographically-opaque one.
+   */
   private async resolveJwksKey(): Promise<string> {
     if (this.jwksKeyResolved) return this.jwksKeyResolved;
-    this.jwksKeyResolved = await deriveTenantStorageKey(this.crypto, this.tenantId, 'jwks_cache');
+    const base = await deriveTenantStorageKey(this.crypto, this.tenantId, 'jwks_cache');
+    const host = this.jwksHost();
+    this.jwksKeyResolved = host ? `${base}.h.${host}` : base;
     return this.jwksKeyResolved;
+  }
+
+  private jwksHost(): string | null {
+    try {
+      return new URL(this.jwksUri).hostname;
+    } catch {
+      return null;
+    }
   }
 
   private async getOrCreateJwksCache(): Promise<JwksCache> {

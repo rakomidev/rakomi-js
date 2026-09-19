@@ -13,12 +13,32 @@
  * - Cache hit path is in-memory only — no storage. Persistence (across cold-starts,
  * "offline-stale" path) is handled by the runtime via `KeyValueStore` + `deriveTenantStorageKey`.
  * - `getKeySet` returns the localJWKSet function jose expects (`(protectedHeader, token) => Key`).
+ *
+ * RS256-only, at the key-import boundary — not only at the caller's `jwtVerify(...{algorithms})`
+ * site. `security.md` ("NEVER read alg from token header", HS-family + `none` rejected) requires
+ * the RS256 pin to be enforced independently of any single call site: `@rakomi/node`'s own
+ * `JwksCache` already imports "only RS256 signing keys" (`packages/sdk/src/jwks-cache.ts`) before
+ * ever handing a resolver to jose — this cache mirrors that defense-in-depth so a consumer that
+ * forgets `algorithms: ['RS256']` on its own `jwtVerify` call still cannot select a non-RS256 key
+ * out of the local JWKS set (there is none to select). A key missing `alg`/`use` is dropped, not
+ * defaulted — an unlabelled key is not provably an RS256 signing key.
  */
 
 import { createLocalJWKSet, type JSONWebKeySet, type JWK } from 'jose';
 
 export interface JwksDocument {
   keys: JWK[];
+}
+
+/**
+ * Narrow a fetched JWKS document to RS256 signing keys only (`alg === 'RS256' && use === 'sig'`),
+ * mirroring `@rakomi/node`'s `JwksCache.doRefresh()` import filter. The ORIGINAL (unfiltered)
+ * document is still what callers persist/see via `peek()`/`onFetched` — only the resolver handed
+ * to `jose.jwtVerify` is built from the narrowed set, so a future re-narrow (a relaxed policy, or a
+ * document that later gains an RS256 key) never loses information the caller already stored.
+ */
+function rs256SigningKeys(document: JwksDocument): JSONWebKeySet {
+  return { keys: document.keys.filter((k) => k.alg === 'RS256' && k.use === 'sig') } as JSONWebKeySet;
 }
 
 export interface JwksCacheOptions {
@@ -56,7 +76,7 @@ export function createJwksCache(options: JwksCacheOptions): JwksCache {
     cached = {
       document: options.initial.document,
       fetchedAt: options.initial.fetchedAt,
-      resolver: createLocalJWKSet(options.initial.document as JSONWebKeySet),
+      resolver: createLocalJWKSet(rs256SigningKeys(options.initial.document)),
     };
   }
 
@@ -65,7 +85,7 @@ export function createJwksCache(options: JwksCacheOptions): JwksCache {
     inFlight = (async () => {
       const document = await options.fetchJwks();
       const fetchedAt = now();
-      const resolver = createLocalJWKSet(document as JSONWebKeySet);
+      const resolver = createLocalJWKSet(rs256SigningKeys(document));
       cached = { document, fetchedAt, resolver };
       options.onFetched?.(document, fetchedAt);
       return resolver;

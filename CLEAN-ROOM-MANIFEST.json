@@ -29,14 +29,14 @@
   "packages": [
     {
       "name": "@rakomi/node",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "tagPrefix": "sdk",
       "emittedSymbols": [],
-      "fileCount": 33
+      "fileCount": 34
     },
     {
       "name": "@rakomi/react",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -62,27 +62,22 @@
     },
     {
       "name": "@rakomi/react-native",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "tagPrefix": "react-native",
       "emittedSymbols": [],
       "fileCount": 32
     },
     {
       "name": "@rakomi/sdk-core",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "tagPrefix": "sdk-core",
       "emittedSymbols": [
-        "FrozenEndpointError",
         "GA_LOCALES",
         "GaLocale",
-        "RAKOMI_PLATFORM_AUTHORIZATION_ENDPOINT",
-        "URL",
-        "WhatwgURLLike",
-        "buildAuthorizationEndpoint",
-        "isGaLocale",
-        "rehostFrozenEndpoint"
+        "RAKOMI_PLATFORM_ISSUER",
+        "isGaLocale"
       ],
-      "fileCount": 33
+      "fileCount": 34
     },
     {
       "name": "create-rakomi-app",
@@ -310,7 +305,7 @@
     },
     {
       "path": "packages/react-native/src/context.tsx",
-      "sha256": "sha256:8605ce64897906da0b61439b38b7c592cf5f793fa5d4b0eaa117cc8016d470df"
+      "sha256": "sha256:1c7d6e6c3aa9d98385c8da4b90365cec629bcd4d97fd6ca64ba59a8cc0b25b35"
     },
     {
       "path": "packages/react-native/src/hooks/index.ts",
@@ -374,7 +369,7 @@
     },
     {
       "path": "packages/react-native/src/internal/token-runtime.ts",
-      "sha256": "sha256:e804f25ad7c96b5afb9fc16d6a1be5116810c5ca533d2556a8b043b88c481f53"
+      "sha256": "sha256:58b510160351fbfbffd79f535fc398d859f1d76635bde23d362e900013b4ef95"
     },
     {
       "path": "packages/react-native/src/internal/webhook-verify.ts",
@@ -810,7 +805,7 @@
     },
     {
       "path": "packages/sdk-core/src/_inlined-symbols.ts",
-      "sha256": "sha256:1f8c87eaf8175308b2b9f3c95748409a9413bf229c9394e6615f7337282a7901"
+      "sha256": "sha256:4d1051f9930ebd977066567fa399b5a4d0e362386d4516a5343479ccfb5beaa3"
     },
     {
       "path": "packages/sdk-core/src/auth-config-parser.ts",
@@ -834,7 +829,7 @@
     },
     {
       "path": "packages/sdk-core/src/index.ts",
-      "sha256": "sha256:ba6fc35f37a7642cc7ba2498acc31c527186b3063aaa2bd0c79434b336ebce47"
+      "sha256": "sha256:62c0e2be36b04ccc5c77a0629ad698ebf116d9a36e5de9e93f81b4c158ff7a4d"
     },
     {
       "path": "packages/sdk-core/src/internal/request-id.ts",
@@ -842,7 +837,7 @@
     },
     {
       "path": "packages/sdk-core/src/jwks-cache.ts",
-      "sha256": "sha256:008d6c18490893b7d7f500c76a023d8daa4c33526e62daef40d4eaa303cce817"
+      "sha256": "sha256:33fa4b8cadbe1940b5eabd8654a4b8d83234d12a7b23989808989843e72cd673"
     },
     {
       "path": "packages/sdk-core/src/jwt-decode.ts",
@@ -854,11 +849,15 @@
     },
     {
       "path": "packages/sdk-core/src/oauth/discovery.ts",
-      "sha256": "sha256:e613be6d038f62551918c21ae3f073b9013178a53af032cc4c5e28cb40191762"
+      "sha256": "sha256:63e741930de186cd7caf1c69749a11b62df3b096de1cd211da7656e4604ab155"
     },
     {
       "path": "packages/sdk-core/src/oauth/errors.ts",
       "sha256": "sha256:55643a0ab98d3bcc8250f5178a3f92439418ac390271d77311fd95df2c78cfdd"
+    },
+    {
+      "path": "packages/sdk-core/src/oauth/issuer.ts",
+      "sha256": "sha256:bcffea14996431707c7f18f369b786c516e925c7ba75cc7a1bac01222f57805a"
     },
     {
       "path": "packages/sdk-core/src/oauth/mfa.ts",
@@ -962,7 +961,7 @@
     },
     {
       "path": "packages/sdk/src/client.ts",
-      "sha256": "sha256:14bcc3cfdd793c2efefd73cd755401e4c4c0400fd1a05da29def99427a1e1536"
+      "sha256": "sha256:73fcc1836841605ce25cf36a49903f6970f978689b1a46ce404e713958de5e07"
     },
     {
       "path": "packages/sdk/src/credentials.ts",
@@ -974,7 +973,7 @@
     },
     {
       "path": "packages/sdk/src/discovery.ts",
-      "sha256": "sha256:1bc674b024c7f8564adcb70cd665b1002a8c283728021a98ea17ed39e7a0acfb"
+      "sha256": "sha256:074d5e2b6e2596e47e6492140ca058185a6cafd9e223d7ef6efa99e27059215f"
     },
     {
       "path": "packages/sdk/src/doctor.ts",
@@ -994,7 +993,7 @@
     },
     {
       "path": "packages/sdk/src/errors.ts",
-      "sha256": "sha256:1942e6d7f66fa004d2ca9dd9565b49ec3ad9968403c5968d04624c8064db4809"
+      "sha256": "sha256:e7a1ced32715b36982330c026ff1d0368018d699a2785fc2adfd6d64e1d98c6a"
     },
     {
       "path": "packages/sdk/src/eudi.ts",
@@ -1010,11 +1009,15 @@
     },
     {
       "path": "packages/sdk/src/index.ts",
-      "sha256": "sha256:2a8a63a01087413cde7ed16a83845e5d303b7c9117cc9640ff2737beb2681935"
+      "sha256": "sha256:c2e4c4b7cd1a104f24370ed1262594bc53a1002a7f249ab2e999ce3c2afe7a1a"
     },
     {
       "path": "packages/sdk/src/internal/canonical-url.ts",
       "sha256": "sha256:04bc68a739a4950b6b5e0e873026c4b54c11413a093f0867f5d753013c3d4822"
+    },
+    {
+      "path": "packages/sdk/src/internal/issuer.ts",
+      "sha256": "sha256:5ba20f26cdb3918cf6a7446535591e30e1b06786364ad14d8510ded577360da1"
     },
     {
       "path": "packages/sdk/src/internal/request-id.ts",
@@ -1054,7 +1057,7 @@
     },
     {
       "path": "packages/sdk/src/types.ts",
-      "sha256": "sha256:0c7fd0135ef5b640b5f315a5b65353f3336fc7f40c19284c9751595f1a2fca63"
+      "sha256": "sha256:d6ee55d564d585d0e16eacffa422c47aad8bda47be85530473ca576b8a49ad28"
     },
     {
       "path": "packages/sdk/src/verify-logout-token.ts",
@@ -1066,7 +1069,7 @@
     },
     {
       "path": "packages/sdk/src/verify-token.ts",
-      "sha256": "sha256:50d2b772af7ca7eb29d586a6e2c841e0d1e009424d423194eb0a91eb90227776"
+      "sha256": "sha256:2fe4c55d0edd973c8ea8e839e306006d59abe3f3ede6f96d6ace2f7c2fa15b32"
     },
     {
       "path": "packages/sdk/src/verify-webhook.ts",
