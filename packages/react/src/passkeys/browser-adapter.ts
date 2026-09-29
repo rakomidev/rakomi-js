@@ -43,6 +43,7 @@ interface WebAuthnCeremonies {
   startAuthentication(input: {
     optionsJSON: PublicKeyCredentialRequestOptionsJSON;
   }): Promise<AuthenticationResponseJSON>;
+  WebAuthnAbortService: { cancelCeremony(): void };
 }
 
 function loadCeremonies(): Promise<WebAuthnCeremonies> {
@@ -193,35 +194,70 @@ function throwIfAborted(signal?: AbortSignal): void {
 }
 
 /**
- * Honour the caller's abort signal by **racing** it against the ceremony.
+ * The ceremony this binding started most recently and has not yet seen settle.
+ *
+ * `WebAuthnAbortService` is a page-global singleton: `cancelCeremony()` cancels whatever ceremony is
+ * current, not a particular one. An abort that fires after a later ceremony has started must not
+ * cancel that later ceremony, so the cancel is issued only while this ticket is still ours.
+ */
+let inFlight: symbol | null = null;
+
+/**
+ * Honour the caller's abort signal: cancel the native ceremony, and settle the promise.
  *
  * `@simplewebauthn/browser@13.2.0` accepts no `signal` argument — both ceremony functions
- * unconditionally install the signal of a page-global `WebAuthnAbortService` singleton — so racing is
- * the only way to settle the promise on abort. Do not go looking for a `signal` option; there isn't
- * one.
+ * unconditionally install the signal of a page-global `WebAuthnAbortService` singleton. That
+ * singleton's `cancelCeremony()` aborts the signal the library handed to
+ * `navigator.credentials.create()` / `.get()`, and an aborted signal makes the browser cancel the
+ * operation on every authenticator it was issued to. Settling the promise without that cancel would
+ * leave the native prompt running for a ceremony nobody is waiting for: a user who finishes it
+ * creates a credential the server never receives.
  *
- * When the race is won by the abort, the ceremony promise is abandoned but still live — it will
- * reject later (the user dismisses the orphaned sheet, or the library's own abort service kills it).
- * That rejection has no other handler, so it is swallowed explicitly; without this, an abandoned
- * ceremony surfaces as an `unhandledrejection` in the host app's error tracker.
+ * The promise is ALSO raced against the abort, so it settles even if the cancel has no effect.
+ * The cancelled ceremony still rejects later; that rejection has no other handler, so it is
+ * swallowed explicitly — without this, an abandoned ceremony surfaces as an `unhandledrejection` in
+ * the host app's error tracker.
  *
- * Known platform coarseness: an already-visible native sheet cannot be dismissed programmatically.
- * The guarantee is that the promise settles, not that the browser chrome disappears.
+ * Cancellation is best-effort: an authenticator that completed at the same instant may still have
+ * created its credential.
  */
-function raceAbort<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return pending;
+function raceAbort<T>(
+  pending: Promise<T>,
+  signal: AbortSignal | undefined,
+  cancelCeremony: () => void,
+): Promise<T> {
+  const ticket = Symbol('passkey-ceremony');
+  inFlight = ticket;
+  const release = (): void => {
+    if (inFlight === ticket) inFlight = null;
+  };
+  const cancel = (): void => {
+    if (inFlight !== ticket) return;
+    release();
+    try {
+      cancelCeremony();
+    } catch {
+    }
+  };
+
+  if (!signal) return pending.finally(release);
   if (signal.aborted) {
     pending.catch(() => undefined);
+    cancel();
     return Promise.reject(abandoned());
   }
 
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => {
       pending.catch(() => undefined);
+      cancel();
       reject(abandoned());
     };
     signal.addEventListener('abort', onAbort, { once: true });
-    pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+    pending.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+      release();
+    });
   });
 }
 
@@ -241,12 +277,13 @@ export function createBrowserPasskeyAdapter(): PasskeyCeremonyAdapter {
       ceremonyOptions?: PasskeyCeremonyOptions,
     ): Promise<RegistrationResponseJSON> {
       throwIfAborted(ceremonyOptions?.signal);
-      const { startRegistration } = await loadCeremonies();
+      const { startRegistration, WebAuthnAbortService } = await loadCeremonies();
       try {
         throwIfAborted(ceremonyOptions?.signal);
         return await raceAbort(
           startRegistration({ optionsJSON: options }),
           ceremonyOptions?.signal,
+          () => WebAuthnAbortService.cancelCeremony(),
         );
       } catch (err) {
         return normalizeCeremonyRejection(err);
@@ -258,12 +295,13 @@ export function createBrowserPasskeyAdapter(): PasskeyCeremonyAdapter {
       ceremonyOptions?: PasskeyCeremonyOptions,
     ): Promise<AuthenticationResponseJSON> {
       throwIfAborted(ceremonyOptions?.signal);
-      const { startAuthentication } = await loadCeremonies();
+      const { startAuthentication, WebAuthnAbortService } = await loadCeremonies();
       try {
         throwIfAborted(ceremonyOptions?.signal);
         return await raceAbort(
           startAuthentication({ optionsJSON: options }),
           ceremonyOptions?.signal,
+          () => WebAuthnAbortService.cancelCeremony(),
         );
       } catch (err) {
         return normalizeCeremonyRejection(err);

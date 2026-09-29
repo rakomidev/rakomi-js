@@ -211,6 +211,7 @@ have to branch:
 | What happened | Code your UI handles |
 |---|---|
 | The user dismissed the sheet | `PASSKEY_CEREMONY_CANCELLED` |
+| Nobody finished the sheet in time | `PASSKEY_CEREMONY_TIMED_OUT` — retryable; the SDK asked your module to cancel the request |
 | The device cannot do passkeys, or no adapter is wired | `PASSKEY_NOT_SUPPORTED` |
 | The credential is already registered for this user | `PASSKEY_ALREADY_REGISTERED` |
 | The action needs a fresh re-authentication first | `PASSKEY_STEP_UP_REQUIRED` |

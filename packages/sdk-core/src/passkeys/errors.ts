@@ -18,6 +18,7 @@ export interface ApiErrorBody {
 const NEXT_ACTION: Record<PasskeyErrorCode, PasskeyNextAction> = {
   PASSKEY_NOT_SUPPORTED: 'abort',
   PASSKEY_CEREMONY_CANCELLED: 'retry',
+  PASSKEY_CEREMONY_TIMED_OUT: 'retry',
   PASSKEY_CEREMONY_FAILED: 'retry',
   PASSKEY_ADAPTER_ERROR: 'abort',
   PASSKEY_STEP_UP_REQUIRED: 'step-up',

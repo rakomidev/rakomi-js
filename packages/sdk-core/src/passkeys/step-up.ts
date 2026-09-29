@@ -26,6 +26,10 @@ export interface StepUpWithPasskeyInput {
   accessToken: string;
   adapter: PasskeyCeremonyAdapter;
   signal?: AbortSignal;
+  /**
+   * Extends the ceremony time budget. It never shortens the budget below the server's `timeout`
+   * plus the grace margin; abort `signal` to give up earlier. Applications should not need it.
+   */
   timeoutMs?: number;
 }
 

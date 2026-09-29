@@ -17,12 +17,20 @@ interface CacheState {
 }
 
 const DEFAULT_MAX_AGE = 3600;
+/**
+ * Minimum time between two refreshes triggered by an unknown `kid` while the cache is still fresh.
+ * Without it every token carrying a new, never-seen `kid` forces a network fetch, so a stream of
+ * forged tokens turns the verifier into a JWKS request amplifier. A genuinely rotated key is picked
+ * up by the first unknown-kid lookup after the window (or on the next max-age expiry).
+ */
+const UNKNOWN_KID_REFRESH_COOLDOWN_MS = 30_000;
 
 type CacheResult<T> = { ok: true; data: T } | { ok: false; error: SdkError };
 
 export class JwksCache {
   private cache: CacheState | null = null;
   private refreshPromise: Promise<CacheResult<void>> | null = null;
+  private lastRefreshAttemptAt: number | null = null;
   private readonly jwksUrl: string;
   private readonly baseUrl: string;
 
@@ -64,6 +72,12 @@ export class JwksCache {
       if (entry) {
         return { ok: true, data: entry.key };
       }
+      if (
+        this.lastRefreshAttemptAt !== null &&
+        Date.now() - this.lastRefreshAttemptAt < UNKNOWN_KID_REFRESH_COOLDOWN_MS
+      ) {
+        return { ok: false, error: JWKS_NO_MATCHING_KEY() };
+      }
     }
 
     const refreshResult = await this.refresh();
@@ -84,6 +98,7 @@ export class JwksCache {
       return this.refreshPromise;
     }
 
+    this.lastRefreshAttemptAt = Date.now();
     this.refreshPromise = this.doRefresh();
     try {
       return await this.refreshPromise;

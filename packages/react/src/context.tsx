@@ -8,7 +8,7 @@
  *
  * Security invariants:
  * - baseUrl HTTPS validation (rejects http:// on non-localhost)
- * - returnTo MUST be a relative path (starts with '/') — prevents open redirect
+ * - returnTo MUST be a same-origin relative path — prevents open redirect
  * - OAuth state validated BEFORE code exchange (CSRF protection)
  * - Code exchange is deduplicated via useRef StrictMode guard
  * - URL cleaned via replaceState BEFORE exchange (prevents replay on refresh)
@@ -42,6 +42,7 @@ import { resolveStorage } from './storage.js';
 import { TabSync } from './tab-sync.js';
 import { TokenManager } from './token-manager.js';
 import type { AuthState, OAuthTokenResponse, RakomiProviderProps, SignInOptions, SignInResult } from './types.js';
+import { isSameOriginPath } from './utils/safe-url.js';
 
 const DEFAULT_BASE_URL = 'https://api.rakomi.com';
 
@@ -479,8 +480,11 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
       }
 
       const returnTo = options?.returnTo;
-      if (returnTo !== undefined && !returnTo.startsWith('/')) {
-        throw new Error('[Rakomi] returnTo must be a relative path (starts with "/"). Absolute URLs are not permitted.');
+      if (returnTo !== undefined && !isSameOriginPath(returnTo)) {
+        throw new Error(
+          '[Rakomi] returnTo must be a same-origin relative path (starts with a single "/"). ' +
+          'Absolute and protocol-relative URLs are not permitted.',
+        );
       }
 
       const { codeVerifier, codeChallenge } = await generatePKCE();

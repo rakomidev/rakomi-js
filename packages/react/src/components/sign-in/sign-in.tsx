@@ -703,7 +703,6 @@ function SignInInner(props: SignInProps): React.ReactElement {
       const url = buildSocialAuthorizeUrl({
         baseUrl: internals.baseUrl,
         provider,
-        tenantId: internals.clientId,
         redirectUri: internals.redirectUrl,
         state: oauthState,
         codeChallenge,

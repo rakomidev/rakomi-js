@@ -21,13 +21,13 @@ export interface RakomiConfig {
    * `verifyRakomiToken()`'s standalone `issuer`/`jwksUrl` options already expose.
    */
   jwksUrl?: string;
-  /** Clock tolerance in seconds for JWT expiry checks (default: 30, max: 120) */
+  /** Clock tolerance in seconds for JWT expiry checks (default: 30, max: 120; a non-finite value uses the default) */
   clockTolerance?: number;
   /** Override environment detection (default: auto-detect from request hostname) */
   environment?: SdkEnvironment;
   /** Webhook signing secret from Rakomi dashboard (per-tenant) */
   webhookSecret?: string;
-  /** Webhook timestamp tolerance in seconds (default: 300, max: 600) */
+  /** Webhook timestamp tolerance in seconds (default: 300, max: 600; a non-finite value uses the default) */
   webhookTolerance?: number;
   /** OAuth client ID (required for exchangeCode/refreshToken) */
   clientId?: string;

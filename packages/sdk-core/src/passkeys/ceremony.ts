@@ -18,12 +18,66 @@ import type {
 } from './types.js';
 
 /**
- * How long a ceremony may stay open before it is abandoned.
+ * How long a ceremony may stay open when the server's options carry no `timeout`.
  *
  * The budget lives in the core, not in a binding, so the browser and the native bindings cannot
- * drift to different values. It matches the timeout the first-party web client already uses.
+ * drift to different values. The value is the default WebAuthn Level 3 recommends for a ceremony
+ * timeout (§15.1, five minutes).
+ *
+ * When the server's options DO carry a `timeout`, the budget is that value plus
+ * {@link PASSKEY_CEREMONY_TIMEOUT_GRACE_MS} — never less. A client that gives up before the
+ * authenticator does can leave the user finishing a ceremony whose result nobody is waiting for.
  */
-export const PASSKEY_CEREMONY_TIMEOUT_MS = 60_000;
+export const PASSKEY_CEREMONY_TIMEOUT_MS = 300_000;
+
+/**
+ * The margin added on top of the server's `timeout` before the SDK abandons a ceremony, so the
+ * platform's own timer — which starts from the same value — expires first.
+ */
+export const PASSKEY_CEREMONY_TIMEOUT_GRACE_MS = 10_000;
+
+/**
+ * The ceremony timeout this SDK asks for when it begins a registration or sign-in.
+ *
+ * The server decides: it answers with its own `timeout` in the options, and the client budget is
+ * computed from that answer ({@link ceremonyBudgetMs}), never from this request. A server that does
+ * not know the field ignores it and keeps its own value.
+ */
+export function ceremonyTimeoutRequest(): { ceremony_timeout_ms: number } {
+  return { ceremony_timeout_ms: PASSKEY_CEREMONY_TIMEOUT_MS };
+}
+
+/** The largest delay `setTimeout` honours; anything larger fires immediately on every runtime. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function isPositiveFinite(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * The time budget for one ceremony.
+ *
+ * The server's `timeout` (in milliseconds) is the floor: a caller-supplied `timeoutMs` may extend
+ * the budget but never shorten it below the server's value plus the grace margin — to give up
+ * earlier, abort the `signal` instead. A missing or non-numeric server value falls back to
+ * `timeoutMs`, then to {@link PASSKEY_CEREMONY_TIMEOUT_MS}.
+ */
+export function ceremonyBudgetMs(options: unknown, timeoutMs?: number): number {
+  const serverTimeout = isRecord(options) ? options['timeout'] : undefined;
+  const requested = isPositiveFinite(timeoutMs) ? timeoutMs : undefined;
+  let budget: number;
+  if (isPositiveFinite(serverTimeout)) {
+    const floor = serverTimeout + PASSKEY_CEREMONY_TIMEOUT_GRACE_MS;
+    budget = requested === undefined ? floor : Math.max(requested, floor);
+  } else {
+    budget = requested ?? PASSKEY_CEREMONY_TIMEOUT_MS;
+  }
+  return Math.min(budget, MAX_TIMER_DELAY_MS);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 /** What the ceremony hub returns: a credential, or a typed failure — never a throw. */
 export type CeremonyOutcome<T> = { ok: true; credential: T } | { ok: false; error: PasskeyError };
@@ -79,10 +133,6 @@ export async function guardAdapter(adapter: PasskeyCeremonyAdapter): Promise<Pas
   return null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 /** A credential the adapter returned must at least be a WebAuthn-shaped JSON object. */
 function isCredentialShaped(value: unknown): boolean {
   if (!isRecord(value)) return false;
@@ -96,7 +146,11 @@ function isCredentialShaped(value: unknown): boolean {
  *  - a browser `DOMException` named `NotAllowedError` / `AbortError` / `TimeoutError`,
  *  - a {@link PasskeyCeremonyError}-shaped rejection with `kind: 'cancelled'` (a native binding has
  *    no `DOMException` to raise),
- *  - our own abort, when the budget elapsed or the caller aborted.
+ *  - our own abort, when the caller aborted.
+ *
+ * An elapsed time budget is NOT classified here: the hub reports it as `PASSKEY_CEREMONY_TIMED_OUT`
+ * before this classifier runs, so "the user dismissed the prompt" and "nobody finished in time"
+ * stay distinguishable.
  *
  * Duck-typing on `name` alone would silently misclassify every native cancellation as an unknown
  * failure — the exact platform leak this SDK exists to prevent.
@@ -156,7 +210,8 @@ async function runCeremony<TOptions, TCredential>(
   input: RunCeremonyInput<TOptions, TCredential>,
 ): Promise<CeremonyOutcome<TCredential>> {
   const controller = new AbortController();
-  const budget = input.timeoutMs ?? PASSKEY_CEREMONY_TIMEOUT_MS;
+  const budget = ceremonyBudgetMs(input.options, input.timeoutMs);
+  let timedOut = false;
 
   const abortNow = () => {
     if (!controller.signal.aborted) controller.abort();
@@ -174,7 +229,10 @@ async function runCeremony<TOptions, TCredential>(
       return;
     }
     controller.signal.addEventListener('abort', onAbort, { once: true });
-    timer = setTimeout(abortNow, budget);
+    timer = setTimeout(() => {
+      timedOut = true;
+      abortNow();
+    }, budget);
   });
   abandoned.catch(() => undefined);
 
@@ -207,6 +265,12 @@ async function runCeremony<TOptions, TCredential>(
     }
     return { ok: true, credential };
   } catch (err) {
+    if (timedOut && !(err instanceof AdapterContractError)) {
+      return {
+        ok: false,
+        error: passkeyError('PASSKEY_CEREMONY_TIMED_OUT', 'the passkey ceremony timed out'),
+      };
+    }
     return { ok: false, error: classifyCeremonyRejection(err) };
   } finally {
     if (timer !== undefined) clearTimeout(timer);

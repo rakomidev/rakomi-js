@@ -81,7 +81,11 @@ export {
 
 export type { AssertPasskeyInput } from './passkeys/assert.js';
 export { assertPasskey } from './passkeys/assert.js';
-export { isPasskeySupported,PASSKEY_CEREMONY_TIMEOUT_MS } from './passkeys/ceremony.js';
+export {
+  isPasskeySupported,
+  PASSKEY_CEREMONY_TIMEOUT_GRACE_MS,
+  PASSKEY_CEREMONY_TIMEOUT_MS,
+} from './passkeys/ceremony.js';
 export type { ApiErrorBody, PasskeySurface } from './passkeys/errors.js';
 export { mapPasskeyHttpError, parseRetryAfterMs, passkeyError } from './passkeys/errors.js';
 export type {

@@ -12,6 +12,8 @@ import type { VerifyResult, WebhookEvent, WebhookVerifyData } from './types.js';
 
 const RKSEC_PREFIX = 'rksec_';
 const EXPECTED_KEY_LENGTH = 32;
+/** Replay window used when the supplied tolerance is not a finite number of seconds. */
+const FALLBACK_TOLERANCE_SECONDS = 300;
 
 /**
  * Case-insensitive header lookup (RFC 9110 §5.1). Exported so the publisher wrapper can read the
@@ -39,9 +41,13 @@ export function getHeader(
  * Derive the raw HMAC key from a webhook signing secret.
  * Prefixed secrets (`rksec_<base64url>`) are stripped and base64url-decoded
  * to recover the original 32-byte key. Plain strings are used as-is.
- * Validates decoded key is exactly 32 bytes.
+ * Validates decoded key is exactly 32 bytes. A missing, empty or whitespace-only secret is
+ * rejected: an empty HMAC key is publicly known, so anyone could forge a matching signature.
  */
 function deriveKey(secret: string): Buffer | null {
+  if (typeof secret !== 'string' || secret.trim() === '') {
+    return null;
+  }
   if (secret.startsWith(RKSEC_PREFIX)) {
     const key = Buffer.from(secret.slice(RKSEC_PREFIX.length), 'base64url');
     if (key.length !== EXPECTED_KEY_LENGTH) {
@@ -73,13 +79,14 @@ export async function verifyWebhook<T = WebhookEvent>(
       return { ok: false, error: WEBHOOK_MISSING_HEADER() };
     }
 
+    const replayWindow = Number.isFinite(tolerance) ? tolerance : FALLBACK_TOLERANCE_SECONDS;
     const now = Math.floor(Date.now() / 1000);
     const diff = now - timestamp;
-    if (diff > tolerance) {
-      return { ok: false, error: WEBHOOK_TIMESTAMP_TOO_OLD(tolerance) };
+    if (diff > replayWindow) {
+      return { ok: false, error: WEBHOOK_TIMESTAMP_TOO_OLD(replayWindow) };
     }
-    if (diff < -tolerance) {
-      return { ok: false, error: WEBHOOK_TIMESTAMP_TOO_NEW(tolerance) };
+    if (diff < -replayWindow) {
+      return { ok: false, error: WEBHOOK_TIMESTAMP_TOO_NEW(replayWindow) };
     }
 
     const key = deriveKey(secret);
