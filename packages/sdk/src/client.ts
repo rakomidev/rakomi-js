@@ -64,6 +64,17 @@ const DEFAULT_CLOCK_TOLERANCE = 30;
 const MAX_CLOCK_TOLERANCE = 120;
 const DEFAULT_WEBHOOK_TOLERANCE = 300;
 const MAX_WEBHOOK_TOLERANCE = 600;
+
+/**
+ * Clamp a tolerance (seconds) into [0, max]. A non-number or non-finite value (NaN, ±Infinity)
+ * falls back to `fallback`: NaN would otherwise slip through Math.min/Math.max and turn every
+ * "is this too old?" comparison false, silently disabling the check.
+ */
+function clampTolerance(value: unknown, fallback: number, max: number): number {
+  const raw = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.min(Math.max(0, raw), max);
+}
+
 const API_KEY_PREFIXES = ['ca_live_', 'ca_test_', 'akm_live_', 'akm_test_'];
 
 export class RakomiClient {
@@ -132,14 +143,16 @@ export class RakomiClient {
       this.jwksUrl = config.jwksUrl;
     }
 
-    const tolerance = config.clockTolerance ?? DEFAULT_CLOCK_TOLERANCE;
-    this.clockTolerance = Math.min(Math.max(0, tolerance), MAX_CLOCK_TOLERANCE);
+    this.clockTolerance = clampTolerance(config.clockTolerance, DEFAULT_CLOCK_TOLERANCE, MAX_CLOCK_TOLERANCE);
 
     this.environment = config.environment;
 
     this.webhookSecret = config.webhookSecret;
-    const whTolerance = config.webhookTolerance ?? DEFAULT_WEBHOOK_TOLERANCE;
-    this.webhookTolerance = Math.min(Math.max(0, whTolerance), MAX_WEBHOOK_TOLERANCE);
+    this.webhookTolerance = clampTolerance(
+      config.webhookTolerance,
+      DEFAULT_WEBHOOK_TOLERANCE,
+      MAX_WEBHOOK_TOLERANCE,
+    );
 
     this.clientId = config.clientId;
     this.clientSecret = config.clientSecret;
@@ -175,8 +188,7 @@ export class RakomiClient {
       return { ok: false, error: CONFIG_MISSING_WEBHOOK_SECRET() };
     }
 
-    const rawTolerance = options?.tolerance ?? this.webhookTolerance;
-    const tolerance = Math.min(Math.max(0, rawTolerance), MAX_WEBHOOK_TOLERANCE);
+    const tolerance = clampTolerance(options?.tolerance, this.webhookTolerance, MAX_WEBHOOK_TOLERANCE);
     return verifyWebhookImpl<T>(body, headers, this.webhookSecret, tolerance);
   }
 

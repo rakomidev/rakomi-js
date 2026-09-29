@@ -406,18 +406,20 @@ export class TokenRuntime {
  *
  * uses `jose.createLocalJWKSet` so verification is purely local once
  * the JWKS document has been fetched and cached. The cache is preloaded from `KeyValueStore`
- * on cold-start (slot `jwks_cache`) and refreshed on TTL miss; on persistent network failure
+ * on cold-start (slot `jwks_cache`) and refreshed on TTL miss, or once when the token's `kid` is not in
+ * the cached set (a rotated key; rate-limited by a cooldown); on persistent network failure
  * the stale-while-error fallback keeps verification working until the cached doc itself expires.
  */
   async verifyAccessToken(token: string): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; reason: string }> {
     try {
       const cache = await this.getOrCreateJwksCache();
-      const keySet = await cache.getKeySet();
-      const result = await jwtVerify(token, keySet, {
-        issuer: this.expectedIssuer,
-        audience: this.expectedAudience,
-        algorithms: ['RS256'],
-      });
+      const result = await cache.withKeyRotationRetry((keySet) =>
+        jwtVerify(token, keySet, {
+          issuer: this.expectedIssuer,
+          audience: this.expectedAudience,
+          algorithms: ['RS256'],
+        }),
+      );
       return { ok: true, payload: result.payload as Record<string, unknown> };
     } catch (err) {
       return { ok: false, reason: err instanceof Error ? err.message : 'verify failed' };

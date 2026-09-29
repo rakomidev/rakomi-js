@@ -54,20 +54,21 @@ export function prodExternalSeeds({ dependencies = {}, peerDependencies = {}, bu
   return base.filter((d) => !inlined.has(d))
 }
 
-export function lockfileClosureForSeeds(pkgName, seedNames) {
+export function lockfileClosureForSeeds(pkgName, seedNames, { exec = execFileSync, retries = 1 } = {}) {
   const seeds = [...(seedNames instanceof Set ? seedNames : new Set(seedNames))]
   if (seeds.length === 0) return new Set()
   let out
-  try {
-    out = execFileSync('pnpm', ['ls', '--filter', pkgName, '--prod', '--json', '--depth', 'Infinity'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      maxBuffer: 128 * 1024 * 1024,
-      env: { ...process.env, NPM_PACKAGES_TOKEN: process.env.NPM_PACKAGES_TOKEN ?? '' },
-    })
-  } catch (e) {
-    throw new GateError(`pnpm ls failed for ${pkgName}: ${String(e.stderr || e.message).slice(-200)}`)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      out = runPnpmLs(exec, pkgName)
+      break
+    } catch (e) {
+      if (attempt < retries) {
+        console.error(`  ⚠ pnpm ls failed for ${pkgName} (attempt ${attempt + 1}/${retries + 1}) — retrying: ${String(e.stderr || e.message).slice(-200)}`)
+        continue
+      }
+      throw new GateError(`pnpm ls failed for ${pkgName} after ${attempt + 1} attempt(s): ${String(e.stderr || e.message).slice(-200)}`)
+    }
   }
   let parsed
   try {
@@ -80,6 +81,16 @@ export function lockfileClosureForSeeds(pkgName, seedNames) {
   } catch (e) {
     throw new GateError(`cannot derive lockfile prod closure for ${pkgName}: ${e.message}`)
   }
+}
+
+function runPnpmLs(exec, pkgName) {
+  return exec('pnpm', ['ls', '--filter', pkgName, '--prod', '--json', '--depth', 'Infinity'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: 128 * 1024 * 1024,
+    env: { ...process.env, NPM_PACKAGES_TOKEN: process.env.NPM_PACKAGES_TOKEN ?? '' },
+  })
 }
 
 export function structuralVacuousGreen({ expectedSize, declaredProdCount }) {
@@ -138,6 +149,16 @@ export function computeExpectedComponentSet(pkg, { repoRoot = REPO_ROOT } = {}) 
   return { expected, bundled, closure, seeds, manifest: pj, declaredProd: Object.keys(pj.dependencies || {}), metafileExists }
 }
 
+export function expectedSetErrorRoute(e) {
+  return e instanceof GateError ? 'cannot-evaluate' : 'rethrow'
+}
+
+export function verdictExit({ violations = 0, preconditions = 0, cannotEval = 0 } = {}) {
+  if (cannotEval > 0) return 2
+  if (violations > 0 || preconditions > 0) return 1
+  return 0
+}
+
 const argv = process.argv.slice(2)
 const tarballIdx = argv.indexOf('--tarball')
 const tarballDir = tarballIdx >= 0 ? argv[tarballIdx + 1] : null
@@ -189,8 +210,8 @@ function main() {
       try {
         ({ expected, bundled, declaredProd, metafileExists } = computeExpectedComponentSet(pkg))
       } catch (e) {
-        if (e instanceof GateError) { fail(relGateMessage(N4E, 'CANNOT-EVALUATE', pkg.name, '', e.message)); inspected++; continue }
-        throw e
+        if (expectedSetErrorRoute(e) !== 'cannot-evaluate') throw e
+        failStructural(relGateMessage(N4E, 'CANNOT-EVALUATE', pkg.name, '', e.message)); inspected++; continue
       }
       const groundTruth = metafileExists ? 'bundle+externals' : 'lockfile'
 
@@ -247,11 +268,12 @@ if (isCliEntry(import.meta.url)) {
 
   console.error('\n## sbom-equals-lockfile summary')
   for (const w of warnings) console.error(`  • warning: ${w}`)
-  if (cannotEval.length) {
-    console.error(`\nSBOM-EQUALS-LOCKFILE: CANNOT-EVALUATE — ${N4G}: ${cannotEval.length} structural/underivable case(s)`)
+  const exit = verdictExit({ violations: violations.length, preconditions: preconditions.length, cannotEval: cannotEval.length })
+  if (exit === 2) {
+    console.error(`\nSBOM-EQUALS-LOCKFILE: CANNOT-EVALUATE — ${N4G}/${N4E}: ${cannotEval.length} structural/underivable case(s)`)
     process.exit(2)
   }
-  if (violations.length || preconditions.length) {
+  if (exit === 1) {
     if (violations.length === 0) {
       console.error(`\nSBOM-EQUALS-LOCKFILE: FAIL — PRECONDITIONS-ONLY (${preconditions.length} ${N4P}; documented coverage precondition, not a sabotage slip)`)
       process.exit(1)

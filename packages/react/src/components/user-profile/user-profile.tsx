@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { resolveClassName, useGlobalAppearance } from '../../appearance.js';
 import { useAuth } from '../../hooks/use-auth.js';
 import { useBranding } from '../../hooks/use-branding.js';
+import { usePasskeys } from '../../hooks/use-passkeys.js';
 import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
@@ -19,11 +20,13 @@ import {
   changePassword,
   disableMfa,
   fetchSessions,
+  initiateStepUpEmailOtp,
   regenerateRecoveryCodes,
   revokeAllOtherSessions,
   revokeSession,
   setupMfa,
   verifyMfaSetup,
+  verifyStepUpEmailOtp,
 } from '../../oauth/profile.js';
 import type { SessionInfo } from '../../types.js';
 import { getErrorMessage } from '../../types.js';
@@ -31,7 +34,14 @@ import { copyToClipboard } from '../../utils/copy-to-clipboard.js';
 import { getPasswordStrength } from '../../utils/password-strength.js';
 import type { UserProfileProps } from './types.js';
 
-type MfaState = 'idle' | 'setup_qr' | 'setup_verify' | 'recovery_codes' | 'disable_confirm' | 'regenerate_confirm';
+type MfaState =
+  | 'idle'
+  | 'setup_qr'
+  | 'setup_verify'
+  | 'recovery_codes'
+  | 'disable_confirm'
+  | 'regenerate_confirm'
+  | 'step_up_email_otp';
 
 function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
   const {
@@ -46,6 +56,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
   const auth = useAuth();
   const internals = useRakomiInternals();
   const { branding } = useBranding();
+  const passkeys = usePasskeys();
   const t = useTranslation(locale, undefined, translations);
   const globalAppearance = useGlobalAppearance();
   const colorScheme = useColorScheme();
@@ -69,6 +80,13 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const mfaCodeRef = useRef<HTMLInputElement>(null);
   const mfaPasswordRef = useRef<HTMLInputElement>(null);
+
+  const [stepUpEmailMasked, setStepUpEmailMasked] = useState('');
+  const stepUpOtpRef = useRef<HTMLInputElement>(null);
+  const pendingStepUpRetryRef = useRef<((stepUpToken: string) => Promise<void>) | null>(null);
+  const doSetupMfaRef = useRef<(stepUpToken?: string) => Promise<void>>(async () => {});
+  const doVerifyMfaSetupRef = useRef<(code: string, stepUpToken?: string) => Promise<void>>(async () => {});
+  const stepUpTokenRef = useRef<string | null>(null);
 
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -140,40 +158,118 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
     }
   }, [internals.baseUrl, t, getToken]);
 
+  /**
+   * A gated setup/verify-setup call answered 401 step-up-required. Try the SDK's existing passkey
+   * step-up first (`usePasskeys().stepUpWithPasskey()` — a no-extra-UI native prompt); when the
+   * account has no passkey to assert, fall back to a step-up email code, which needs the user's
+   * input, so this function PAUSES (transitions to the `step_up_email_otp` state) rather than
+   * blocking on it — `handleStepUpEmailOtpSubmit` below resumes `retry` once a token exists.
+   */
+  const attemptStepUpAndRetry = useCallback(async (
+    retry: (stepUpToken: string) => Promise<void>,
+  ): Promise<void> => {
+    const passkeyStepUp = await passkeys.stepUpWithPasskey();
+    if (passkeyStepUp.ok) {
+      stepUpTokenRef.current = passkeyStepUp.stepUpToken;
+      await retry(passkeyStepUp.stepUpToken);
+      return;
+    }
+
+    const token = await getToken();
+    if (!token) {
+      setMfaError(t('userProfile.sessionExpired'));
+      return;
+    }
+
+    const initiated = await initiateStepUpEmailOtp({ baseUrl: internals.baseUrl, token });
+    if (!initiated.ok) {
+      setMfaError(getErrorMessage(initiated.error));
+      return;
+    }
+
+    setStepUpEmailMasked(initiated.emailMasked);
+    pendingStepUpRetryRef.current = retry;
+    setMfaState('step_up_email_otp');
+  }, [passkeys, getToken, internals.baseUrl, t]);
+
+  const doSetupMfa = useCallback(async (stepUpToken?: string): Promise<void> => {
+    const effectiveStepUpToken = stepUpToken ?? stepUpTokenRef.current ?? undefined;
+    const token = await getToken();
+    if (!token) {
+      setMfaError(t('userProfile.sessionExpired'));
+      return;
+    }
+
+    const result = await setupMfa({ baseUrl: internals.baseUrl, token, stepUpToken: effectiveStepUpToken });
+
+    if (result.ok) {
+      if (result.qrCode.startsWith('data:image/') && result.qrCode.length < 102400) {
+        setQrCode(result.qrCode);
+      }
+      setMfaSecret(result.secret);
+      setRecoveryCodes(result.recoveryCodes);
+      setMfaState('setup_qr');
+      return;
+    }
+
+    if (result.stepUpRequired && !effectiveStepUpToken) {
+      await attemptStepUpAndRetry((freshToken) => doSetupMfaRef.current(freshToken));
+      return;
+    }
+
+    if (result.stepUpRequired && effectiveStepUpToken) {
+      stepUpTokenRef.current = null;
+    }
+
+    setMfaError(getErrorMessage(result.error));
+  }, [internals.baseUrl, getToken, t, attemptStepUpAndRetry]);
+  doSetupMfaRef.current = doSetupMfa;
+
   const handleMfaSetup = useCallback(async () => {
     if (mfaSubmitting.current) return;
     mfaSubmitting.current = true;
     setMfaLoading(true);
     setMfaError(null);
 
-    const token = await getToken();
-    if (!token) {
-      setMfaError(t('userProfile.sessionExpired'));
-      setMfaLoading(false);
-      mfaSubmitting.current = false;
-      return;
-    }
-
     try {
-      const result = await setupMfa({ baseUrl: internals.baseUrl, token });
-
-      if (result.ok) {
-        if (result.qrCode.startsWith('data:image/') && result.qrCode.length < 102400) {
-          setQrCode(result.qrCode);
-        }
-        setMfaSecret(result.secret);
-        setRecoveryCodes(result.recoveryCodes);
-        setMfaState('setup_qr');
-      } else {
-        setMfaError(getErrorMessage(result.error));
-      }
+      await doSetupMfa();
     } catch {
       setMfaError(t('error.unknownError'));
     } finally {
       mfaSubmitting.current = false;
       setMfaLoading(false);
     }
-  }, [internals.baseUrl, t, getToken]);
+  }, [doSetupMfa, t]);
+
+  const doVerifyMfaSetup = useCallback(async (code: string, stepUpToken?: string): Promise<void> => {
+    const effectiveStepUpToken = stepUpToken ?? stepUpTokenRef.current ?? undefined;
+    const token = await getToken();
+    if (!token) {
+      setMfaError(t('userProfile.sessionExpired'));
+      return;
+    }
+
+    const result = await verifyMfaSetup({ baseUrl: internals.baseUrl, token, code, stepUpToken: effectiveStepUpToken });
+
+    if (result.ok) {
+      stepUpTokenRef.current = null;
+      setRecoveryCodes(result.recoveryCodes);
+      setMfaState('recovery_codes');
+      return;
+    }
+
+    if (result.stepUpRequired && !effectiveStepUpToken) {
+      await attemptStepUpAndRetry((freshToken) => doVerifyMfaSetupRef.current(code, freshToken));
+      return;
+    }
+
+    if (result.stepUpRequired && effectiveStepUpToken) {
+      stepUpTokenRef.current = null;
+    }
+
+    setMfaError(getErrorMessage(result.error));
+  }, [internals.baseUrl, getToken, t, attemptStepUpAndRetry]);
+  doVerifyMfaSetupRef.current = doVerifyMfaSetup;
 
   const handleMfaVerifySetup = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -183,6 +279,25 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
     setMfaError(null);
 
     const code = (mfaCodeRef.current?.value ?? '').trim();
+
+    try {
+      await doVerifyMfaSetup(code);
+    } catch {
+      setMfaError(t('error.unknownError'));
+    } finally {
+      mfaSubmitting.current = false;
+      setMfaLoading(false);
+    }
+  }, [doVerifyMfaSetup, t]);
+
+  const handleStepUpEmailOtpSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (mfaSubmitting.current) return;
+    mfaSubmitting.current = true;
+    setMfaLoading(true);
+    setMfaError(null);
+
+    const otp = (stepUpOtpRef.current?.value ?? '').trim();
     const token = await getToken();
     if (!token) {
       setMfaError(t('userProfile.sessionExpired'));
@@ -192,13 +307,16 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
     }
 
     try {
-      const result = await verifyMfaSetup({ baseUrl: internals.baseUrl, token, code });
-
-      if (result.ok) {
-        setRecoveryCodes(result.recoveryCodes);
-        setMfaState('recovery_codes');
-      } else {
-        setMfaError(getErrorMessage(result.error));
+      const verified = await verifyStepUpEmailOtp({ baseUrl: internals.baseUrl, token, otp });
+      if (!verified.ok) {
+        setMfaError(getErrorMessage(verified.error));
+        return;
+      }
+      const retry = pendingStepUpRetryRef.current;
+      pendingStepUpRetryRef.current = null;
+      if (retry) {
+        stepUpTokenRef.current = verified.stepUpToken;
+        await retry(verified.stepUpToken);
       }
     } catch {
       setMfaError(t('error.unknownError'));
@@ -387,6 +505,35 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
         );
       }
 
+      case 'step_up_email_otp':
+        return (
+          <form onSubmit={(e) => void handleStepUpEmailOtpSubmit(e)} data-rakomi-user-profile-form>
+            <p>{t('signIn.emailOtp.sent', { email: stepUpEmailMasked })}</p>
+            <div data-rakomi-field>
+              <label htmlFor={`${idPrefix}-mfa-stepup-otp`}>{t('signIn.emailOtp.codeLabel')}</label>
+              <input
+                ref={stepUpOtpRef}
+                id={`${idPrefix}-mfa-stepup-otp`}
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                required
+              />
+            </div>
+            {mfaError && <div role="alert" data-rakomi-user-profile-error>{mfaError}</div>}
+            <button type="submit" disabled={mfaLoading} data-rakomi-user-profile-submit className={cls('submitButton') || undefined}>
+              {mfaLoading ? t('common.loading') : t('common.save')}
+            </button>
+            <button
+              type="button"
+              onClick={() => { pendingStepUpRetryRef.current = null; stepUpTokenRef.current = null; setMfaState('idle'); }}
+              data-rakomi-user-profile-link
+            >
+              {t('common.cancel')}
+            </button>
+          </form>
+        );
+
       case 'setup_qr':
         return (
           <>
@@ -425,7 +572,7 @@ function UserProfileInner(props: UserProfileProps): React.ReactElement | null {
                 {mfaLoading ? t('common.loading') : t('common.save')}
               </button>
             </form>
-            <button type="button" onClick={() => { setMfaState('idle'); setMfaSecret(''); setQrCode(''); }} data-rakomi-user-profile-link>
+            <button type="button" onClick={() => { setMfaState('idle'); setMfaSecret(''); setQrCode(''); stepUpTokenRef.current = null; }} data-rakomi-user-profile-link>
               {t('common.cancel')}
             </button>
           </>

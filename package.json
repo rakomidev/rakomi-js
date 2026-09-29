@@ -2,7 +2,7 @@
   "name": "rakomi-js",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.6.5",
+  "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=22"
   },

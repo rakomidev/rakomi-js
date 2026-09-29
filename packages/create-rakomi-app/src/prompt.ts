@@ -36,11 +36,14 @@ export const FIELDS: readonly FieldSpec[] = [
 
 /**
  * Extra guidance appended to a field's prompt line — where to GET a value the wizard cannot
- * derive on its own. Only `RAKOMI_CLIENT_ID` needs this today: every tenant signup auto-provisions
- * a default OAuth client at creation time, so the value already exists — find it rather than
- * create it.
+ * derive on its own, or a precondition the value itself carries. `RAKOMI_CLIENT_ID`: every tenant
+ * signup auto-provisions a default OAuth client at creation time, so the value already exists —
+ * find it rather than create it. `RAKOMI_API_KEY`: a signup's LIVE key (`akm_live_`) does not
+ * authenticate requests until the account owner verifies their e-mail — paste the TEST key
+ * (`akm_test_`) here to get this app running immediately, then swap in the live key once verified.
  */
 const FIELD_HINTS: Partial<Record<EnvKey, string>> = {
+  RAKOMI_API_KEY: 'paste the test key (akm_test_...) to start now — the live key needs email verification first',
   RAKOMI_CLIENT_ID: 'from your Rakomi dashboard -> Settings -> Development credentials',
 };
 

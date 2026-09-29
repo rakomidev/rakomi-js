@@ -14,11 +14,11 @@ type SimpleResult =
 
 type MfaSetupResult =
   | { ok: true; qrCode: string; secret: string; recoveryCodes: string[] }
-  | { ok: false; error: AuthError };
+  | { ok: false; error: AuthError; stepUpRequired?: boolean };
 
 type MfaVerifySetupResult =
   | { ok: true; recoveryCodes: string[] }
-  | { ok: false; error: AuthError };
+  | { ok: false; error: AuthError; stepUpRequired?: boolean };
 
 type RegenerateCodesResult =
   | { ok: true; recoveryCodes: string[] }
@@ -32,13 +32,25 @@ type RevokeAllResult =
   | { ok: true; revokedCount: number; failedCount: number; failedSessionIds: string[] }
   | { ok: false; error: AuthError };
 
-async function authFetch(url: string, token: string, options?: RequestInit): Promise<Response> {
+/**
+ * `extraHeaders` is a SEPARATE, typed parameter rather than a `RequestInit.headers` passthrough —
+ * the destructure below deliberately drops any caller-supplied `headers`/`credentials`/`redirect`/
+ * `signal`/`cache` so a caller cannot override `Authorization`/`Content-Type` or these fetch
+ * options; `extraHeaders` is the one narrow, additive escape hatch (e.g. a step-up token).
+ */
+async function authFetch(
+  url: string,
+  token: string,
+  options?: RequestInit,
+  extraHeaders?: Record<string, string>,
+): Promise<Response> {
   const { headers: _callerHeaders, credentials: _c, redirect: _r, signal: _s, cache: _cache, ...safeOptions } = options ?? {};
   return sdkFetch(url, {
     ...safeOptions,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
+      ...extraHeaders,
     },
   });
 }
@@ -46,6 +58,12 @@ async function authFetch(url: string, token: string, options?: RequestInit): Pro
 function parseError(json: unknown, fallback: string): AuthError {
   const body = json as { detail?: string; request_id?: string } | undefined;
   return { code: 'PROVIDER_ERROR' as const, message: body?.detail ?? fallback, ...(extractRequestId(body) && { requestId: extractRequestId(body) }) };
+}
+
+/** A 401 carrying the API's own step-up-required error code — the one failure a caller can act on. */
+function isStepUpRequiredResponse(status: number, json: unknown): boolean {
+  const body = json as { code?: string } | undefined;
+  return status === 401 && body?.code === 'passkey/step_up_required';
 }
 
 export async function changePassword(options: {
@@ -75,15 +93,32 @@ export async function changePassword(options: {
 export async function setupMfa(options: {
   baseUrl: string;
   token: string;
+  /**
+   * A fresh step-up re-auth token, required by the API whenever the account already has a
+   * verified factor, or the session is outside a tenant-forced first-enrolment window. Optional
+   * for backward compatibility — omit it for the tenant-forced first-enrolment flow, where the
+   * API accepts a bare token; supply one (minted separately) for every other case, or the call
+   * fails with a step-up-required error.
+   */
+  stepUpToken?: string;
 }): Promise<MfaSetupResult> {
-  const { baseUrl, token } = options;
+  const { baseUrl, token, stepUpToken } = options;
 
   try {
-    const response = await authFetch(`${baseUrl}/v1/auth/mfa/setup`, token, { method: 'POST' });
+    const response = await authFetch(
+      `${baseUrl}/v1/auth/mfa/setup`,
+      token,
+      { method: 'POST' },
+      stepUpToken ? { 'X-Step-Up-Token': stepUpToken } : undefined,
+    );
 
     if (!response.ok) {
       const json = await response.json().catch(() => undefined);
-      return { ok: false, error: parseError(json, 'MFA setup failed') };
+      return {
+        ok: false,
+        error: parseError(json, 'MFA setup failed'),
+        stepUpRequired: isStepUpRequiredResponse(response.status, json),
+      };
     }
 
     const json = await response.json();
@@ -106,18 +141,26 @@ export async function verifyMfaSetup(options: {
   baseUrl: string;
   token: string;
   code: string;
+  /** See {@link setupMfa}'s `stepUpToken` — the same token, presented again to finish enrolment. */
+  stepUpToken?: string;
 }): Promise<MfaVerifySetupResult> {
-  const { baseUrl, token, code } = options;
+  const { baseUrl, token, code, stepUpToken } = options;
 
   try {
-    const response = await authFetch(`${baseUrl}/v1/auth/mfa/verify-setup`, token, {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    });
+    const response = await authFetch(
+      `${baseUrl}/v1/auth/mfa/verify-setup`,
+      token,
+      { method: 'POST', body: JSON.stringify({ code }) },
+      stepUpToken ? { 'X-Step-Up-Token': stepUpToken } : undefined,
+    );
 
     if (!response.ok) {
       const json = await response.json().catch(() => undefined);
-      return { ok: false, error: parseError(json, 'MFA verification failed') };
+      return {
+        ok: false,
+        error: parseError(json, 'MFA verification failed'),
+        stepUpRequired: isStepUpRequiredResponse(response.status, json),
+      };
     }
 
     const json = await response.json();
@@ -129,6 +172,73 @@ export async function verifyMfaSetup(options: {
         ? (r['recovery_codes'] as unknown[]).filter((c): c is string => typeof c === 'string')
         : [],
     };
+  } catch (err) {
+    return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: normalizeNetworkError(err) } };
+  }
+}
+
+type InitiateStepUpEmailOtpResult =
+  | { ok: true; emailMasked: string }
+  | { ok: false; error: AuthError };
+
+/**
+ * Sends a one-time code to the signed-in user's own email, for a caller that needs a fresh
+ * step-up token and has no passkey to assert. Follow with {@link verifyStepUpEmailOtp}.
+ */
+export async function initiateStepUpEmailOtp(options: {
+  baseUrl: string;
+  token: string;
+}): Promise<InitiateStepUpEmailOtpResult> {
+  const { baseUrl, token } = options;
+
+  try {
+    const response = await authFetch(`${baseUrl}/v1/auth/step-up/email-otp/initiate`, token, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const json = await response.json().catch(() => undefined);
+      return { ok: false, error: parseError(json, 'Could not send a verification code') };
+    }
+
+    const json = await response.json();
+    const r = json as Record<string, unknown>;
+    return { ok: true, emailMasked: typeof r['email_masked'] === 'string' ? r['email_masked'] : '' };
+  } catch (err) {
+    return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: normalizeNetworkError(err) } };
+  }
+}
+
+type VerifyStepUpEmailOtpResult =
+  | { ok: true; stepUpToken: string }
+  | { ok: false; error: AuthError };
+
+/** Consumes the code sent by {@link initiateStepUpEmailOtp} and mints a fresh step-up token. */
+export async function verifyStepUpEmailOtp(options: {
+  baseUrl: string;
+  token: string;
+  otp: string;
+}): Promise<VerifyStepUpEmailOtpResult> {
+  const { baseUrl, token, otp } = options;
+
+  try {
+    const response = await authFetch(`${baseUrl}/v1/auth/step-up/email-otp/verify`, token, {
+      method: 'POST',
+      body: JSON.stringify({ otp }),
+    });
+
+    if (!response.ok) {
+      const json = await response.json().catch(() => undefined);
+      return { ok: false, error: parseError(json, 'That code did not work') };
+    }
+
+    const json = await response.json();
+    const r = json as Record<string, unknown>;
+    if (typeof r['step_up_token'] !== 'string') {
+      return { ok: false, error: { code: 'PROVIDER_ERROR' as const, message: 'Malformed response' } };
+    }
+    return { ok: true, stepUpToken: r['step_up_token'] };
   } catch (err) {
     return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: normalizeNetworkError(err) } };
   }

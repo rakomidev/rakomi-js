@@ -2,6 +2,27 @@
  * Pure utilities shared across web + RN SDKs.
  */
 
+/** Placeholder origin used only to resolve a relative path; never contacted. */
+const RELATIVE_RESOLUTION_BASE = 'https://relative-path.invalid';
+
+/**
+ * True when `value` is a path that stays on the current origin. Starting with "/" is not
+ * enough: "//host", "/\\host" and a "/" followed by a tab or newline and another "/" resolve to
+ * a different origin, so the value is resolved against a placeholder origin and must resolve
+ * back to it. Control characters are rejected outright.
+ */
+function isSameOriginPath(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return false;
+  }
+  try {
+    return new URL(value, RELATIVE_RESOLUTION_BASE).origin === RELATIVE_RESOLUTION_BASE;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validate a URL string for use as a `returnTo` / `redirect_uri` value.
  * Rejects javascript:/data:/file:/vbscript: schemes (XSS-style payloads), absolute URLs
@@ -10,7 +31,8 @@
  * Returns the URL string if safe, null otherwise.
  *
  * Safe outputs:
- *  - Relative paths starting with `/` (web context).
+ *  - Same-origin relative paths starting with `/` (web context); protocol-relative and
+ *    backslash forms such as `//host` or `/\\host` are rejected.
  *  - Custom-scheme deep links matching `^[a-z][a-z0-9+.-]*:` (RFC 3986 §3.1) with a host.
  *
  * On RN custom schemes (`rakomi://callback`, `myapp://callback`) ARE valid here.
@@ -18,7 +40,7 @@
 export function isSafeUrl(url: string, allowedSchemes: readonly string[] = ['http', 'https']): boolean {
   if (typeof url !== 'string' || url.length === 0 || url.length > 2048) return false;
 
-  if (url.startsWith('/') && !url.startsWith('//')) return true;
+  if (url.startsWith('/')) return isSameOriginPath(url);
 
   if (/[\x00-\x1f\x7f]/.test(url)) return false;
 

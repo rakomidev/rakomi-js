@@ -6,7 +6,7 @@
  */
 
 import type { HttpClient } from '../types/adapters.js';
-import { getCredential, guardAdapter } from './ceremony.js';
+import { ceremonyTimeoutRequest, getCredential, guardAdapter } from './ceremony.js';
 import { malformedResponseError, passkeyError } from './errors.js';
 import { passkeyRequest, readJson } from './http.js';
 import type {
@@ -28,6 +28,10 @@ export interface AssertPasskeyInput {
    */
   userHandle?: OpaqueUserHandle;
   signal?: AbortSignal;
+  /**
+   * Extends the ceremony time budget. It never shortens the budget below the server's `timeout`
+   * plus the grace margin; abort `signal` to give up earlier. Applications should not need it.
+   */
   timeoutMs?: number;
 }
 
@@ -44,7 +48,10 @@ export async function assertPasskey(input: AssertPasskeyInput): Promise<AssertPa
     clientId: input.clientId,
     surface: 'assert',
     signal: input.signal,
-    body: handle === undefined ? {} : { user_handle: handle },
+    body: {
+      ...(handle === undefined ? {} : { user_handle: handle }),
+      ...ceremonyTimeoutRequest(),
+    },
   });
   if (!begin.ok) return { ok: false, error: begin.error };
 

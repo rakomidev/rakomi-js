@@ -13,6 +13,12 @@
  * - Cache hit path is in-memory only — no storage. Persistence (across cold-starts,
  * "offline-stale" path) is handled by the runtime via `KeyValueStore` + `deriveTenantStorageKey`.
  * - `getKeySet` returns the localJWKSet function jose expects (`(protectedHeader, token) => Key`).
+ * - `withKeyRotationRetry` runs a verification against the key set and, when it fails only because
+ *   the token's `kid` is not in the cached set (a key rotated since the last fetch), refreshes once and
+ *   retries. A refresh started this way happens at most once per cooldown window, so a stream of tokens
+ *   carrying never-seen `kid`s cannot turn the verifier into a JWKS request amplifier. Same algorithm as
+ *   `@rakomi/node`'s `JwksCache.getKey`: a fresh cache with an unknown `kid` refreshes only if no
+ *   refresh was attempted within the last 30 s; otherwise it fails with the original "no matching key".
  *
  * RS256-only, at the key-import boundary — not only at the caller's `jwtVerify(...{algorithms})`
  * site. `security.md` ("NEVER read alg from token header", HS-family + `none` rejected) requires
@@ -54,6 +60,18 @@ export interface JwksCacheOptions {
   now?: () => number;
 }
 
+/**
+ * Minimum time between two refreshes when the only failure is an unknown `kid`. Matches
+ * `@rakomi/node`'s `UNKNOWN_KID_REFRESH_COOLDOWN_MS`. A rotated key is picked up by the first
+ * unknown-`kid` verification after the window, or at the next TTL expiry.
+ */
+export const UNKNOWN_KID_REFRESH_COOLDOWN_MS = 30_000;
+
+/** jose's "no key in the set matches the token's protected header" error. */
+function isNoMatchingKey(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'ERR_JWKS_NO_MATCHING_KEY';
+}
+
 const MAX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface JwksCache {
@@ -61,8 +79,15 @@ export interface JwksCache {
   getKeySet(): Promise<ReturnType<typeof createLocalJWKSet>>;
   /** Last fetched document (or null if never fetched). */
   peek(): { document: JwksDocument; fetchedAt: number } | null;
-  /** Force-refresh on next call (used after sig-verify failure with `kid` not in cache). */
+  /** Force-refresh on next call. */
   invalidate(): void;
+  /**
+   * Run `verify` with the current key set. If it fails only because no cached key matches the token
+   * (`ERR_JWKS_NO_MATCHING_KEY`, typically a key rotated since the last fetch), refresh once and retry,
+   * unless a refresh was already attempted within the unknown-`kid` cooldown. Any other error, a
+   * failed refresh, or a second "no matching key" is returned to the caller as-is.
+   */
+  withKeyRotationRetry<T>(verify: (keySet: ReturnType<typeof createLocalJWKSet>) => Promise<T>): Promise<T>;
 }
 
 export function createJwksCache(options: JwksCacheOptions): JwksCache {
@@ -71,6 +96,7 @@ export function createJwksCache(options: JwksCacheOptions): JwksCache {
 
   let cached: { document: JwksDocument; fetchedAt: number; resolver: ReturnType<typeof createLocalJWKSet> } | null = null;
   let inFlight: Promise<ReturnType<typeof createLocalJWKSet>> | null = null;
+  let lastRefreshAttemptAt: number | null = null;
 
   if (options.initial) {
     cached = {
@@ -82,6 +108,7 @@ export function createJwksCache(options: JwksCacheOptions): JwksCache {
 
   async function refresh(): Promise<ReturnType<typeof createLocalJWKSet>> {
     if (inFlight) return inFlight;
+    lastRefreshAttemptAt = now();
     inFlight = (async () => {
       const document = await options.fetchJwks();
       const fetchedAt = now();
@@ -95,14 +122,32 @@ export function createJwksCache(options: JwksCacheOptions): JwksCache {
     return inFlight;
   }
 
+  async function getKeySet(): Promise<ReturnType<typeof createLocalJWKSet>> {
+    if (cached && now() - cached.fetchedAt < ttl) return cached.resolver;
+    try {
+      return await refresh();
+    } catch (err) {
+      if (cached) return cached.resolver;
+      throw err;
+    }
+  }
+
   return {
-    async getKeySet() {
-      if (cached && now() - cached.fetchedAt < ttl) return cached.resolver;
+    getKeySet,
+    async withKeyRotationRetry(verify) {
+      const keySet = await getKeySet();
       try {
-        return await refresh();
+        return await verify(keySet);
       } catch (err) {
-        if (cached) return cached.resolver;
-        throw err;
+        if (!isNoMatchingKey(err)) throw err;
+        if (lastRefreshAttemptAt !== null && now() - lastRefreshAttemptAt < UNKNOWN_KID_REFRESH_COOLDOWN_MS) throw err;
+        let fresh: ReturnType<typeof createLocalJWKSet>;
+        try {
+          fresh = await refresh();
+        } catch {
+          throw err;
+        }
+        return verify(fresh);
       }
     },
     peek() {

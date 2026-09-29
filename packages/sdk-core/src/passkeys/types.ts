@@ -231,8 +231,16 @@ export type PasskeyNextAction = 'step-up' | 'retry' | 'backoff' | 'abort' | 'non
 export type PasskeyErrorCode =
   /** The platform cannot do WebAuthn. Short-circuits before any network call. */
   | 'PASSKEY_NOT_SUPPORTED'
-  /** The user dismissed the prompt, or the ceremony was aborted / timed out. */
+  /**
+   * The user dismissed the prompt, or the caller aborted. A platform that reports its own expiry as
+   * a dismissal (a browser does) also lands here.
+   */
   | 'PASSKEY_CEREMONY_CANCELLED'
+  /**
+   * The SDK's ceremony time budget elapsed without a result, and the SDK asked the platform to
+   * cancel the prompt. Retryable: start a new ceremony, which fetches fresh options.
+   */
+  | 'PASSKEY_CEREMONY_TIMED_OUT'
   /** The authenticator refused (e.g. it already holds a credential for this user). */
   | 'PASSKEY_CEREMONY_FAILED'
   /** The injected adapter violated its contract. An integration bug, not a user outcome. */

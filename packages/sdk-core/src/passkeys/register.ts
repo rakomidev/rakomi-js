@@ -7,7 +7,7 @@
  */
 
 import type { HttpClient } from '../types/adapters.js';
-import { createCredential } from './ceremony.js';
+import { ceremonyTimeoutRequest, createCredential } from './ceremony.js';
 import { guardAdapter } from './ceremony.js';
 import { malformedResponseError, passkeyError } from './errors.js';
 import { passkeyRequest, readJson } from './http.js';
@@ -30,7 +30,10 @@ export interface RegisterPasskeyInput {
   adapter: PasskeyCeremonyAdapter;
   nickname?: string;
   signal?: AbortSignal;
-  /** Overrides the ceremony time budget. Tests use this; applications should not need it. */
+  /**
+   * Extends the ceremony time budget. It never shortens the budget below the server's `timeout`
+   * plus the grace margin; abort `signal` to give up earlier. Applications should not need it.
+   */
   timeoutMs?: number;
 }
 
@@ -67,6 +70,7 @@ export async function registerPasskey(input: RegisterPasskeyInput): Promise<Regi
     stepUpToken: input.stepUpToken,
     surface: 'register',
     signal: input.signal,
+    body: ceremonyTimeoutRequest(),
   });
   if (!begin.ok) return { ok: false, error: begin.error };
 
