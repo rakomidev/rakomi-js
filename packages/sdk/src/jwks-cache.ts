@@ -2,14 +2,30 @@ import type { CryptoKey as JoseCryptoKey } from 'jose';
 import { importJWK } from 'jose';
 
 import { JWKS_FETCH_FAILED, JWKS_INVALID_RESPONSE, JWKS_NO_MATCHING_KEY } from './errors.js';
+import { resolveIssuerJwksUri } from './internal/issuer-jwks.js';
+import { type AllowedSigningAlgorithm, isAcceptableSigningJwk } from './internal/signing-algorithms.js';
 import type { SdkError } from './types.js';
 
 interface JwkEntry {
   kid: string;
   key: JoseCryptoKey;
+  alg: AllowedSigningAlgorithm;
 }
 
+/** A verification key together with the algorithm its key record is bound to. */
+export interface ResolvedKey {
+  key: JoseCryptoKey;
+  alg: AllowedSigningAlgorithm;
+}
+
+/**
+ * Where a {@link JwksCache} reads keys from: an explicit JWKS document URL, or an issuer whose
+ * discovery document names its `jwks_uri`.
+ */
+export type JwksSource = { jwksUrl: string } | { issuer: string; discoveryOrigin?: string };
+
 interface CacheState {
+  jwksUrl: string;
   keys: JwkEntry[];
   revocationEpoch: number | null;
   fetchedAt: number;
@@ -31,31 +47,24 @@ export class JwksCache {
   private cache: CacheState | null = null;
   private refreshPromise: Promise<CacheResult<void>> | null = null;
   private lastRefreshAttemptAt: number | null = null;
-  private readonly jwksUrl: string;
-  private readonly baseUrl: string;
+  private readonly source: JwksSource;
 
-  constructor(baseUrl: string, fullJwksUrl?: string) {
-    let end = baseUrl.length;
-    while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) end--;
-    this.baseUrl = baseUrl.slice(0, end);
-    this.jwksUrl = fullJwksUrl ?? `${this.baseUrl}/.well-known/jwks.json`;
+  constructor(source: JwksSource) {
+    this.source = source;
   }
 
-  /**
-   * Build a cache from an already-full JWKS document URL (used by the
-   * standalone resource-server verify path, where the caller supplies the
-   * complete URL instead of a deployment baseUrl).
-   */
+  /** A cache reading the JWKS document at exactly `jwksUrl` (a proxy or mirror is legitimate). */
   static fromJwksUrl(jwksUrl: string): JwksCache {
-    return new JwksCache(new URL(jwksUrl).origin, jwksUrl);
+    return new JwksCache({ jwksUrl });
   }
 
   /**
-   * Get the base URL of this Rakomi deployment.
-   * Used to derive the expected JWT audience claim value.
+   * A cache reading the keys of `issuer`: the `jwks_uri` is taken from the issuer's discovery
+   * document on every refresh, so keys of any other issuer are never in this set. `discoveryOrigin`
+   * fetches that document from another origin; its `issuer` must still match exactly.
    */
-  getBaseUrl(): string {
-    return this.baseUrl;
+  static forIssuer(issuer: string, discoveryOrigin?: string): JwksCache {
+    return new JwksCache(discoveryOrigin === undefined ? { issuer } : { issuer, discoveryOrigin });
   }
 
   /**
@@ -66,11 +75,11 @@ export class JwksCache {
     return this.cache?.revocationEpoch ?? null;
   }
 
-  async getKey(kid: string): Promise<CacheResult<JoseCryptoKey>> {
+  async getKey(kid: string): Promise<CacheResult<ResolvedKey>> {
     if (this.cache && !this.isExpired()) {
       const entry = this.cache.keys.find((k) => k.kid === kid);
       if (entry) {
-        return { ok: true, data: entry.key };
+        return { ok: true, data: { key: entry.key, alg: entry.alg } };
       }
       if (
         this.lastRefreshAttemptAt !== null &&
@@ -90,7 +99,7 @@ export class JwksCache {
       return { ok: false, error: JWKS_NO_MATCHING_KEY() };
     }
 
-    return { ok: true, data: entry.key };
+    return { ok: true, data: { key: entry.key, alg: entry.alg } };
   }
 
   async refresh(): Promise<CacheResult<void>> {
@@ -113,10 +122,25 @@ export class JwksCache {
     return elapsed >= this.cache.maxAge;
   }
 
+  private async resolveJwksUrl(): Promise<string> {
+    if ('jwksUrl' in this.source) return this.source.jwksUrl;
+    return resolveIssuerJwksUri(this.source.issuer, this.source.discoveryOrigin);
+  }
+
   private async doRefresh(): Promise<CacheResult<void>> {
+    let jwksUrl: string;
+    try {
+      jwksUrl = await this.resolveJwksUrl();
+    } catch (err) {
+      if (this.cache) {
+        return { ok: true, data: undefined };
+      }
+      return { ok: false, error: JWKS_FETCH_FAILED(err instanceof Error ? err.message : 'Discovery failed') };
+    }
+
     let response: Response;
     try {
-      response = await fetch(this.jwksUrl, {
+      response = await fetch(jwksUrl, {
         redirect: 'error',
         signal: AbortSignal.timeout(5000),
       });
@@ -163,20 +187,21 @@ export class JwksCache {
 
     const entries: JwkEntry[] = [];
     for (const jwk of jwks) {
-      if (jwk.alg === 'RS256' && jwk.use === 'sig' && typeof jwk.kid === 'string') {
-        try {
-          const key = await importJWK(jwk, 'RS256');
-          if (!(key instanceof Uint8Array)) {
-            entries.push({ kid: jwk.kid, key });
-          }
-        } catch {
+      if (!isAcceptableSigningJwk(jwk)) continue;
+      const alg = jwk.alg as AllowedSigningAlgorithm;
+      try {
+        const key = await importJWK(jwk, alg);
+        if (!(key instanceof Uint8Array)) {
+          entries.push({ kid: jwk.kid as string, key, alg });
         }
+      } catch {
       }
     }
 
     const maxAge = parseCacheControlMaxAge(response.headers.get('Cache-Control'));
 
     this.cache = {
+      jwksUrl,
       keys: entries,
       revocationEpoch,
       fetchedAt: Date.now(),

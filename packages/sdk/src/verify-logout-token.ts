@@ -17,11 +17,11 @@ import {
   TOKEN_MALFORMED,
   TOKEN_NOT_YET_VALID,
 } from './errors.js';
+import { isAllowedSigningAlgorithm } from './internal/signing-algorithms.js';
 import { JwksCache } from './jwks-cache.js';
 import type { LogoutTokenPayload, VerifyLogoutTokenOptions, VerifyResult } from './types.js';
 
 const DEFAULT_ISSUER = 'https://api.rakomi.com';
-const DEFAULT_JWKS_URL = 'https://api.rakomi.com/.well-known/jwks.json';
 const DEFAULT_CLOCK_TOLERANCE = 30;
 const MAX_CLOCK_TOLERANCE = 120;
 
@@ -34,21 +34,22 @@ const LOGOUT_TOKEN_MAX_AGE_SECONDS = 300;
 const MAX_JWKS_MEMO_ENTRIES = 8;
 const jwksMemo = new Map<string, JwksCache>();
 
-function getMemoizedJwksCache(jwksUrl: string): JwksCache {
-  const existing = jwksMemo.get(jwksUrl);
+function getMemoizedJwksCache(jwksUrl: string | undefined, issuer: string): JwksCache {
+  const memoKey = jwksUrl !== undefined ? `url:${jwksUrl}` : `issuer:${issuer}`;
+  const existing = jwksMemo.get(memoKey);
   if (existing) {
-    jwksMemo.delete(jwksUrl);
-    jwksMemo.set(jwksUrl, existing);
+    jwksMemo.delete(memoKey);
+    jwksMemo.set(memoKey, existing);
     return existing;
   }
-  const created = JwksCache.fromJwksUrl(jwksUrl);
+  const created = jwksUrl !== undefined ? JwksCache.fromJwksUrl(jwksUrl) : JwksCache.forIssuer(issuer);
   if (jwksMemo.size >= MAX_JWKS_MEMO_ENTRIES) {
     const oldest = jwksMemo.keys().next().value;
     if (oldest !== undefined) {
       jwksMemo.delete(oldest);
     }
   }
-  jwksMemo.set(jwksUrl, created);
+  jwksMemo.set(memoKey, created);
   return created;
 }
 
@@ -83,7 +84,7 @@ function hasBackchannelLogoutEvent(events: unknown): events is Record<string, un
  * MUST respond HTTP 400 (§2.6) and MUST NOT log any session out.
  *
  * Performs every §2.6 validation step this SDK can decide without your session store: signature +
- * `alg` (RS256 only — `alg: none` is rejected, step 3), `iss`/`aud`/`iat`/`exp` (step 4), presence
+ * `alg` (RS256, PS256 or ES256, bound to the key — `alg: none` is rejected, step 3), `iss`/`aud`/`iat`/`exp` (step 4), presence
  * of `sub` or `sid` (step 5), the `events` member (step 6), and ABSENCE of a `nonce` claim (step 7
  * — a Logout Token carrying one is a forged or misissued token, never a valid one to silently
  * ignore). Two steps stay yours because they need YOUR session store, not this SDK's: replay
@@ -100,12 +101,12 @@ export async function verifyLogoutToken(
 ): Promise<VerifyResult<LogoutTokenPayload>> {
   try {
     const issuer = options?.issuer ?? DEFAULT_ISSUER;
-    const jwksUrl = options?.jwksUrl ?? DEFAULT_JWKS_URL;
+    const jwksUrl = options?.jwksUrl;
 
     if (!isHttpsUrl(issuer)) {
       return { ok: false, error: TOKEN_INVALID_ISSUER() };
     }
-    if (!isHttpsUrl(jwksUrl)) {
+    if (jwksUrl !== undefined && !isHttpsUrl(jwksUrl)) {
       return { ok: false, error: TOKEN_MALFORMED() };
     }
     if (typeof options?.audience !== 'string' || options.audience.trim() === '') {
@@ -119,11 +120,13 @@ export async function verifyLogoutToken(
     const clockTolerance = Math.min(Math.max(0, rawTolerance), MAX_CLOCK_TOLERANCE);
 
     let kid: string | undefined;
+    let headerAlg: string | undefined;
     try {
       const header = decodeProtectedHeader(token);
-      if (header.alg !== 'RS256') {
+      if (!isAllowedSigningAlgorithm(header.alg)) {
         return { ok: false, error: TOKEN_INVALID_ALGORITHM() };
       }
+      headerAlg = header.alg;
       const typ = typeof header.typ === 'string' ? header.typ.toLowerCase() : '';
       if (typ !== LOGOUT_TOKEN_TYP) {
         return { ok: false, error: TOKEN_MALFORMED() };
@@ -136,14 +139,17 @@ export async function verifyLogoutToken(
       return { ok: false, error: TOKEN_MALFORMED() };
     }
 
-    const jwksCache = getMemoizedJwksCache(jwksUrl);
+    const jwksCache = getMemoizedJwksCache(jwksUrl, issuer);
     const keyResult = await jwksCache.getKey(kid);
     if (!keyResult.ok) {
       return keyResult;
     }
+    if (headerAlg !== keyResult.data.alg) {
+      return { ok: false, error: TOKEN_INVALID_ALGORITHM() };
+    }
 
-    const { payload } = await jwtVerify(token, keyResult.data, {
-      algorithms: ['RS256'],
+    const { payload } = await jwtVerify(token, keyResult.data.key, {
+      algorithms: [keyResult.data.alg],
       issuer,
       audience: options.audience,
       clockTolerance,

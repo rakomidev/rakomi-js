@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveIssuerJwksUri } from './internal/issuer-jwks.js';
+import { isAcceptableSigningJwk } from './internal/signing-algorithms.js';
+
 const GREEN = '\x1b[32m';
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
@@ -41,8 +44,21 @@ export async function checkApiReachability(baseUrl: string): Promise<CheckResult
   }
 }
 
-export async function checkJwks(baseUrl: string): Promise<CheckResult> {
-  const url = `${baseUrl}/.well-known/jwks.json`;
+/**
+ * Resolve the issuer's `jwks_uri` from its discovery document and check it serves at least one
+ * key usable for signature verification.
+ */
+export async function checkJwks(issuer: string): Promise<CheckResult> {
+  let url: string;
+  try {
+    url = await resolveIssuerJwksUri(issuer);
+  } catch (err) {
+    return {
+      name: 'JWKS available',
+      passed: false,
+      detail: `discovery for ${issuer} failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    };
+  }
   try {
     const res = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(10_000) });
     if (!res.ok) {
@@ -52,10 +68,16 @@ export async function checkJwks(baseUrl: string): Promise<CheckResult> {
     if (!Array.isArray(data.keys)) {
       return { name: 'JWKS available', passed: false, detail: 'Response missing keys array' };
     }
+    const usable = data.keys.filter(
+      (k) => typeof k === 'object' && k !== null && isAcceptableSigningJwk(k as Record<string, unknown>),
+    ).length;
+    if (usable === 0) {
+      return { name: 'JWKS available', passed: false, detail: `no usable signing key at ${url}` };
+    }
     return {
       name: 'JWKS available',
       passed: true,
-      detail: `${String(data.keys.length)} key(s) found`,
+      detail: `${String(usable)} key(s) found`,
     };
   } catch (err) {
     return {
@@ -114,9 +136,10 @@ function formatResult(result: CheckResult): string {
   return `  ${icon} ${result.name}: ${result.detail}`;
 }
 
-function parseArgs(args: string[]): { baseUrl: string; apiKey: string } {
+function parseArgs(args: string[]): { baseUrl: string; apiKey: string; issuer: string } {
   let baseUrl = 'https://api.rakomi.com';
   let apiKey = 'ca_test_doctor_check';
+  let issuer: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--base-url' && args[i + 1]) {
@@ -125,14 +148,17 @@ function parseArgs(args: string[]): { baseUrl: string; apiKey: string } {
     } else if (args[i] === '--api-key' && args[i + 1]) {
       apiKey = args[i + 1]!;
       i++;
+    } else if (args[i] === '--issuer' && args[i + 1]) {
+      issuer = args[i + 1]!;
+      i++;
     }
   }
 
-  return { baseUrl, apiKey };
+  return { baseUrl, apiKey, issuer: issuer ?? baseUrl };
 }
 
 async function main(): Promise<void> {
-  const { baseUrl, apiKey } = parseArgs(process.argv.slice(2));
+  const { baseUrl, apiKey, issuer } = parseArgs(process.argv.slice(2));
   const version = getSdkVersion();
 
   process.stdout.write(`\n${BOLD}@rakomi/node Doctor v${version}${RESET}\n`);
@@ -146,7 +172,7 @@ async function main(): Promise<void> {
   results.push(await checkApiReachability(baseUrl));
   process.stdout.write(formatResult(results[results.length - 1]!) + '\n');
 
-  results.push(await checkJwks(baseUrl));
+  results.push(await checkJwks(issuer));
   process.stdout.write(formatResult(results[results.length - 1]!) + '\n');
 
   results.push(await checkTokenVerification(baseUrl, apiKey));

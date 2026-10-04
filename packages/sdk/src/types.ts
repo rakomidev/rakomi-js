@@ -7,18 +7,20 @@ export type SdkEnvironment = 'development' | 'production';
 export interface RakomiConfig {
   /** API key (must start with `ca_live_` or `ca_test_`) */
   apiKey: string;
-  /**
-   * Base URL for the Rakomi API (defaults to https://api.rakomi.com). Also the offline
-   * token-verification trust anchor: `verifyToken()`'s default expected `iss` derives from this
-   * value (a tenant that has bound its own custom domain as its issuer host is issued tokens
-   * whose `iss` is that host).
-   */
+  /** Base URL for the Rakomi API (defaults to https://api.rakomi.com). */
   baseUrl?: string;
   /**
-   * Override where `verifyToken()` fetches the JWKS document from (defaults to
-   * `<baseUrl>/.well-known/jwks.json`). Rare in production (e.g. a JWKS reverse-proxy) — decouples
-   * the JWKS fetch location from `baseUrl`'s role as the issuer trust anchor, matching the split
-   * `verifyRakomiToken()`'s standalone `issuer`/`jwksUrl` options already expose.
+   * The issuer your tokens are issued by — the exact `iss` value `verifyToken()` requires, shown
+   * for each environment in the dashboard. Its signing keys are read from the `jwks_uri` in this
+   * issuer's discovery document, so a token signed by any other issuer's key is rejected. When
+   * omitted, the issuer is derived from `baseUrl`: a custom domain is its own issuer; the
+   * platform host resolves to the platform issuer.
+   */
+  issuer?: string;
+  /**
+   * Override where `verifyToken()` fetches the JWKS document from (defaults to the `jwks_uri` in
+   * the issuer's discovery document). Rare in production (e.g. a JWKS reverse-proxy). The expected
+   * `iss` is unaffected.
    */
   jwksUrl?: string;
   /** Clock tolerance in seconds for JWT expiry checks (default: 30, max: 120; a non-finite value uses the default) */
@@ -243,6 +245,16 @@ export interface SdkError {
    * errors (a network failure, a malformed response with no parseable body, config validation).
    */
   request_id?: string;
+  /**
+   * HTTP status of the response the error was built from, when the server answered. Set on
+   * token-endpoint errors, so a caller can tell a server outage (5xx) from a rejected grant (4xx).
+   */
+  status?: number;
+  /**
+   * Seconds the server asked the caller to wait (`Retry-After`, RFC 9110 §10.2.3), when it sent one.
+   * Set on `oauth/temporarily_unavailable`.
+   */
+  retry_after_seconds?: number;
 }
 
 /**
@@ -255,19 +267,21 @@ export type VerifyResult<T = TokenPayload> =
 /**
  * Options shared by both `verifyRakomiToken()` verification modes.
  *
- * `issuer` and `jwksUrl` default to the Rakomi platform values and are
- * support-window-guaranteed platform constants. Overriding them points token
- * verification at a different trust anchor — intended for Rakomi-documented
- * values only (test environments, Rakomi-designated custom domains). Both are
- * validated fail-closed as https: URLs before any network fetch.
+ * `issuer` defaults to the Rakomi platform issuer; set it to the issuer of the
+ * environment whose tokens you accept. `jwksUrl` defaults to the `jwks_uri` of
+ * that issuer's discovery document. Both are validated fail-closed as https:
+ * URLs before any network fetch.
  */
 export interface VerifyRakomiTokenBaseOptions {
-  /** Expected `iss` claim. Default: `https://api.rakomi.com`. Must be an https: URL. */
+  /**
+   * Expected `iss` claim, matched exactly. Default: `https://api.rakomi.com`. Must be an
+   * https: URL.
+   */
   issuer?: string;
   /**
-   * Full URL of the JWKS document used to verify signatures.
-   * Default: `https://api.rakomi.com/.well-known/jwks.json`. Must be an
-   * https: URL — this is the key-trust anchor, never derive it from a request.
+   * Full URL of the JWKS document used to verify signatures. Default: the `jwks_uri` named in the
+   * issuer's discovery document. Must be an https: URL — this is the key-trust anchor, never
+   * derive it from a request.
    */
   jwksUrl?: string;
   /**
@@ -281,6 +295,12 @@ export interface VerifyRakomiTokenBaseOptions {
    * set — fail-closed, never fail-open.
    */
   requiredClientId?: string;
+  /**
+   * Request context for DPoP-bound tokens (`cnf.jkt`). A token carrying `cnf.jkt` is rejected
+   * with `token/invalid_dpop_proof` unless this is present and the proof verifies. Ignored for
+   * tokens without `cnf`. See {@link DpopVerifyOptions}.
+   */
+  dpop?: DpopVerifyOptions;
 }
 
 /**
@@ -332,8 +352,12 @@ export type VerifyRakomiTokenOptions =
 export interface ProtectedResourceMetadataOptions {
   /** Canonical resource identifier (https: URL, no fragment). */
   resource: string;
-  /** Authorization servers trusted by this resource. Default: `['https://api.rakomi.com']`. */
-  authorizationServers?: readonly string[];
+  /**
+   * Authorization servers trusted by this resource — the issuer of each environment whose tokens it
+   * accepts (the exact `iss` those tokens carry). Required: there is no default, because a client that
+   * checks the authorization response `iss` (RFC 9207) rejects any other value.
+   */
+  authorizationServers: readonly string[];
   /** Scope values this resource understands (emitted only when provided). */
   scopesSupported?: readonly string[];
   /** How bearer tokens are accepted (RFC 6750). Default: `['header']`. */
@@ -383,11 +407,11 @@ export interface LogoutTokenPayload {
  * same defaults and same https-only validation as `verifyRakomiToken()`.
  */
 export interface VerifyLogoutTokenOptions {
-  /** Expected `iss` claim. Default: `https://api.rakomi.com`. Must be an https: URL. */
+  /** Expected `iss` claim, matched exactly. Default: `https://api.rakomi.com`. Must be an https: URL. */
   issuer?: string;
   /**
-   * Full URL of the JWKS document used to verify the signature.
-   * Default: `https://api.rakomi.com/.well-known/jwks.json`. Must be an https: URL.
+   * Full URL of the JWKS document used to verify the signature. Default: the `jwks_uri` named in
+   * the issuer's discovery document. Must be an https: URL.
    */
   jwksUrl?: string;
   /** Clock skew tolerance in seconds. Default 30, clamped to [0, 120]. */
@@ -582,7 +606,97 @@ export interface PublisherWebhookVerifyData {
  */
 export interface MiddlewareOptions {
   onError?: (error: SdkError, req: unknown, res: unknown) => void;
+  /**
+   * DPoP settings for DPoP-bound tokens (`cnf.jkt`, RFC 9449). The middleware always enforces
+   * the binding: it reads `Authorization: DPoP <token>` and the `DPoP` header and checks the
+   * proof against the request method and URL. A DPoP-bound token sent as `Bearer` is rejected.
+   */
+  dpop?: MiddlewareDpopOptions;
 }
+
+/** DPoP settings for `RakomiClient.middleware()`. */
+export interface MiddlewareDpopOptions {
+  /**
+   * Public origin of this resource server (for example `https://api.example.com`), used to
+   * build the URL a proof's `htu` is compared against: `origin` + the request path.
+   * Set it when a proxy in front of your app rewrites the `Host` header. When omitted, the
+   * origin is taken from the request's `Host` header and `req.protocol` (default `https`).
+   * `X-Forwarded-Host` is never read.
+   */
+  origin?: string;
+  /** Replay hook for the proof's `jti` — see {@link DpopVerifyOptions.onJti}. */
+  onJti?: DpopJtiHook;
+}
+
+/**
+ * Replay hook for DPoP proofs. Called once per proof that passed every other check. Return
+ * `true` if this `jti` has NOT been seen before for this `jkt` (and record it until
+ * `expiresAt`, unix seconds); return `false` to reject the request as a replay. A throw or a
+ * rejected promise rejects the request (`replay_check_unavailable`).
+ */
+export type DpopJtiHook = (
+  jti: string,
+  info: { jkt: string; iat: number; expiresAt: number },
+) => boolean | Promise<boolean>;
+
+/**
+ * The request context needed to verify a DPoP-bound access token (RFC 9449 §4.3, §7.1).
+ *
+ * The SDK checks: exactly one proof; `typ` is `dpop+jwt`; the proof is signed with ES256
+ * (P-256) or EdDSA (Ed25519) by the public key in its `jwk` header (no `kid`, no private key
+ * members); `htm` equals `method`; `htu` equals `url` without query or fragment; `ath` is the
+ * SHA-256 hash of the access token; `iat` is recent; the key's RFC 7638 thumbprint equals the
+ * token's `cnf.jkt`.
+ *
+ * The SDK keeps no state, so it cannot tell whether a proof was already used. Without
+ * `onJti`, preventing proof replay (same token, same method and URL, within the `iat`
+ * window) is your application's responsibility.
+ */
+export interface DpopVerifyOptions {
+  /** Value of the request's `DPoP` header. Multiple values are rejected. */
+  proof: string | readonly string[] | undefined | null;
+  /** HTTP method of the request, e.g. `GET` (compared case-sensitively with `htm`). */
+  method: string;
+  /** Absolute URL of the request as the client addressed it (query and fragment are ignored). */
+  url: string;
+  /** Optional replay hook — see {@link DpopJtiHook}. */
+  onJti?: DpopJtiHook;
+}
+
+/** Per-call options for `RakomiClient.verifyToken()`. */
+export interface VerifyTokenOptions {
+  /**
+   * Request context for DPoP-bound tokens. A token carrying `cnf.jkt` is rejected with
+   * `token/invalid_dpop_proof` unless this is present and the proof verifies. Ignored for
+   * tokens without `cnf`.
+   */
+  dpop?: DpopVerifyOptions;
+}
+
+/** The `reason` carried in the message of a `token/invalid_dpop_proof` error. */
+export type DpopProofRejectionReason =
+  | 'proof_required'
+  | 'scheme_downgrade'
+  | 'scheme_mismatch'
+  | 'request_context_missing'
+  | 'unsupported_confirmation'
+  | 'malformed'
+  | 'multi_header'
+  | 'typ_rejected'
+  | 'kid_forbidden'
+  | 'crit_rejected'
+  | 'alg_rejected'
+  | 'private_jwk_params'
+  | 'signature_invalid'
+  | 'htm_mismatch'
+  | 'htu_mismatch'
+  | 'iat_window'
+  | 'jti_invalid'
+  | 'ath_missing'
+  | 'ath_mismatch'
+  | 'jkt_mismatch'
+  | 'jti_replay'
+  | 'replay_check_unavailable';
 
 import type { DpopSession } from './dpop-session.js';
 

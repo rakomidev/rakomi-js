@@ -7,12 +7,16 @@
  * - Access token: in-memory only, NEVER persisted
  * - Refresh token: in configured storage adapter
  * - Token values NEVER logged
- * - Auth errors (401/403/invalid_grant/revoked): clear immediately, ZERO retry
- * - Network errors (5xx/offline): retry 3x with backoff (2s, 8s, 30s)
+ * - Definitive auth errors (invalid_grant, a bare 401, …): clear immediately, ZERO retry
+ * - Transient errors (offline, 5xx, 429, 408): keep the session; retry 3x with jittered backoff
+ *   (~2s, 8s, 30s), longer when the server sends Retry-After (capped). An exhausted budget
+ *   surfaces a typed REFRESH_FAILED/'network' error and keeps the refresh token — never a sign-out
  * - BroadcastChannel: signals only (never token values)
  * - User ID continuity check: mismatch on refresh → session_mismatch + clear
  * - GDPR Art. 17: clear() erases ALL state including event log
  */
+
+import { getErrorMessage, refreshRetryDelayMs } from '@rakomi/sdk-core';
 
 import type { EventLog } from './event-log.js';
 import { decodeJwtPayload, decodeSession,decodeUser } from './jwt-decode.js';
@@ -62,9 +66,6 @@ function createHasFunction(user: UserResource): (params: HasParams) => boolean {
 
 type Subscriber = () => void;
 
-/** Retry delays for network errors: 2s, 8s, 30s */
-const RETRY_DELAYS_MS = [2000, 8000, 30000] as const;
-
 /**
  * Adaptive refresh buffer: 10% of expires_in, clamped to [10s, 60s].
  * Handles short-lived tokens (e.g., 90s) without always burning 60s of TTL.
@@ -106,6 +107,7 @@ export class TokenManager {
   private refreshPromise: Promise<boolean> | null = null;
   private refreshAttempts = 0;
   private lastRefreshTime = 0;
+  private lastRefreshError: AuthError | null = null;
 
   private refreshTimerId: ReturnType<typeof setTimeout> | null = null;
   private retryTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -357,7 +359,7 @@ export class TokenManager {
       this.eventLog.push({ type: 'restore_succeeded', severity: 'info' });
     } else {
       this.eventLog.push({ type: 'restore_failed', severity: 'warning' });
-      this.cachedSnapshot = this.makeSignedOutSnapshot();
+      this.cachedSnapshot = this.makeSignedOutSnapshot(this.lastRefreshError);
       this.notifySubscribers();
     }
     return success;
@@ -409,6 +411,7 @@ export class TokenManager {
     this.expiresAt = null;
     this.refreshPromise = null;
     this.refreshAttempts = 0;
+    this.lastRefreshError = null;
 
     this.stopAutoRefresh();
     if (this.retryTimerId !== null) {
@@ -555,7 +558,7 @@ export class TokenManager {
     if (!token || this.expiresAt === null) {
       return {
         ok: false,
-        error: { code: 'REFRESH_FAILED', reason: 'expired', message: 'No valid token available' },
+        error: this.lastRefreshError ?? { code: 'REFRESH_FAILED', reason: 'expired', message: 'No valid token available' },
       };
     }
     const expiresIn = Math.max(0, Math.floor((this.expiresAt - Date.now()) / 1000));
@@ -672,6 +675,7 @@ export class TokenManager {
 
       this.eventLog.push({ type: 'refresh_succeeded', severity: 'info', duration });
       this.refreshAttempts = 0;
+      this.lastRefreshError = null;
 
       await this.setTokens(result.data);
       return true;
@@ -699,45 +703,32 @@ export class TokenManager {
   }
 
   /**
-   * Schedule a retry with exponential backoff.
-   * Keeps isSignedIn: true with stale token so developer can show "Reconnecting..." UI.
-   * After 3 retries, clears tokens and sets isSignedIn: false.
+   * Schedule a retry with jittered exponential backoff (longer when the server sent Retry-After).
+   * Keeps isSignedIn: true with the stale token so the app can show "Reconnecting...".
+   * When the budget is spent the session is still kept: the typed transient error stays on the
+   * snapshot and on getToken(), and the next trigger (getToken, reconnect, tab focus, bfcache
+   * restore) starts a fresh budget. Only a definitive rejection clears the session.
    */
   private scheduleRetry(error: AuthError): boolean {
-    if (this.refreshAttempts >= RETRY_DELAYS_MS.length) {
-      void this.clear();
+    const transient = toTransientError(error);
+    this.lastRefreshError = transient;
+
+    const delay = refreshRetryDelayMs(this.refreshAttempts, transient.code === 'REFRESH_FAILED' ? transient.retryAfterMs : undefined);
+    if (delay === undefined) {
+      this.refreshAttempts = 0;
+      this.eventLog.push({ type: 'refresh_failed', severity: 'warning', error: transient, metadata: { reason: 'retries_exhausted' } });
+      this.surfaceRefreshError(transient);
       return false;
     }
 
-    const delay = RETRY_DELAYS_MS[this.refreshAttempts]!;
     this.refreshAttempts++;
-
-    const retryError: AuthError = {
-      code: 'REFRESH_FAILED',
-      reason: 'network',
-      message: `Refresh failed, retrying in ${delay / 1000}s (attempt ${this.refreshAttempts}/3)`,
-    };
-
-    this.eventLog.push({ type: 'network_retry', severity: 'warning', error: retryError });
-
-    if (this.cachedSnapshot.isSignedIn === true) {
-      const prev = this.cachedSnapshot;
-      this.cachedSnapshot = Object.freeze({
-        isLoaded: true as const,
-        isSignedIn: true as const,
-        userId: prev.userId,
-        user: prev.user,
-        sessionId: prev.sessionId,
-        error: retryError as AuthError | null,
-        has: prev.has,
-        isExpiringSoon: this.isExpiringSoon,
-        signIn: this._signInDelegate,
-        signOut: this._signOutDelegate,
-        getToken: this._getTokenDelegate,
-        switchOrganization: this._switchOrgDelegate,
-      });
-      this.notifySubscribers();
-    }
+    this.eventLog.push({
+      type: 'network_retry',
+      severity: 'warning',
+      error: transient,
+      metadata: { delayMs: delay, attempt: this.refreshAttempts },
+    });
+    this.surfaceRefreshError(transient);
 
     this.retryTimerId = setTimeout(() => {
       this.retryTimerId = null;
@@ -746,8 +737,32 @@ export class TokenManager {
       }
     }, delay);
 
-    void error;
     return false;
+  }
+
+  /** Attach a transient refresh error to the current snapshot without changing who is signed in. */
+  private surfaceRefreshError(error: AuthError): void {
+    if (this.cachedSnapshot.isSignedIn === true) {
+      const prev = this.cachedSnapshot;
+      this.cachedSnapshot = Object.freeze({
+        isLoaded: true as const,
+        isSignedIn: true as const,
+        userId: prev.userId,
+        user: prev.user,
+        sessionId: prev.sessionId,
+        error: error as AuthError | null,
+        has: prev.has,
+        isExpiringSoon: this.isExpiringSoon,
+        signIn: this._signInDelegate,
+        signOut: this._signOutDelegate,
+        getToken: this._getTokenDelegate,
+        switchOrganization: this._switchOrgDelegate,
+      });
+      this.notifySubscribers();
+    } else if (this.cachedSnapshot.isLoaded === true) {
+      this.cachedSnapshot = this.makeSignedOutSnapshot(error);
+      this.notifySubscribers();
+    }
   }
 
   private setupTabSync(): void {
@@ -943,4 +958,20 @@ export class TokenManager {
       subscriber();
     }
   }
+}
+
+/**
+ * The app-facing shape of a refresh failure that did not end the session: always
+ * REFRESH_FAILED + 'network', keeping the HTTP status, OAuth error and Retry-After.
+ */
+function toTransientError(error: AuthError): AuthError {
+  if (error.code === 'REFRESH_FAILED' && error.reason === 'network') return error;
+  return {
+    code: 'REFRESH_FAILED',
+    reason: 'network',
+    message: getErrorMessage(error),
+    ...('status' in error && error.status !== undefined && { status: error.status }),
+    ...('oauthError' in error && typeof error.oauthError === 'string' && { oauthError: error.oauthError }),
+    ...(error.requestId !== undefined && { requestId: error.requestId }),
+  };
 }

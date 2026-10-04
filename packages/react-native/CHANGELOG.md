@@ -1,3 +1,8 @@
+## 0.7.0 — 2026-10-04
+
+- **Breaking: offline token verification reads the expected issuer's own `jwks_uri`.** When `jwksUri` is not set, keys come from the expected issuer's discovery document instead of a fixed `/.well-known/jwks.json` next to the token endpoint, so a key published by any other issuer is never trusted. RS256, PS256 and ES256 (P-256) tokens verify; the header `alg` must equal the key's own `alg`. Persisted key sets are now stored per issuer, so the first verification after upgrading fetches the key set once.
+- **The session survives a server outage during token refresh, including DPoP-bound sessions.**
+
 ## 0.6.0 — 2026-09-29
 
 - **Offline token verification follows a signing-key rotation.** A token signed with a key published after the last JWKS fetch now triggers one refresh of the cached key set, at most once per 30 seconds, instead of failing until the cached document expires. Tokens signed with a key already in the cache verify as before, with no network call.

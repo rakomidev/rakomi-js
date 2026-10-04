@@ -50,7 +50,7 @@ if (entries.length === 0) {
     `notices are carried by their own published packages — not reproduced here.\n`
   writeFileSync(OUT, body)
   console.log(JSON.stringify({ pkg: pkgManifest.name, out: OUT.replace(REPO_ROOT + '/', ''), components: 0 }, null, 2))
-  process.exit(0)
+  await new Promise(() => process.stdout.write('', () => process.exit(0)))
 }
 
 const sections = []

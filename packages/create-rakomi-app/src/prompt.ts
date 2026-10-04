@@ -32,6 +32,7 @@ export const FIELDS: readonly FieldSpec[] = [
   { key: 'RAKOMI_CLIENT_ID', label: 'OAuth Client ID' },
   { key: 'RAKOMI_CLIENT_SECRET', label: 'OAuth Client Secret (leave blank for a public/PKCE-only client)' },
   { key: 'RAKOMI_REDIRECT_URI', label: 'Redirect URI', defaultValue: DEFAULT_NODE_REDIRECT_URI },
+  { key: 'RAKOMI_ISSUER', label: 'Issuer of your environment' },
 ];
 
 /**
@@ -45,6 +46,7 @@ export const FIELDS: readonly FieldSpec[] = [
 const FIELD_HINTS: Partial<Record<EnvKey, string>> = {
   RAKOMI_API_KEY: 'paste the test key (akm_test_...) to start now — the live key needs email verification first',
   RAKOMI_CLIENT_ID: 'from your Rakomi dashboard -> Settings -> Development credentials',
+  RAKOMI_ISSUER: 'the iss of your environment\'s tokens, e.g. https://api.rakomi.com/t/tn_.../test',
 };
 
 /**

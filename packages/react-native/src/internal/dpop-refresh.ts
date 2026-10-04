@@ -1,10 +1,16 @@
 
-import type { HttpClient, OAuthTokenResponse } from '@rakomi/sdk-core';
+import type { AuthError, HttpClient, OAuthTokenResponse } from '@rakomi/sdk-core';
 import { refreshAccessToken } from '@rakomi/sdk-core';
 
 import type { DpopSession } from './dpop-session.js';
 
-/** RFC 9449 / three-class client-side refresh failure taxonomy (+ network). */
+/**
+ * RFC 9449 / three-class client-side refresh failure taxonomy (+ network).
+ *
+ * `network` is every transient failure — no connection, a 5xx, 429 or 408, an unreadable
+ * response — and also any rejection that is not definitive. The session is kept and retried;
+ * only `invalid_refresh_token` and `invalid_dpop_proof` end it.
+ */
 export type DpopRefreshErrorClass =
   | 'dpop_prover_unavailable'
   | 'invalid_dpop_proof'
@@ -17,6 +23,8 @@ export interface DpopRefreshError {
   /** Full `auth/<class>` code string — parity with `@rakomi/node`'s surfacing. */
   code: `auth/${DpopRefreshErrorClass}`;
   message: string;
+  /** The underlying token-endpoint failure (HTTP status, OAuth `error`, `Retry-After`), when there was one. */
+  cause?: AuthError;
 }
 
 export type DpopRefreshResult =
@@ -32,8 +40,8 @@ export interface RefreshWithDpopInput {
   dpopSession?: DpopSession;
 }
 
-function err(cls: DpopRefreshErrorClass, message: string): { ok: false; error: DpopRefreshError } {
-  return { ok: false, error: { class: cls, code: `auth/${cls}`, message } };
+function err(cls: DpopRefreshErrorClass, message: string, cause?: AuthError): { ok: false; error: DpopRefreshError } {
+  return { ok: false, error: { class: cls, code: `auth/${cls}`, message, ...(cause && { cause }) } };
 }
 
 function proverUnavailable(message = 'DPoP prover unavailable'): { ok: false; error: DpopRefreshError } {
@@ -105,15 +113,15 @@ export async function refreshWithDpop(input: RefreshWithDpopInput): Promise<Dpop
 
 /** Map a `refreshAccessToken` failure into the three-class taxonomy. */
 function mapFailure(
-  result: { ok: false; error: { code: string; reason?: string; message?: string }; dpopNonce?: string; dpopProofRejected?: boolean },
+  result: { ok: false; error: AuthError; dpopNonce?: string; dpopProofRejected?: boolean },
   attachedProof: boolean,
 ): { ok: false; error: DpopRefreshError } {
-  const message = result.error.message ?? 'refresh failed';
+  const message = 'message' in result.error ? result.error.message : 'refresh failed';
   if (attachedProof && (result.dpopProofRejected || result.dpopNonce !== undefined)) {
-    return err('invalid_dpop_proof', message);
+    return err('invalid_dpop_proof', message, result.error);
   }
-  if (result.error.code === 'REFRESH_FAILED' && result.error.reason === 'network') {
-    return err('network', message);
+  if (result.error.code === 'REFRESH_FAILED' && (result.error.reason === 'revoked' || result.error.reason === 'expired')) {
+    return err('invalid_refresh_token', message, result.error);
   }
-  return err('invalid_refresh_token', message);
+  return err('network', message, result.error);
 }

@@ -26,12 +26,19 @@ import {
   TOKEN_TENANT_MISMATCH,
 } from './errors.js';
 import { resolveExpectedIssuer } from './internal/issuer.js';
+import { isAllowedSigningAlgorithm } from './internal/signing-algorithms.js';
 import type { JwksCache } from './jwks-cache.js';
-import type { SessionMetadata, TokenMetadata, TokenPayload, VerifyResult } from './types.js';
+import type {
+  DpopVerifyOptions,
+  SessionMetadata,
+  TokenMetadata,
+  TokenPayload,
+  VerifyResult,
+} from './types.js';
+import { enforceDpopBinding } from './verify-dpop-binding.js';
 
 const DEFAULT_ISSUER = 'https://api.rakomi.com';
 const AUDIENCE = 'https://api.rakomi.com';
-const ALLOWED_ALGORITHMS = ['RS256'] as const;
 
 /**
  * Derive the default expected `iss` for offline JWT verification.
@@ -42,7 +49,7 @@ const ALLOWED_ALGORITHMS = ['RS256'] as const;
  * passes a valid one, so this fallback exists only for a caller invoking `verifyToken()` directly
  * without going through `RakomiClient`.
  */
-function deriveDefaultIssuer(baseUrl: string | undefined): string {
+export function deriveDefaultIssuer(baseUrl: string | undefined): string {
   if (!baseUrl) return DEFAULT_ISSUER;
   try {
     new URL(baseUrl);
@@ -116,20 +123,33 @@ export interface VerifyTokenCoreOptions {
   requiredTenantId?: string;
   /** Reject unless the token's `client_id` claim equals this value (absent claim ⇒ reject). */
   requiredClientId?: string;
+  /**
+   * Request context for a DPoP-bound token (`cnf.jkt`). A token carrying `cnf` is rejected with
+   * `token/invalid_dpop_proof` unless this is present and its proof verifies (RFC 9449 §7.1).
+   */
+  dpop?: DpopVerifyOptions;
 }
 
+/**
+ * Verify a Rakomi access token against the platform audience and the issuer derived from
+ * `baseUrl`. A DPoP-bound token (`cnf.jkt`) additionally needs `dpop` — the request's proof,
+ * method and URL — or it is rejected with `token/invalid_dpop_proof`.
+ */
 export async function verifyToken<T extends TokenPayload = TokenPayload>(
   token: string,
   jwksCache: JwksCache,
   clockTolerance: number,
   sdkEnvironment?: 'live' | 'test',
   baseUrl?: string,
+  dpop?: DpopVerifyOptions,
+  issuer?: string,
 ): Promise<VerifyResult<T>> {
   return verifyTokenWithOptions<T>(token, jwksCache, {
-    issuer: deriveDefaultIssuer(baseUrl),
+    issuer: issuer ?? deriveDefaultIssuer(baseUrl),
     audience: AUDIENCE,
     clockTolerance,
     sdkEnvironment,
+    dpop,
   });
 }
 
@@ -146,11 +166,13 @@ export async function verifyTokenWithOptions<T extends TokenPayload = TokenPaylo
   const { issuer, audience, clockTolerance, sdkEnvironment } = options;
 
   let kid: string | undefined;
+  let headerAlg: string | undefined;
   try {
     const header = decodeProtectedHeader(token);
-    if (header.alg !== 'RS256') {
+    if (!isAllowedSigningAlgorithm(header.alg)) {
       return { ok: false, error: TOKEN_INVALID_ALGORITHM() };
     }
+    headerAlg = header.alg;
     if (options.requireAccessTokenTyp) {
       const typ = typeof header.typ === 'string' ? header.typ.toLowerCase() : '';
       if (typ !== 'at+jwt' && typ !== 'application/at+jwt') {
@@ -170,10 +192,13 @@ export async function verifyTokenWithOptions<T extends TokenPayload = TokenPaylo
   if (!keyResult.ok) {
     return keyResult;
   }
+  if (headerAlg !== keyResult.data.alg) {
+    return { ok: false, error: TOKEN_INVALID_ALGORITHM() };
+  }
 
   try {
-    const { payload } = await jwtVerify(token, keyResult.data, {
-      algorithms: [...ALLOWED_ALGORITHMS],
+    const { payload } = await jwtVerify(token, keyResult.data.key, {
+      algorithms: [keyResult.data.alg],
       issuer,
       audience,
       clockTolerance,
@@ -221,6 +246,11 @@ export async function verifyTokenWithOptions<T extends TokenPayload = TokenPaylo
       if (sdkIsLive !== tokenIsLive) {
         return { ok: false, error: AUTH_ENVIRONMENT_MISMATCH() };
       }
+    }
+
+    const dpopError = await enforceDpopBinding(token, payload, options.dpop);
+    if (dpopError) {
+      return { ok: false, error: dpopError };
     }
 
     const guardedRoles = guardRoles(payload.roles);

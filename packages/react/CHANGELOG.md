@@ -1,3 +1,7 @@
+## 0.7.0 — 2026-10-04
+
+- **The session survives a server outage during token refresh.** A 5xx, 429, 408 or network failure while refreshing no longer signs the user out after three retries. The SDK retries with jittered backoff (about 2 s, 8 s, 30 s), waits longer when the server sends `Retry-After` (capped at two minutes), and when those retries are spent it keeps the refresh token and the signed-in state. The failure is surfaced as `auth.error` and from `getToken()` as `REFRESH_FAILED` with `reason: 'network'`, including the HTTP `status`. The next `getToken()` call, reconnect, tab focus or page restore from the back/forward cache tries again.
+
 ## 0.6.0 — 2026-09-29
 
 - **Security fix: MFA-enrolment helpers can now carry a fresh step-up token.** `setupMfa()` and `verifyMfaSetup()` now accept an optional `stepUpToken`, sent as the `X-Step-Up-Token` header. The API now requires a fresh step-up token for `POST /v1/auth/mfa/setup` and `/v1/auth/mfa/verify-setup` whenever the account already has a verified factor, or the session is outside the tenant's forced first-enrolment window — the same fresh-re-auth mechanism already used for passkey registration.

@@ -1,4 +1,4 @@
-import type { SdkError } from './types.js';
+import type { DpopProofRejectionReason, SdkError } from './types.js';
 
 const DOCS_BASE = 'https://docs.rakomi.dev/sdk/errors';
 
@@ -49,6 +49,7 @@ export const ERROR_CODES = {
   TOKEN_NOT_YET_VALID: 'token/not_yet_valid',
   TOKEN_TENANT_MISMATCH: 'token/tenant_mismatch',
   TOKEN_CLIENT_MISMATCH: 'token/client_mismatch',
+  TOKEN_INVALID_DPOP_PROOF: 'token/invalid_dpop_proof',
   CONFIG_MISSING_PIN: 'config/missing_pin',
   CONFIG_INVALID_URL: 'config/invalid_url',
   CONFIG_INVALID_OPTION: 'config/invalid_option',
@@ -61,6 +62,7 @@ export const ERROR_CODES = {
   AUTH_DPOP_ROTATION_NOOP: 'auth/dpop_rotation_noop',
   AUTH_DPOP_ROTATION_DID_NOT_TAKE: 'auth/dpop_rotation_did_not_take',
   AUTH_REFRESH_SUPERSEDED_BY_ROTATION: 'auth/refresh_superseded_by_rotation',
+  OAUTH_TEMPORARILY_UNAVAILABLE: 'oauth/temporarily_unavailable',
   JWKS_FETCH_FAILED: 'jwks/fetch_failed',
   JWKS_NO_MATCHING_KEY: 'jwks/no_matching_key',
   JWKS_INVALID_RESPONSE: 'jwks/invalid_response',
@@ -112,8 +114,8 @@ export const TOKEN_MALFORMED = () =>
 export const TOKEN_INVALID_ALGORITHM = () =>
   createError(
     'token/invalid_algorithm',
-    'Unsupported algorithm. Only RS256 is allowed',
-    'Rakomi tokens use RS256. Do not attempt to use HS256 or other algorithms',
+    'Unsupported algorithm. Allowed: RS256, PS256, ES256 — and it must match the signing key',
+    "The token header alg must equal the alg published for its key. Always rejected: 'none', HS256, HS384, HS512",
   );
 
 export const TOKEN_MISSING_CLAIMS = () =>
@@ -127,7 +129,7 @@ export const TOKEN_INVALID_ISSUER = () =>
   createError(
     'token/invalid_issuer',
     'Token issuer mismatch',
-    'Token must be issued by api.rakomi.com. Verify you are using the correct environment',
+    'The token iss must equal the configured issuer exactly — the issuer of the environment whose tokens you accept. Verify you are using the correct environment',
   );
 
 export const TOKEN_INVALID_AUDIENCE = () =>
@@ -168,6 +170,18 @@ export const TOKEN_CLIENT_MISMATCH = () =>
     'token/client_mismatch',
     'Token client_id does not match the required client pin',
     'The token was issued to a different OAuth client, or was issued without a client_id (session flows). Verify requiredClientId, or drop the pin if session tokens should be accepted.',
+  );
+
+/**
+ * A DPoP-bound access token (`cnf.jkt`, RFC 9449) was presented without a DPoP proof that
+ * verifies for this request and this key — or sent with the `Bearer` scheme. The `reason`
+ * (see `DpopProofRejectionReason`) is the text after the colon in `message`.
+ */
+export const TOKEN_INVALID_DPOP_PROOF = (reason: DpopProofRejectionReason) =>
+  createError(
+    'token/invalid_dpop_proof',
+    `DPoP proof check failed: ${reason}`,
+    'This token is bound to a DPoP key. Send it as "Authorization: DPoP <token>" with a fresh "DPoP" proof header signed by that key for this exact method and URL, and pass the proof, method and URL to the verifier.',
   );
 
 export const AUTH_ENVIRONMENT_MISMATCH = () =>
@@ -272,8 +286,8 @@ export const JWKS_FETCH_FAILED = (detail?: string) =>
   createError(
     'jwks/fetch_failed',
     `Failed to fetch JWKS${detail ? `: ${detail}` : ''}`,
-    'Check network connectivity and that baseUrl is correct',
-    'curl https://api.rakomi.com/.well-known/jwks.json',
+    'Check network connectivity and that the issuer is correct — keys are read from the jwks_uri in its discovery document',
+    'curl https://api.rakomi.com/.well-known/openid-configuration',
   );
 
 export const JWKS_NO_MATCHING_KEY = () =>
@@ -491,6 +505,38 @@ export const OAUTH_UNSUPPORTED_GRANT_TYPE = (detail?: string) =>
     detail || 'The grant type is not supported',
     'Use grant_type=authorization_code or grant_type=refresh_token',
   );
+
+/**
+ * The token endpoint answered 5xx, 429 or 408: a transient condition, not a rejected grant. The
+ * grant, refresh token or device code is still good — retry with backoff, waiting at least
+ * `retry_after_seconds` when the server sent `Retry-After`. Never treat it as a sign-out.
+ */
+export const OAUTH_TEMPORARILY_UNAVAILABLE = (status: number, retryAfterSeconds?: number, detail?: string): SdkError => ({
+  ...createError(
+    'oauth/temporarily_unavailable',
+    detail || `The token endpoint is temporarily unavailable (HTTP ${status})`,
+    retryAfterSeconds !== undefined
+      ? `Keep the session and retry after ${retryAfterSeconds}s`
+      : 'Keep the session and retry with exponential backoff',
+  ),
+  status,
+  ...(retryAfterSeconds !== undefined && { retry_after_seconds: retryAfterSeconds }),
+});
+
+/** `true` for an HTTP status that says "try again later": any 5xx, 429, 408. */
+export function isTransientHttpStatus(status: number): boolean {
+  return status >= 500 || status === 429 || status === 408;
+}
+
+/** Parse `Retry-After` (RFC 9110 §10.2.3: delta-seconds or an HTTP-date) into whole seconds. */
+export function parseRetryAfterSeconds(header: string | null, now: number = Date.now()): number | undefined {
+  if (header === null) return undefined;
+  const value = header.trim();
+  if (/^\d+$/.test(value)) return Number(value);
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, Math.ceil((at - now) / 1000));
+}
 
 export const OAUTH_NETWORK_ERROR = (detail?: string) =>
   createError(

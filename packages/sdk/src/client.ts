@@ -25,6 +25,7 @@ import {
   RakomiError,
 } from './errors.js';
 import { FlagsClient } from './flags.js';
+import { discoveryOriginFor } from './internal/issuer.js';
 import { JwksCache } from './jwks-cache.js';
 import { LinkClient } from './link.js';
 import type { MiddlewareRequest, MiddlewareResponse, NextFunction } from './middleware.js';
@@ -53,10 +54,11 @@ import type {
   SdkEnvironment,
   TokenPayload,
   VerifyResult,
+  VerifyTokenOptions,
   WebhookEvent,
   WebhookVerifyData,
 } from './types.js';
-import { verifyToken } from './verify-token.js';
+import { deriveDefaultIssuer, verifyToken } from './verify-token.js';
 import { verifyWebhook as verifyWebhookImpl } from './verify-webhook.js';
 
 const DEFAULT_BASE_URL = 'https://api.rakomi.com';
@@ -81,6 +83,7 @@ export class RakomiClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly jwksUrl?: string;
+  private readonly issuer: string;
   private readonly clockTolerance: number;
   private readonly environment?: SdkEnvironment;
   private readonly webhookSecret?: string;
@@ -143,6 +146,22 @@ export class RakomiClient {
       this.jwksUrl = config.jwksUrl;
     }
 
+    if (config.issuer !== undefined) {
+      let issuerUrl: URL;
+      try {
+        issuerUrl = new URL(config.issuer);
+      } catch {
+        throw new RakomiError(CONFIG_INVALID_URL('issuer'));
+      }
+      const issuerIsLocalhost = issuerUrl.hostname === '127.0.0.1' || issuerUrl.hostname === 'localhost';
+      if ((issuerUrl.protocol !== 'https:' && !issuerIsLocalhost) || issuerUrl.search || issuerUrl.hash) {
+        throw new RakomiError(CONFIG_INVALID_URL('issuer'));
+      }
+      this.issuer = config.issuer;
+    } else {
+      this.issuer = deriveDefaultIssuer(this.baseUrl);
+    }
+
     this.clockTolerance = clampTolerance(config.clockTolerance, DEFAULT_CLOCK_TOLERANCE, MAX_CLOCK_TOLERANCE);
 
     this.environment = config.environment;
@@ -168,15 +187,27 @@ export class RakomiClient {
     this.authz = new AuthzClient({ baseUrl: this.baseUrl });
   }
 
+  /**
+   * Verify a Rakomi access token offline (JWKS-cached signature and claim checks).
+   *
+   * A DPoP-bound token (`cnf.jkt`, RFC 9449) is rejected with `token/invalid_dpop_proof`
+   * unless `options.dpop` supplies the request's `DPoP` header value, method and absolute URL
+   * and that proof verifies for this token and this key. The SDK keeps no replay state: pass
+   * `dpop.onJti` to reject a reused proof, otherwise that check is your application's
+   * responsibility. `middleware()` reads the headers and request for you.
+   */
   async verifyToken<T extends TokenPayload = TokenPayload>(
     token: string,
+    options?: VerifyTokenOptions,
   ): Promise<VerifyResult<T>> {
     if (!this.jwksCache) {
-      this.jwksCache = new JwksCache(this.baseUrl, this.jwksUrl);
+      this.jwksCache = this.jwksUrl !== undefined
+        ? JwksCache.fromJwksUrl(this.jwksUrl)
+        : JwksCache.forIssuer(this.issuer, discoveryOriginFor(this.issuer, this.baseUrl));
     }
 
     const sdkEnv = this.apiKey.startsWith('akm_test_') ? 'test' : 'live';
-    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv, this.baseUrl);
+    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv, this.baseUrl, options?.dpop, this.issuer);
   }
 
   async verifyWebhook<T = WebhookEvent>(
@@ -195,7 +226,7 @@ export class RakomiClient {
   middleware(
     options?: MiddlewareOptions,
   ): (req: MiddlewareRequest, res: MiddlewareResponse, next: NextFunction) => void {
-    return createMiddleware((token) => this.verifyToken(token), options, this.environment);
+    return createMiddleware((token, verifyOptions) => this.verifyToken(token, verifyOptions), options, this.environment);
   }
 
   generatePKCE(): PkceChallenge {

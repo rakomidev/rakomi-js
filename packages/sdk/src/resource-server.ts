@@ -13,6 +13,7 @@ import {
 import { JwksCache } from './jwks-cache.js';
 import type {
   ChallengeOptions,
+  DpopVerifyOptions,
   ProtectedResourceMetadata,
   ProtectedResourceMetadataOptions,
   TokenPayload,
@@ -22,9 +23,7 @@ import type {
 import { verifyTokenWithOptions } from './verify-token.js';
 
 const DEFAULT_ISSUER = 'https://api.rakomi.com';
-const DEFAULT_JWKS_URL = 'https://api.rakomi.com/.well-known/jwks.json';
 const PLATFORM_AUDIENCE = 'https://api.rakomi.com';
-const DEFAULT_AUTHORIZATION_SERVERS = [DEFAULT_ISSUER] as const;
 
 const DEFAULT_CLOCK_TOLERANCE = 30;
 const MAX_CLOCK_TOLERANCE = 120;
@@ -32,21 +31,22 @@ const MAX_CLOCK_TOLERANCE = 120;
 const MAX_JWKS_MEMO_ENTRIES = 8;
 const jwksMemo = new Map<string, JwksCache>();
 
-function getMemoizedJwksCache(jwksUrl: string): JwksCache {
-  const existing = jwksMemo.get(jwksUrl);
+function getMemoizedJwksCache(jwksUrl: string | undefined, issuer: string): JwksCache {
+  const memoKey = jwksUrl !== undefined ? `url:${jwksUrl}` : `issuer:${issuer}`;
+  const existing = jwksMemo.get(memoKey);
   if (existing) {
-    jwksMemo.delete(jwksUrl);
-    jwksMemo.set(jwksUrl, existing);
+    jwksMemo.delete(memoKey);
+    jwksMemo.set(memoKey, existing);
     return existing;
   }
-  const created = JwksCache.fromJwksUrl(jwksUrl);
+  const created = jwksUrl !== undefined ? JwksCache.fromJwksUrl(jwksUrl) : JwksCache.forIssuer(issuer);
   if (jwksMemo.size >= MAX_JWKS_MEMO_ENTRIES) {
     const oldest = jwksMemo.keys().next().value;
     if (oldest !== undefined) {
       jwksMemo.delete(oldest);
     }
   }
-  jwksMemo.set(jwksUrl, created);
+  jwksMemo.set(memoKey, created);
   return created;
 }
 
@@ -83,9 +83,18 @@ function isHttpsUrl(value: unknown): value is string {
  *
  * NEVER throws — every failure (including a malformed JWKS response) is a
  * `{ ok: false, error }` result. Verification rules match
- * `RakomiClient.verifyToken()` (RS256-only, single-string `aud`, bounded
- * token age, revocation epoch from the JWKS document), plus an RFC 9068
- * `typ: at+jwt` access-token check on this path.
+ * `RakomiClient.verifyToken()` (RS256/PS256/ES256 bound to the key, single-string `aud`, bounded
+ * token age, revocation epoch from the JWKS document, DPoP binding), plus an
+ * RFC 9068 `typ: at+jwt` access-token check on this path.
+ *
+ * **DPoP-bound tokens.** A token carrying `cnf.jkt` (RFC 9449) is rejected
+ * with `token/invalid_dpop_proof` unless `options.dpop` supplies the request's
+ * `DPoP` header value, method and absolute URL and that proof verifies for
+ * this token and this key. Reject such a token when it arrived with the
+ * `Bearer` scheme — this function does not see the scheme. The SDK keeps no
+ * replay state: pass `dpop.onJti` to reject a reused proof, otherwise that
+ * check is your application's responsibility. Tokens without `cnf` are
+ * verified exactly as before.
  */
 export async function verifyRakomiToken<T extends TokenPayload = TokenPayload>(
   token: string,
@@ -96,12 +105,12 @@ export async function verifyRakomiToken<T extends TokenPayload = TokenPayload>(
       options && typeof options === 'object' ? options : {};
 
     const issuer = opts.issuer ?? DEFAULT_ISSUER;
-    const jwksUrl = opts.jwksUrl ?? DEFAULT_JWKS_URL;
+    const jwksUrl = opts.jwksUrl;
 
     if (!isHttpsUrl(issuer)) {
       return { ok: false, error: CONFIG_INVALID_URL('issuer') };
     }
-    if (!isHttpsUrl(jwksUrl)) {
+    if (jwksUrl !== undefined && !isHttpsUrl(jwksUrl)) {
       return { ok: false, error: CONFIG_INVALID_URL('jwksUrl') };
     }
 
@@ -131,7 +140,7 @@ export async function verifyRakomiToken<T extends TokenPayload = TokenPayload>(
         : DEFAULT_CLOCK_TOLERANCE;
     const clockTolerance = Math.min(Math.max(0, rawTolerance), MAX_CLOCK_TOLERANCE);
 
-    const jwksCache = getMemoizedJwksCache(jwksUrl);
+    const jwksCache = getMemoizedJwksCache(jwksUrl, issuer);
 
     return await verifyTokenWithOptions<T>(token, jwksCache, {
       issuer,
@@ -140,6 +149,7 @@ export async function verifyRakomiToken<T extends TokenPayload = TokenPayload>(
       requireAccessTokenTyp: true,
       requiredTenantId,
       requiredClientId,
+      dpop: opts.dpop ?? undefined,
     });
   } catch {
     return { ok: false, error: TOKEN_MALFORMED() };
@@ -153,6 +163,7 @@ interface VerifyRakomiTokenAudienceShape {
   audience?: string;
   requiredTenantId?: string;
   requiredClientId?: string;
+  dpop?: DpopVerifyOptions;
 }
 
 const VALID_BEARER_METHODS = new Set(['header', 'body', 'query']);
@@ -183,7 +194,7 @@ export function buildProtectedResourceMetadata(
     throw new RakomiError(CONFIG_INVALID_RESOURCE());
   }
 
-  const servers = authorizationServers ?? DEFAULT_AUTHORIZATION_SERVERS;
+  const servers: unknown = authorizationServers;
   if (!Array.isArray(servers) || servers.length === 0) {
     throw new RakomiError(
       CONFIG_INVALID_RESOURCE('authorizationServers must be a non-empty array of https: issuer URLs'),
