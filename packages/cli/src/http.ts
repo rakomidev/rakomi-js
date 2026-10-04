@@ -31,10 +31,11 @@ export interface HttpDeps {
    * was actually sent — see `isAuthenticatedRequest`) — never on the DPoP §8 nonce-challenge 401,
    * which already has its own single retry above, and never on a request with no credential at all
    * (the token endpoint itself, an anonymous probe). Returns `undefined` when no refresh is
-   * possible or the refresh itself failed (no `refresh_token` on the session, `invalid_grant`, a
-   * network error) — `request()` then returns the ORIGINAL 401 result unchanged, and every
-   * existing per-client "Your session has expired" handling fires exactly as it did before this
-   * story. Never throws.
+   * possible or the refresh was rejected (no `refresh_token` on the session, `invalid_grant`) —
+   * `request()` then returns the ORIGINAL 401 result unchanged, and every existing per-client "Your
+   * session has expired" handling fires exactly as it did before this story. Throws a `CliError`
+   * naming the real cause when the refresh failed TRANSIENTLY (a 5xx/429/408 or a network error):
+   * the session is still good, so "session expired, log in again" would be wrong.
    */
   readonly onUnauthorized?: () => Promise<RefreshedCredentials | undefined>;
 }
@@ -241,6 +242,7 @@ async function performOnce<T>(deps: HttpDeps, req: HttpRequest, dpopNonce?: stri
       try {
         parsed = JSON.parse(text);
       } catch {
+        if (res.status < 200 || res.status >= 300) return { status: res.status, body: {} as T, headers: res.headers };
         throw new CliError('The Rakomi API returned a response the CLI could not understand.', EXIT.FAIL);
       }
     }
@@ -302,8 +304,8 @@ function withRefreshedCredentials(req: HttpRequest, credentials: RefreshedCreden
 /**
  * Perform one HTTP call with a hard timeout, returning the parsed JSON body regardless of status
  * (the caller decides what a given status means). Throws `CliError` ONLY for a transport-level
- * failure (network error, timeout, non-JSON body) — never for a 4xx/5xx, which is a normal,
- * typed `HttpResult`.
+ * failure (network error, timeout, a non-JSON 2xx body) — never for a 4xx/5xx (whatever its body),
+ * which is a normal, typed `HttpResult`.
  *
  * Story rakomi-cli-dpop-token-binding — when `req.dpop` is present, a server RFC 9449 §8 nonce
  * challenge (`use_dpop_nonce`) is retried EXACTLY ONCE with a fresh proof carrying the challenge nonce.

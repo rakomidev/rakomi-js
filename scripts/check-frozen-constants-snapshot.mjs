@@ -30,6 +30,10 @@ const NON_KEY_ENDPOINT_NAMES = Object.freeze(['authorization_endpoint', 'token_e
 
 const REJECTED_ALGS = Object.freeze(['HS256', 'HS384', 'HS512'])
 
+const ISSUER_LITERAL_CONTINUES_RE = /^(?:[A-Za-z0-9.:_-]|\/[A-Za-z0-9._~%-])/
+
+const ALG_ALLOWLIST_EXPORT = 'ALLOWED_SIGNING_ALGORITHMS'
+
 function hostOf(url) {
   const m = /^https:\/\/([^/]+)/.exec(url)
   return m ? m[1] : ''
@@ -194,11 +198,13 @@ export function inspectBundle({ blessed, bundleText, pkgName, version = '', isOw
   let sawIssuerAssigned = false
   let sawIssuerLit = false
   if (issuerLitPresentRaw) {
-    sawIssuerAssigned = new RegExp(`(?:\\biss\\b|issuer|\\baud\\b|audience)[^=:]{0,40}[=:]\\s*"?${escLit}`, 'i').test(norm)
+    sawIssuerAssigned = new RegExp(`(?:\\biss\\b|issuer|\\baud\\b|audience)[^=:]{0,40}[=:]\\s*"?${escLit}(?![A-Za-z0-9.:_-]|/[A-Za-z0-9._~%-])`, 'i').test(norm)
 
     const baseUrlSafeRe = /\w*url\w*\s*(?:\?\?|[=:])\s*"$/i
     const litRe = new RegExp(escLit, 'g')
     for (let m; (m = litRe.exec(norm)); ) {
+      const end = m.index + m[0].length
+      if (ISSUER_LITERAL_CONTINUES_RE.test(norm.slice(end, end + 2))) continue
       const lo = Math.max(0, m.index - 60)
       if (!baseUrlSafeRe.test(norm.slice(lo, m.index))) { sawIssuerLit = true; break }
     }
@@ -216,10 +222,29 @@ export function inspectBundle({ blessed, bundleText, pkgName, version = '', isOw
     sawIssuerLit,
     sawIssuerAssigned,
     sawAlg: norm.includes(blessed.alg),
+    algDelegatedTo: algAllowlistDelegates(norm),
     sawWellKnownPath: norm.includes('.well-known/jwks.json'),
     presentEndpointUrls,
     presentNonKeySlots,
   }
+}
+
+export function algAllowlistDelegates(norm) {
+  const out = new Set()
+  const esmWired = new RegExp(`algorithms"?\\s?:\\s?\\[?\\s?(?:\\.\\.\\.)?\\s?${ALG_ALLOWLIST_EXPORT}\\b`).test(norm)
+  if (esmWired) {
+    const importRe = /import ?\{([^}]{0,4000})\} ?from ?"(@rakomi\/[a-z0-9-]{1,64})"/g
+    for (let m; (m = importRe.exec(norm)); ) {
+      const names = m[1].split(',').map((s) => s.trim().split(/ as /)[0].trim())
+      if (names.includes(ALG_ALLOWLIST_EXPORT)) out.add(m[2])
+    }
+  }
+  const requireRe = /\b([A-Za-z_$][\w$]{0,63}) ?= ?require\("(@rakomi\/[a-z0-9-]{1,64})"\)/g
+  for (let m; (m = requireRe.exec(norm)); ) {
+    const ns = m[1].replace(/\$/g, '\\$')
+    if (new RegExp(`algorithms"?\\s?:\\s?\\[?\\s?(?:\\.\\.\\.)?\\s?(?:\\(0, ?)?${ns}\\.${ALG_ALLOWLIST_EXPORT}\\b`).test(norm)) out.add(m[2])
+  }
+  return [...out]
 }
 
 const OBF_WINDOW = 80
@@ -229,7 +254,7 @@ function nearIdentityToken(normNoSpace, idx) {
   return /https:\/\/|iss|issuer|alg/i.test(win)
 }
 
-export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, version = '' }) {
+export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, version = '', siblingAlg = new Map() }) {
   const violations = []
   const fail = (code, finding) =>
     violations.push(relGateMessage(code, 'FROZEN-DRIFT', pkgName, version, finding, SIGNOFF))
@@ -241,8 +266,16 @@ export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, 
   if (!issuerAssignedSomewhere) {
     fail('REL-GATE-N33', `FROZEN-ISSUER-NOT-ASSIGNED: blessed issuer "${blessed.issuer}" present but never in an assigned (issuer/aud = ...) position — possible dead-path-only retention`)
   }
+  let algDelegatedTo = []
   if (!fileReports.some((r) => r.sawAlg)) {
-    fail('REL-GATE-N35', `FROZEN-CRYPTO-DRIFT: blessed ALG "${blessed.alg}" absent from a package that ships platform identity (RS256-only guard dropped)`)
+    const delegates = [...new Set(fileReports.flatMap((r) => r.algDelegatedTo ?? []))].filter((d) => d !== pkgName)
+    const resolved = delegates.length > 0 && delegates.every((d) => siblingAlg.get(d) === true)
+    if (resolved) {
+      algDelegatedTo = delegates
+    } else {
+      const why = delegates.length ? ` — delegated to ${delegates.join(', ')}, which is not a publishable sibling whose own dist carries "${blessed.alg}"` : ''
+      fail('REL-GATE-N35', `FROZEN-CRYPTO-DRIFT: blessed ALG "${blessed.alg}" absent from a package that ships platform identity (RS256-only guard dropped)${why}`)
+    }
   }
   const slotUnion = new Set(fileReports.flatMap((r) => r.presentNonKeySlots))
   const endpointMetadataStatus = slotUnion.size === 0 ? 'none' : slotUnion.size === 1 ? 'partial' : 'full'
@@ -259,7 +292,7 @@ export function aggregatePackageRequireBlessed({ blessed, fileReports, pkgName, 
       fail('REL-GATE-N32', 'FROZEN-MISSING-BLESSED: ".well-known/jwks.json" path absent from a metadata-bearing dist')
     }
   }
-  return { violations, requireBlessedApplied: true, endpointMetadataStatus, partialSlots: endpointMetadataStatus === 'partial' ? [...slotUnion] : [] }
+  return { violations, requireBlessedApplied: true, endpointMetadataStatus, partialSlots: endpointMetadataStatus === 'partial' ? [...slotUnion] : [], algDelegatedTo }
 }
 
 const violationsAll = []
@@ -351,6 +384,7 @@ function main() {
   }
 
   let inspected = 0
+  const scanned = []
   try {
     for (const pkg of packages) {
       const tgz = tarballs.get(pkg.name)
@@ -364,16 +398,21 @@ function main() {
         continue
       }
       inspected++
-      let pkgViolations = 0
+      let fileViolations = 0
       const fileReports = []
       for (const member of members) {
         const text = readTarballFile(tgz, member)
         const report = inspectBundle({ blessed, bundleText: text, pkgName: `${pkg.name}:${member}`, version, isOwnDist: true })
         report.violations.forEach(fail)
-        pkgViolations += report.violations.length
+        fileViolations += report.violations.length
         fileReports.push(report)
       }
-      const agg = aggregatePackageRequireBlessed({ blessed, fileReports, pkgName: pkg.name, version })
+      scanned.push({ pkg, version, members, fileReports, fileViolations })
+    }
+    const siblingAlg = new Map(scanned.map((s) => [s.pkg.name, s.fileReports.some((r) => r.sawAlg)]))
+    for (const { pkg, version, members, fileReports, fileViolations } of scanned) {
+      let pkgViolations = fileViolations
+      const agg = aggregatePackageRequireBlessed({ blessed, fileReports, pkgName: pkg.name, version, siblingAlg })
       agg.violations.forEach(fail)
       pkgViolations += agg.violations.length
       if (pkgViolations === 0) {
@@ -387,6 +426,7 @@ function main() {
         } else {
           scope = 'require-blessed (issuer + RS256) + deny-foreign — no endpoint metadata'
         }
+        if (agg.algDelegatedTo?.length) scope += `; RS256 guard delegated to ${agg.algDelegatedTo.join(', ')} (its own dist carries it)`
         ok(`${pkg.name}: ${members.length} dist bundle(s) clean (${scope})`)
       }
     }

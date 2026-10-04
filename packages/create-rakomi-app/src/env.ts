@@ -17,6 +17,7 @@ export const ENV_KEYS = [
   'RAKOMI_CLIENT_ID',
   'RAKOMI_CLIENT_SECRET',
   'RAKOMI_REDIRECT_URI',
+  'RAKOMI_ISSUER',
 ] as const;
 export type EnvKey = (typeof ENV_KEYS)[number];
 
@@ -47,13 +48,25 @@ export const SECRET_KEYS = new Set<EnvKey>(['RAKOMI_API_KEY', 'RAKOMI_CLIENT_SEC
  */
 const NODE_ONLY_KEYS = new Set<EnvKey>(['RAKOMI_CLIENT_SECRET', 'RAKOMI_REDIRECT_URI']);
 
+/**
+ * `RAKOMI_ISSUER` — the issuer of the environment whose tokens the app accepts (every environment
+ * is its own issuer with its own signing keys). Read, and required at boot / per request, ONLY by
+ * the templates whose own server verifies access tokens: `node` (`src/config.ts`) and `nextjs`
+ * (`src/lib/server/config.ts`). The browser/mobile templates never verify a token themselves.
+ */
+const ISSUER_TEMPLATES = new Set<TemplateSlug>(['node', 'nextjs']);
+
 /** The keys actually relevant to a given template — `ENV_KEYS` minus the `node`-only keys for
  * every other template (or an absent/unknown slug — the conservative default), unchanged (full
  * set) for `node` itself. Drives both what the wizard prompts for (`prompt.ts`'s `collectEnv`)
  * and what `renderDotenv` writes. */
 export function keysForTemplate(templateSlug: TemplateSlug | undefined): readonly EnvKey[] {
   if (templateSlug === 'node') return ENV_KEYS;
-  return ENV_KEYS.filter((key) => !NODE_ONLY_KEYS.has(key));
+  return ENV_KEYS.filter(
+    (key) =>
+      !NODE_ONLY_KEYS.has(key) &&
+      (key !== 'RAKOMI_ISSUER' || (templateSlug !== undefined && ISSUER_TEMPLATES.has(templateSlug))),
+  );
 }
 
 /**

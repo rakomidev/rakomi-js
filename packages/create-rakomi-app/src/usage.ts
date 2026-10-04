@@ -58,6 +58,7 @@ export function helpText(): string {
     '',
     'Environment variables collected into the new project\'s .env:',
     '  RAKOMI_REGION, RAKOMI_TENANT_ID, RAKOMI_API_KEY, RAKOMI_CLIENT_ID',
+    '  RAKOMI_ISSUER (node, nextjs: the issuer of your environment, e.g. https://api.rakomi.com/t/tn_...)',
     '  (RAKOMI_API_KEY is read from the prompt or the environment, never a flag,',
     '   and is written only to your local .env — never transmitted. RAKOMI_CLIENT_ID is',
     "   written under the target template's own convention, e.g. NEXT_PUBLIC_RAKOMI_CLIENT_ID.",

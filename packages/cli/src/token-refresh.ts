@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { type FetchLike, request } from './http.js';
+import { CliError, EXIT } from './errors.js';
+import { type FetchLike, request, requestIdFromError } from './http.js';
 import { resolveDpopKey } from './install-key.js';
 import type { KeyStore, SessionStore, StoredSession } from './session.js';
 
@@ -20,15 +21,18 @@ export interface RefreshDeps {
 /**
  * Attempts a silent `refresh_token` grant for `session`. On success, PERSISTS the rotated session
  * (new `access_token` + rotated `refresh_token` + recomputed `expires_at`) to `sessionStore` and
- * returns the new access token. Returns `undefined` — NEVER throws — on any failure: no
+ * returns the new access token. Returns `undefined` when the session cannot be refreshed: no
  * `refresh_token` on the session (a `--client`/device-grant/`--ci` session may carry one or may
- * not, depending on what the server granted), a non-200 response (`invalid_grant` — the refresh
- * token itself is expired/revoked/reused), a malformed response body, or a network/timeout error.
- * The caller (`http.ts`'s `request()`, via the `onUnauthorized` hook built once in `index.ts`)
- * treats `undefined` as "no refresh available" and falls through to the pre-existing "session
- * expired" 401 handling — this function deliberately narrows to that one signal rather than
- * distinguishing failure reasons, because every one of them has the identical correct outcome:
- * the caller's ALREADY-EXISTING 401 handling.
+ * not, depending on what the server granted), a 4xx response (`invalid_grant` — the refresh token
+ * itself is expired/revoked/reused), or a malformed response body. The caller (`http.ts`'s
+ * `request()`, via the `onUnauthorized` hook built once in `index.ts`) treats `undefined` as "no
+ * refresh available" and falls through to the pre-existing "session expired" 401 handling.
+ *
+ * A TRANSIENT failure is different: a 5xx, 429 or 408 from the token endpoint, or a network error or
+ * timeout, says nothing about the session — telling the user it expired and to log in again would
+ * hide the real cause. Those THROW a `CliError` naming the cause (with the server's `Retry-After`
+ * and request id when present); the stored session is left untouched, so the next command works
+ * once the API is back.
  *
  * Deliberately built on a BARE `RefreshDeps` (no `onUnauthorized` of its own) — passing the full
  * `HttpDeps` this module's own caller was given would let a second refresh attempt recurse into a
@@ -45,8 +49,9 @@ export async function refreshSession(
   if (!session.refresh_token) return undefined;
 
   const dpopKey = resolveDpopKey(keys, session);
+  let result: Awaited<ReturnType<typeof request<RefreshTokenResponse>>>;
   try {
-    const result = await request<RefreshTokenResponse>(
+    result = await request<RefreshTokenResponse>(
       { fetchImpl: deps.fetchImpl, timeoutMs: deps.timeoutMs },
       {
         method: 'POST',
@@ -59,22 +64,45 @@ export async function refreshSession(
         dpop: dpopKey ? { key: dpopKey } : undefined,
       },
     );
-    if (result.status !== 200) return undefined;
-
-    const token = result.body;
-    if (typeof token.access_token !== 'string' || token.access_token.length === 0) return undefined;
-    if (typeof token.expires_in !== 'number' || !Number.isFinite(token.expires_in)) return undefined;
-
-    const updated: StoredSession = {
-      ...session,
-      access_token: token.access_token,
-      refresh_token: token.refresh_token ?? session.refresh_token,
-      token_type: token.token_type === 'DPoP' ? 'DPoP' : 'Bearer',
-      expires_at: now() + token.expires_in * 1000,
-    };
-    sessionStore.write(updated);
-    return { accessToken: updated.access_token };
-  } catch {
-    return undefined;
+  } catch (err) {
+    const cause = err instanceof CliError ? err.message : 'The Rakomi API could not be reached.';
+    throw new CliError(`Could not refresh your session: ${cause} You are still logged in — try again in a moment.`, EXIT.FAIL);
   }
+
+  if (isTransientStatus(result.status)) {
+    const retryAfter = retryAfterSeconds(result.headers.get('retry-after'));
+    const wait = retryAfter !== undefined ? `in ${retryAfter}s` : 'in a moment';
+    const id = requestIdFromError(result.body);
+    throw new CliError(
+      `Could not refresh your session: the Rakomi API is temporarily unavailable (HTTP ${result.status}). ` +
+        `You are still logged in — try again ${wait}.${id ? `\nRequest ID: ${id}` : ''}`,
+      EXIT.FAIL,
+    );
+  }
+  if (result.status !== 200) return undefined;
+
+  const token = result.body;
+  if (typeof token.access_token !== 'string' || token.access_token.length === 0) return undefined;
+  if (typeof token.expires_in !== 'number' || !Number.isFinite(token.expires_in)) return undefined;
+
+  const updated: StoredSession = {
+    ...session,
+    access_token: token.access_token,
+    refresh_token: token.refresh_token ?? session.refresh_token,
+    token_type: token.token_type === 'DPoP' ? 'DPoP' : 'Bearer',
+    expires_at: now() + token.expires_in * 1000,
+  };
+  sessionStore.write(updated);
+  return { accessToken: updated.access_token };
+}
+
+/** 5xx, 429 and 408 mean "try again later" — never that the session is over. */
+function isTransientStatus(status: number): boolean {
+  return status >= 500 || status === 429 || status === 408;
+}
+
+/** `Retry-After` in delta-seconds (RFC 9110 §10.2.3); the HTTP-date form is not shown. */
+function retryAfterSeconds(header: string | null): number | undefined {
+  if (header === null || !/^\d+$/.test(header.trim())) return undefined;
+  return Number(header.trim());
 }

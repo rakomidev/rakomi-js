@@ -1,3 +1,8 @@
+## 0.7.0 — 2026-10-04
+
+- **Issuer-bound signing keys.** New exports resolve an issuer's keys from its discovery document: `createIssuerJwksUriResolver`, `issuerDiscoveryUrls`, `extractJwksUri`, `IssuerMismatchError` and `discoveryOriginFor`. Discovery tries OAuth 2.0 Authorization Server Metadata first, then OpenID Connect Discovery, both path-aware, and uses a document only when its `issuer` equals the expected issuer exactly.
+- **A server outage during token refresh no longer reads as a revoked session.** `refreshAccessToken()` and `parseTokenEndpointError()` now classify a refresh failure by what it means for the session:
+
 ## 0.6.0 — 2026-09-29
 
 - **Security fix: `isSafeUrl()` rejects relative values that leave the current origin.** A value starting with `/` was accepted as a relative path unless it started with `//`, so backslash forms such as `/\evil.example` and a `/` followed by a tab or newline and another `/` were accepted even though browsers resolve them to another origin. Relative values must now resolve back to the current origin; ordinary paths (`/dashboard`, `/a/b?x=1#frag`) and allow-listed absolute URLs and deep links are unaffected. Packages that validate `returnTo` with `isSafeUrl()` pick up the fix through this dependency.

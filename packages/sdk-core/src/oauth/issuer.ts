@@ -54,6 +54,23 @@ function isPlatformHost(hostname: string): boolean {
  * trailing-slash-stripped, unchanged — callers that want a DIFFERENT malformed-input fallback
  * (e.g. a hardcoded default) validate `baseUrl` themselves before calling this.
  */
+/**
+ * Where to fetch `issuer`'s discovery document from. A platform-family issuer is served by whichever
+ * deployment the client is configured for (`baseUrl`), because every platform deployment mints the
+ * same platform-family issuer; any other issuer (a custom domain) is its own origin (`undefined`).
+ */
+export function discoveryOriginFor(issuer: string, baseUrl: string | undefined): string | undefined {
+  if (baseUrl === undefined) return undefined;
+  let issuerHost: string;
+  try {
+    issuerHost = new URL(issuer).hostname;
+    new URL(baseUrl);
+  } catch {
+    return undefined;
+  }
+  return isPlatformHost(issuerHost) ? baseUrl : undefined;
+}
+
 export function resolveExpectedIssuer(baseUrl: string): string {
   let hostname: string;
   try {

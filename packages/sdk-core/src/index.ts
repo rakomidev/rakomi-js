@@ -58,6 +58,12 @@ export { decodeJwtPayload, decodeSession, decodeUser } from './jwt-decode.js';
 export type { OrgClaims, OrgMembershipClaim } from './org-claims.js';
 export { extractOrgClaims } from './org-claims.js';
 export { hasPermission, hasRole } from './rbac.js';
+export type { AllowedSigningAlgorithm } from './signing-algorithms.js';
+export {
+  ALLOWED_SIGNING_ALGORITHMS,
+  isAcceptableSigningJwk,
+  isAllowedSigningAlgorithm,
+} from './signing-algorithms.js';
 export type { StorageKeyPurpose } from './storage-keys.js';
 export { deriveTenantStorageKey } from './storage-keys.js';
 export { isSafeUrl, type PasswordStrength, scorePassword } from './utils.js';
@@ -145,11 +151,25 @@ export {
   UntrustedDiscoveryIssuerError,
 } from './oauth/discovery.js';
 export { networkError, parseOAuthCallbackError, parseTokenEndpointError } from './oauth/errors.js';
-export { resolveExpectedIssuer } from './oauth/issuer.js';
+export { discoveryOriginFor, resolveExpectedIssuer } from './oauth/issuer.js';
+export type { IssuerJwksUriResolver, IssuerJwksUriResolverOptions } from './oauth/issuer-jwks.js';
+export {
+  createIssuerJwksUriResolver,
+  extractJwksUri,
+  issuerDiscoveryUrls,
+  IssuerMismatchError,
+} from './oauth/issuer-jwks.js';
 export type { VerifyTotpInput, VerifyTotpResult } from './oauth/mfa.js';
 export { MfaStepUpRequiredError, MfaStepUpUnavailableError, verifyTotp } from './oauth/mfa.js';
 export type { PkceChallenge } from './oauth/pkce.js';
 export { base64url, generatePkce } from './oauth/pkce.js';
+export {
+  isDefinitiveRefreshRejection,
+  isTransientStatus,
+  MAX_REFRESH_RETRY_AFTER_MS,
+  REFRESH_RETRY_BASE_DELAYS_MS,
+  refreshRetryDelayMs,
+} from './oauth/refresh-retry.js';
 export { consumeState, type IssuedState, issueState, timingSafeStringEqual } from './oauth/state.js';
 export type { ExchangeAuthCodeInput, TokenExchangeResult } from './oauth/token-exchange.js';
 export { exchangeAuthCode, refreshAccessToken } from './oauth/token-exchange.js';

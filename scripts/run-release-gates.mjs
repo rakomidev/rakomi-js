@@ -25,6 +25,11 @@ const asJson = argv.includes('--json')
 const contextIdx = argv.indexOf('--context')
 const contextFlag = contextIdx >= 0 ? argv[contextIdx + 1] : null
 
+function findingLines(output, max = 40) {
+  const lines = String(output ?? '').split('\n').map((l) => l.trim()).filter((l) => /[✗⚠]|REL-GATE-[A-Z0-9]+/.test(l))
+  return lines.length > max ? [...lines.slice(0, max), `… ${lines.length - max} more finding line(s)`] : lines
+}
+
 function runGate(gate, dir) {
   const script = join(REPO_ROOT, gate.script)
   const args = [script]
@@ -86,13 +91,16 @@ function main() {
 
   const aggregate = results.reduce((max, r) => (r.exit === 2 ? 2 : r.exit === 1 && max !== 2 ? 1 : max), 0)
   console.error('\n## release-gate results (run-all-aggregate):')
-  for (const r of results) console.error(`  ${r.exit === 0 ? '✓ PASS' : r.exit === 1 ? '✗ FAIL' : '⚠ CANNOT-EVALUATE'}  ${r.id} (exit ${r.exit})`)
+  for (const r of results) {
+    console.error(`  ${r.exit === 0 ? '✓ PASS' : r.exit === 1 ? '✗ FAIL' : '⚠ CANNOT-EVALUATE'}  ${r.id} (exit ${r.exit})`)
+    if (r.exit !== 0) for (const line of findingLines(r.output)) console.error(`      ${line}`)
+  }
   console.error(`\n## aggregate exit ${aggregate} (${aggregate === 0 ? 'all gates clean — release may proceed' : aggregate === 1 ? 'a gate FAILED — release BLOCKED' : 'a gate CANNOT-EVALUATE — release BLOCKED (no-vacuous-green)'})`)
 
   if (asJson) {
     process.stdout.write(`${JSON.stringify({ aggregate, digests, results: results.map((r) => ({ id: r.id, exit: r.exit })) }, null, 2)}\n`)
   }
-  process.exit(aggregate)
+  process.exitCode = aggregate
 }
 
 try {

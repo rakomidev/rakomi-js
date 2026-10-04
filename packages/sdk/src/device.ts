@@ -6,11 +6,14 @@ import {
   DEVICE_AUTHORIZATION_RATE_LIMITED,
   DEVICE_AUTHORIZATION_SLOW_DOWN,
   DEVICE_AUTHORIZATION_TIMEOUT,
+  isTransientHttpStatus,
   OAUTH_INVALID_CLIENT,
   OAUTH_INVALID_GRANT,
   OAUTH_INVALID_REQUEST,
   OAUTH_MISSING_CLIENT_ID,
   OAUTH_NETWORK_ERROR,
+  OAUTH_TEMPORARILY_UNAVAILABLE,
+  parseRetryAfterSeconds,
   RakomiError,
 } from './errors.js';
 import type { OAuthTokenResponse, SdkError, VerifyResult } from './types.js';
@@ -21,6 +24,8 @@ const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
 const AWAIT_MAX_ITERATIONS = 2000;
 
 const MAX_POLL_INTERVAL_MS = 60_000;
+
+const MAX_CONSECUTIVE_TRANSIENT_POLLS = 5;
 
 export interface StartDeviceAuthorizationOptions {
   clientId: string;
@@ -138,7 +143,8 @@ export async function startDeviceAuthorization(
  *   - ok: false, error.code === 'device/authorization_pending' → keep polling
  *   - ok: false, error.code === 'device/slow_down' → increment interval +5s, keep polling
  *   - ok: false, error.code === 'device/access_denied' | 'device/expired_token' → stop
- *   - ok: false, OAuth/network error → stop
+ *   - ok: false, error.code === 'oauth/temporarily_unavailable' (5xx / 429 / 408) → back off, keep polling
+ *   - ok: false, other OAuth/network error → stop
  */
 export async function pollForDeviceToken(
   options: PollForDeviceTokenOptions,
@@ -173,11 +179,24 @@ export async function pollForDeviceToken(
   try {
     json = await response.json();
   } catch {
+    json = undefined;
+  }
+
+  if (isTransientHttpStatus(response.status)) {
+    const body = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : {};
+    const detail = typeof body.error_description === 'string' ? body.error_description : undefined;
+    return {
+      ok: false,
+      error: OAUTH_TEMPORARILY_UNAVAILABLE(response.status, parseRetryAfterSeconds(response.headers.get('Retry-After')), detail),
+    };
+  }
+
+  if (json === undefined) {
     return { ok: false, error: OAUTH_NETWORK_ERROR('Invalid JSON from token endpoint') };
   }
 
   if (!response.ok) {
-    return { ok: false, error: mapPollError(json) };
+    return { ok: false, error: { ...mapPollError(json), status: response.status } };
   }
 
   const data = json as Record<string, unknown>;
@@ -190,13 +209,18 @@ export async function pollForDeviceToken(
 /**
  * High-level helper: poll the token endpoint at the server-suggested interval
  * until success, terminal error, timeout, or abort. Honors RFC 8628 §3.5
- * `slow_down` by incrementing the interval by 5s before the next poll.
+ * `slow_down` by incrementing the interval by 5s before the next poll. A
+ * transient failure (5xx / 429 / 408, or a dropped connection) does not end the
+ * flow: the next poll waits twice as long (and at least `Retry-After`, capped),
+ * up to a small number of consecutive failures.
  */
 export async function awaitDeviceTokens(
   options: AwaitDeviceTokensOptions,
 ): Promise<VerifyResult<OAuthTokenResponse>> {
   let intervalMs = Math.max(1, options.intervalSeconds) * 1000;
   const deadline = Date.now() + (options.timeoutMs ?? 30 * 60 * 1000);
+  let transientFailures = 0;
+  let transientWaitMs: number | undefined;
 
   for (let i = 0; i < AWAIT_MAX_ITERATIONS; i++) {
     if (options.signal?.aborted) {
@@ -206,7 +230,8 @@ export async function awaitDeviceTokens(
       return { ok: false, error: DEVICE_AUTHORIZATION_TIMEOUT() };
     }
 
-    await sleep(intervalMs, options.signal);
+    await sleep(transientWaitMs ?? intervalMs, options.signal);
+    transientWaitMs = undefined;
 
     if (options.signal?.aborted) {
       return { ok: false, error: DEVICE_AUTHORIZATION_TIMEOUT('Polling cancelled by AbortSignal') };
@@ -221,6 +246,19 @@ export async function awaitDeviceTokens(
     });
 
     if (result.ok) return result;
+
+    const transient =
+      result.error.code === 'oauth/temporarily_unavailable' ||
+      (result.error.code === 'oauth/network_error' && !options.signal?.aborted);
+    if (transient) {
+      transientFailures++;
+      if (transientFailures > MAX_CONSECUTIVE_TRANSIENT_POLLS) return result;
+      const backoffMs = intervalMs * 2 ** transientFailures;
+      const retryAfterMs = (result.error.retry_after_seconds ?? 0) * 1000;
+      transientWaitMs = Math.min(Math.max(backoffMs, retryAfterMs), MAX_POLL_INTERVAL_MS);
+      continue;
+    }
+    transientFailures = 0;
 
     if (result.error.code === 'device/authorization_pending') continue;
     if (result.error.code === 'device/slow_down') {

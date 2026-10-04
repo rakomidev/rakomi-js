@@ -6,6 +6,8 @@
  * and avoid CORS credential conflicts with the Rakomi API's origin-echo configuration.
  */
 
+import { parseRetryAfterMs } from '@rakomi/sdk-core';
+
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { OAuthTokenResponse } from '../types.js';
 import { networkError, parseTokenEndpointError } from './errors.js';
@@ -86,12 +88,16 @@ async function tokenRequest(baseUrl: string, body: URLSearchParams, context: 'ex
   try {
     json = await response.json();
   } catch {
-    return failure('Invalid JSON response from token endpoint');
+    json = undefined;
   }
 
   if (!response.ok) {
-    const errorBody = json as { error?: string; error_description?: string; request_id?: string };
-    return { ok: false, error: parseTokenEndpointError(response.status, errorBody, context) };
+    const errorBody = (typeof json === 'object' && json !== null ? json : {}) as { error?: string; error_description?: string; request_id?: string };
+    const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'), Date.now());
+    return { ok: false, error: parseTokenEndpointError(response.status, errorBody, context, retryAfterMs) };
+  }
+  if (json === undefined) {
+    return failure('Invalid JSON response from token endpoint');
   }
 
   const r = json as Record<string, unknown>;

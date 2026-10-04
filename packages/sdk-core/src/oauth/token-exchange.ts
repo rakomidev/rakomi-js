@@ -5,6 +5,7 @@
  * typed result; never throws.
  */
 
+import { parseRetryAfterMs } from '../passkeys/errors.js';
 import type { HttpClient } from '../types/adapters.js';
 import type { OAuthTokenResponse } from '../types/auth.js';
 import type { AuthError } from '../types/auth-error.js';
@@ -93,8 +94,10 @@ export async function exchangeAuthCode(input: ExchangeAuthCodeInput): Promise<To
 
 /**
  * RFC 6749 refresh-token grant. Used by both web and RN runtimes.
- * On 401/403/invalid_grant the SDK clears tokens (server-side reuse-detection
- * already invalidated the family per OAuth 2.1).
+ * A definitive rejection (`invalid_grant`, a bare 401, …) is `REFRESH_FAILED` + `'revoked'` and
+ * the runtime clears the session (server-side reuse-detection already invalidated the family per
+ * OAuth 2.1). A 5xx, 429, 408, a transport failure or an unreadable response is
+ * `REFRESH_FAILED` + `'network'` (with `retryAfterMs` from `Retry-After`) and the session is kept.
  */
 export async function refreshAccessToken(input: {
   http: HttpClient;
@@ -136,6 +139,7 @@ export async function refreshAccessToken(input: {
     const wwwAuth = response.headers.get('WWW-Authenticate') ?? '';
     const wwwError = /\berror="([^"]+)"/.exec(wwwAuth)?.[1];
     const oauthError = parsed.error ?? wwwError;
+    const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'), Date.now());
     if (oauthError === 'use_dpop_nonce') {
       const dpopNonceRaw = response.headers.get('DPoP-Nonce');
       const dpopNonce = dpopNonceRaw !== null && dpopNonceRaw.length > 0 ? dpopNonceRaw : undefined;
@@ -149,15 +153,15 @@ export async function refreshAccessToken(input: {
     if (oauthError === 'invalid_dpop_proof') {
       return { ok: false, error: parseTokenEndpointError(response.status, parsed), dpopProofRejected: true };
     }
-    return { ok: false, error: parseTokenEndpointError(response.status, parsed) };
+    return { ok: false, error: parseTokenEndpointError(response.status, parsed, 'refresh', retryAfterMs) };
   }
   try {
     const tokens = (await response.json()) as OAuthTokenResponse;
     if (typeof tokens.access_token !== 'string' || typeof tokens.expires_in !== 'number') {
-      return { ok: false, error: { code: 'REFRESH_FAILED', reason: 'revoked', message: 'malformed token response' } };
+      return { ok: false, error: networkError('malformed token response') };
     }
     return { ok: true, tokens };
   } catch {
-    return { ok: false, error: { code: 'REFRESH_FAILED', reason: 'revoked', message: 'token response not JSON' } };
+    return { ok: false, error: networkError('token response not JSON') };
   }
 }

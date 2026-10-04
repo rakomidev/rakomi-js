@@ -11,8 +11,11 @@
  * `deriveTenantStorageKey(tenantId, 'refresh_token')` and prefixed with `'v1:'` integrity tag.
  * - Biometric gate: when `biometric: true`, refresh-token READ requires `BiometricGate.authenticate`
  * AND the secure-store `requireAuthentication` flag — belt-and-suspenders.
- * - Auth errors (401/403/invalid_grant/revoked): clear immediately, ZERO retry.
- * - Network errors (5xx/offline): retry 3x with exponential backoff (2s / 8s / 30s).
+ * - Definitive auth errors (`invalid_grant`, a bare 401, …): clear immediately, ZERO retry.
+ * - Transient errors (offline, 5xx, 429, 408): the session is kept; retry 3x with jittered
+ *   exponential backoff (~2s / 8s / 30s), waiting longer when the server sends `Retry-After`
+ *   (capped). An exhausted budget surfaces a typed `REFRESH_FAILED`/`'network'` error and leaves
+ *   the refresh token in place for the next foreground/reconnect attempt — never a sign-out.
  * - Single in-flight refresh Promise — concurrent callers dedupe.
  * - GDPR Art. 17: clear erases tokens AND in-memory state.
  * - No token values logged anywhere (eslint the project lint guards enforces).
@@ -21,18 +24,24 @@
 import { jwtVerify } from 'jose';
 
 import {
+  ALLOWED_SIGNING_ALGORITHMS,
   type AuthError,
+  createIssuerJwksUriResolver,
   createJwksCache,
   decodeSession,
   decodeUser,
   deriveTenantStorageKey,
+  discoveryOriginFor,
+  getErrorMessage,
   type HttpClient,
+  type IssuerJwksUriResolver,
   type JwksCache,
   type JwksDocument,
   type KeyValueStore,
   type MachineAction,
   type OAuthTokenResponse,
   refreshAccessToken,
+  refreshRetryDelayMs,
   resolveExpectedIssuer,
   type SessionResource,
   type TokenResult,
@@ -43,28 +52,19 @@ import type { BiometricGate } from '../native/types.js';
 import { type DpopRefreshError, refreshWithDpop } from './dpop-refresh.js';
 import type { DpopSession } from './dpop-session.js';
 
-/** Retry delays for network errors: 2s / 8s / 30s. */
-const RETRY_DELAYS_MS = [2000, 8000, 30000] as const;
+function originOf(url: string): string | undefined {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
 
-/**
- * Derive a sensible default JWKS URI from the OAuth token endpoint.
- * `https://api.example.com/oauth/token` → `https://api.example.com/.well-known/jwks.json`.
- * Falls back to appending `/.well-known/jwks.json` to the input when parsing fails.
- */
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
   const std = btoa(binary);
   return std.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function deriveDefaultJwksUri(tokenEndpoint: string): string {
-  try {
-    const url = new URL(tokenEndpoint);
-    return `${url.origin}/.well-known/jwks.json`;
-  } catch {
-    return tokenEndpoint.replace(/\/[^/]*$/, '') + '/.well-known/jwks.json';
-  }
 }
 
 /**
@@ -131,7 +131,10 @@ export interface TokenRuntimeOptions {
   clientId: string;
   tenantId: string;
   tokenEndpoint: string;
-  /** JWKS endpoint for offline access-token verification. Default: `<tokenEndpoint base>/.well-known/jwks.json`. */
+  /**
+   * JWKS endpoint for offline access-token verification. Default: the `jwks_uri` named in the
+   * expected issuer's discovery document, so only that issuer's keys are ever trusted.
+   */
   jwksUri?: string;
   /** TTL for the cached JWKS document. Default 24h, clamped to 7 days. */
   jwksTtlMs?: number;
@@ -195,7 +198,9 @@ export class TokenRuntime {
   private storageKeyResolved: string | null = null;
   private jwksKeyResolved: string | null = null;
   private jwksCache: JwksCache | null = null;
-  private readonly jwksUri: string;
+  private readonly explicitJwksUri: string | undefined;
+  private readonly deploymentBaseUrl: string | undefined;
+  private readonly jwksUriResolver: IssuerJwksUriResolver;
   private readonly jwksTtlMs: number;
   private readonly expectedIssuer: string | undefined;
   private readonly expectedAudience: string | string[] | undefined;
@@ -209,8 +214,8 @@ export class TokenRuntime {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
-  private offlineStaleCycles = 0;
-  private static readonly MAX_OFFLINE_STALE_CYCLES = 3;
+  private lastRefreshError: AuthError | null = null;
+  private restorePending = false;
 
   private readonly submitNonces = new Map<string, number>();
   private static readonly NONCE_TTL_MS = 5 * 60 * 1000;
@@ -233,7 +238,18 @@ export class TokenRuntime {
     this.now = options.now ?? Date.now;
     this.setTimeoutFn = options.setTimeout ?? globalThis.setTimeout.bind(globalThis);
     this.clearTimeoutFn = options.clearTimeout ?? globalThis.clearTimeout.bind(globalThis);
-    this.jwksUri = options.jwksUri ?? deriveDefaultJwksUri(options.tokenEndpoint);
+    this.explicitJwksUri = options.jwksUri;
+    this.deploymentBaseUrl = options.baseUrl ?? originOf(options.tokenEndpoint);
+    this.jwksUriResolver = createIssuerJwksUriResolver({
+      fetchDiscoveryDocument: async (url) => {
+        const response = await this.http.fetch(url, { method: 'GET', headers: { Accept: 'application/json' } });
+        if (response.status === 404) return null;
+        if (!response.ok) {
+          throw new Error(`discovery fetch failed: HTTP ${response.status}`);
+        }
+        return response.json();
+      },
+    });
     this.jwksTtlMs = options.jwksTtlMs ?? 24 * 60 * 60 * 1000;
     this.expectedIssuer = options.expectedIssuer
       ?? deriveDefaultIssuer({ baseUrl: options.baseUrl, tokenEndpoint: options.tokenEndpoint });
@@ -344,7 +360,10 @@ export class TokenRuntime {
     }
     const success = await this.performRefresh();
     if (!success || !this.accessToken || this.expiresAtMs === null) {
-      return { ok: false, error: { code: 'REFRESH_FAILED', reason: 'expired', message: 'No valid token available' } };
+      return {
+        ok: false,
+        error: this.lastRefreshError ?? { code: 'REFRESH_FAILED', reason: 'expired', message: 'No valid token available' },
+      };
     }
     const expiresIn = Math.max(0, Math.floor((this.expiresAtMs - this.now()) / 1000));
     return { ok: true, token: this.accessToken, tokenType: 'Bearer', headers: {}, expiresIn };
@@ -370,6 +389,10 @@ export class TokenRuntime {
    */
   async refreshOnForeground(): Promise<void> {
     if (this.refreshInFlight) return;
+    if (this.restorePending) {
+      await this.performRefresh({ duringRestore: true });
+      return;
+    }
     if (!this.currentUser) return;
     this.dispatch({ type: 'REFRESH_START' });
     await this.performRefresh();
@@ -385,6 +408,8 @@ export class TokenRuntime {
     this.currentSession = null;
     this.refreshInFlight = null;
     this.refreshAttempts = 0;
+    this.lastRefreshError = null;
+    this.restorePending = false;
     if (this.retryTimer) {
       this.clearTimeoutFn(this.retryTimer);
       this.retryTimer = null;
@@ -417,7 +442,7 @@ export class TokenRuntime {
         jwtVerify(token, keySet, {
           issuer: this.expectedIssuer,
           audience: this.expectedAudience,
-          algorithms: ['RS256'],
+          algorithms: [...ALLOWED_SIGNING_ALGORITHMS],
         }),
       );
       return { ok: true, payload: result.payload as Record<string, unknown> };
@@ -450,7 +475,7 @@ export class TokenRuntime {
    * simply a dev pointed at a different host between builds), a slot keyed by tenant alone would
    * silently reuse a PREVIOUS host's persisted document as this instance's "fresh" cache on cold
    * start — cross-host reuse this offline-verification path must never do. The host segment is not
-   * secret (it is the caller's own `jwksUri` configuration), so a plain suffix is enough; this only
+   * secret (it is the caller's own `jwksUri` or expected-issuer configuration), so a plain suffix is enough; this only
    * needs to be a stable, DIFFERENT key per host, not a cryptographically-opaque one.
    */
   private async resolveJwksKey(): Promise<string> {
@@ -463,10 +488,25 @@ export class TokenRuntime {
 
   private jwksHost(): string | null {
     try {
-      return new URL(this.jwksUri).hostname;
+      if (this.explicitJwksUri !== undefined) return new URL(this.explicitJwksUri).hostname;
+      const issuer = this.expectedIssuer === undefined ? '' : encodeURIComponent(this.expectedIssuer);
+      const origin = this.deploymentBaseUrl === undefined ? '' : new URL(this.deploymentBaseUrl).hostname;
+      return `${origin}.i.${issuer}`;
     } catch {
       return null;
     }
+  }
+
+  /** The JWKS document URL: the explicit override, or the expected issuer's discovered `jwks_uri`. */
+  private async currentJwksUri(): Promise<string> {
+    if (this.explicitJwksUri !== undefined) return this.explicitJwksUri;
+    if (this.expectedIssuer === undefined) {
+      throw new Error('no expected issuer to discover signing keys from');
+    }
+    return this.jwksUriResolver.resolve(
+      this.expectedIssuer,
+      discoveryOriginFor(this.expectedIssuer, this.deploymentBaseUrl),
+    );
   }
 
   private async getOrCreateJwksCache(): Promise<JwksCache> {
@@ -486,7 +526,10 @@ export class TokenRuntime {
     this.jwksCache = createJwksCache({
       ttlMs: this.jwksTtlMs,
       fetchJwks: async () => {
-        const response = await this.http.fetch(this.jwksUri, { method: 'GET', headers: { Accept: 'application/json' } });
+        const response = await this.http.fetch(await this.currentJwksUri(), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
         if (!response.ok) {
           throw new Error(`JWKS fetch failed: HTTP ${response.status}`);
         }
@@ -572,10 +615,7 @@ export class TokenRuntime {
       if (!dResult.ok) {
         return this.handleDpopRefreshFailure(dResult.error, opts.duringRestore ?? false);
       }
-      this.emitEvent?.({ type: 'refresh_succeeded' });
-      this.refreshAttempts = 0;
-      this.offlineStaleCycles = 0;
-      await this.setTokens(dResult.tokens, opts.duringRestore ? 'restore' : 'refresh');
+      await this.completeRefresh(dResult.tokens, opts.duringRestore ?? false);
       return true;
     }
 
@@ -595,11 +635,26 @@ export class TokenRuntime {
       return this.scheduleRetry(result.error, opts.duringRestore ?? false);
     }
 
-    this.emitEvent?.({ type: 'refresh_succeeded' });
-    this.refreshAttempts = 0;
-    this.offlineStaleCycles = 0;
-    await this.setTokens(result.tokens, opts.duringRestore ? 'restore' : 'refresh');
+    await this.completeRefresh(result.tokens, opts.duringRestore ?? false);
     return true;
+  }
+
+  /**
+   * Commit a successful refresh. A restore that only succeeded on a later retry (the first
+   * attempt at cold start hit a transient failure and `restore()` already returned) is completed
+   * here: the tokens are applied as a restore and RESTORE_SUCCESS loads the user, instead of a
+   * REFRESH_SUCCESS that would mark the machine authenticated with no user.
+   */
+  private async completeRefresh(tokens: OAuthTokenResponse, duringRestore: boolean): Promise<void> {
+    const resumedRestore = this.restorePending;
+    this.restorePending = false;
+    this.refreshAttempts = 0;
+    this.lastRefreshError = null;
+    this.emitEvent?.({ type: 'refresh_succeeded' });
+    await this.setTokens(tokens, duringRestore || resumedRestore ? 'restore' : 'refresh');
+    if (resumedRestore && this.currentUser && this.currentSession) {
+      this.dispatch({ type: 'RESTORE_SUCCESS', user: this.currentUser, session: this.currentSession });
+    }
   }
 
   private isAuthError(error: AuthError): boolean {
@@ -615,7 +670,7 @@ export class TokenRuntime {
   private async handleDpopRefreshFailure(error: DpopRefreshError, duringRestore: boolean): Promise<boolean> {
     this.emitEvent?.({ type: 'dpop_refresh_failed', metadata: { code: error.code } });
     if (error.class === 'network') {
-      return this.scheduleRetry({ code: 'REFRESH_FAILED', reason: 'network', message: error.message }, duringRestore);
+      return this.scheduleRetry(error.cause ?? { code: 'REFRESH_FAILED', reason: 'network', message: error.message }, duringRestore);
     }
     if (error.class === 'dpop_prover_unavailable') {
       this.emitEvent?.({ type: 'refresh_failed', metadata: { reason: 'dpop_prover_unavailable' } });
@@ -625,34 +680,57 @@ export class TokenRuntime {
     return false;
   }
 
+  /**
+   * Back off and retry a transient refresh failure. The session is never cleared here: when the
+   * budget is spent the typed transient error is surfaced (state `offline_stale` when signed in)
+   * and the stored refresh token waits for the next foreground / reconnect / `getToken()`.
+   */
   private scheduleRetry(error: AuthError, duringRestore: boolean): boolean {
-    if (this.refreshAttempts >= RETRY_DELAYS_MS.length) {
-      if (!duringRestore && this.accessToken && this.expiresAtMs !== null && this.now() < this.expiresAtMs) {
-        this.refreshAttempts = 0;
-        this.offlineStaleCycles += 1;
-        if (this.offlineStaleCycles >= TokenRuntime.MAX_OFFLINE_STALE_CYCLES) {
-          this.offlineStaleCycles = 0;
-          void this.clear({ code: 'REFRESH_FAILED', reason: 'revoked', message: 'Refresh chronically failing — session lost' });
-          return false;
-        }
+    const transient = toTransientError(error);
+    this.lastRefreshError = transient;
+    if (duringRestore) this.restorePending = true;
+    const restoring = this.restorePending;
+
+    const delay = refreshRetryDelayMs(this.refreshAttempts, transient.code === 'REFRESH_FAILED' ? transient.retryAfterMs : undefined);
+    if (delay === undefined) {
+      this.refreshAttempts = 0;
+      this.emitEvent?.({
+        type: 'refresh_failed',
+        metadata: { reason: 'retries_exhausted', ...(transient.code === 'REFRESH_FAILED' && transient.status !== undefined && { status: transient.status }) },
+      });
+      if (!restoring) {
+        this.dispatch({ type: 'REFRESH_NETWORK_ERROR', error: transient });
         this.dispatch({ type: 'OFFLINE_STALE' });
-        return false;
       }
-      void this.clear({ code: 'REFRESH_FAILED', reason: 'network', message: 'Refresh exhausted retries' });
       return false;
     }
-    const delay = RETRY_DELAYS_MS[this.refreshAttempts]!;
     this.refreshAttempts++;
     this.emitEvent?.({ type: 'network_retry', metadata: { delayMs: delay, attempt: this.refreshAttempts } });
-    if (!duringRestore) {
-      this.dispatch({ type: 'REFRESH_NETWORK_ERROR', error });
+    if (!restoring) {
+      this.dispatch({ type: 'REFRESH_NETWORK_ERROR', error: transient });
     }
 
     if (this.retryTimer) this.clearTimeoutFn(this.retryTimer);
     this.retryTimer = this.setTimeoutFn(() => {
       this.retryTimer = null;
-      void this.performRefresh();
+      void this.performRefresh({ duringRestore: this.restorePending });
     }, delay);
     return false;
   }
+}
+
+/**
+ * The app-facing shape of a refresh failure that did not end the session: always
+ * `REFRESH_FAILED` + `'network'`, keeping the HTTP status, OAuth `error` and `Retry-After`.
+ */
+function toTransientError(error: AuthError): AuthError {
+  if (error.code === 'REFRESH_FAILED' && error.reason === 'network') return error;
+  return {
+    code: 'REFRESH_FAILED',
+    reason: 'network',
+    message: getErrorMessage(error),
+    ...('status' in error && error.status !== undefined && { status: error.status }),
+    ...('oauthError' in error && typeof error.oauthError === 'string' && { oauthError: error.oauthError }),
+    ...(error.requestId !== undefined && { requestId: error.requestId }),
+  };
 }

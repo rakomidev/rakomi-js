@@ -10,12 +10,15 @@ import {
   AUTH_INVALID_DPOP_PROOF,
   AUTH_INVALID_REFRESH_TOKEN,
   AUTH_REFRESH_SUPERSEDED_BY_ROTATION,
+  isTransientHttpStatus,
   OAUTH_INVALID_CLIENT,
   OAUTH_INVALID_GRANT,
   OAUTH_INVALID_REQUEST,
   OAUTH_MISSING_CLIENT_ID,
   OAUTH_NETWORK_ERROR,
+  OAUTH_TEMPORARILY_UNAVAILABLE,
   OAUTH_UNSUPPORTED_GRANT_TYPE,
+  parseRetryAfterSeconds,
   RakomiError,
 } from './errors.js';
 import type {
@@ -555,6 +558,21 @@ async function tokenRequest(
   try {
     json = await response.json();
   } catch {
+    json = undefined;
+  }
+
+  if (isTransientHttpStatus(response.status)) {
+    const body = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : {};
+    const detail = typeof body.error_description === 'string' ? body.error_description : undefined;
+    return {
+      result: {
+        ok: false,
+        error: OAUTH_TEMPORARILY_UNAVAILABLE(response.status, parseRetryAfterSeconds(response.headers.get('Retry-After')), detail),
+      },
+    };
+  }
+
+  if (json === undefined) {
     return {
       result: { ok: false, error: OAUTH_NETWORK_ERROR('Invalid JSON response from token endpoint') },
     };
@@ -594,11 +612,11 @@ async function tokenRequest(
 
     const factory = RFC6749_ERROR_MAP[errorCode];
     if (factory) {
-      return { result: { ok: false, error: factory(errorDescription) }, ...(errorReason !== undefined && { errorReason }) };
+      return { result: { ok: false, error: { ...factory(errorDescription), status: response.status } }, ...(errorReason !== undefined && { errorReason }) };
     }
 
     return {
-      result: { ok: false, error: OAUTH_INVALID_REQUEST(errorDescription || `Token endpoint error: ${errorCode}`) },
+      result: { ok: false, error: { ...OAUTH_INVALID_REQUEST(errorDescription || `Token endpoint error: ${errorCode}`), status: response.status } },
       ...(errorReason !== undefined && { errorReason }),
     };
   }
