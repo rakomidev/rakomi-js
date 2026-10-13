@@ -30,9 +30,11 @@ export type {
   LinkedMethods,
   LinkedVia,
   LinkProvider,
+  LinkReauth,
+  ReauthRequiredError,
   UseLinkedAccountsResult,
 } from './hooks/use-linked-accounts.js';
-export { useLinkedAccounts } from './hooks/use-linked-accounts.js';
+export { isReauthRequiredError, useLinkedAccounts } from './hooks/use-linked-accounts.js';
 export { useOrganization } from './hooks/use-organization.js';
 export { useOrganizationList } from './hooks/use-organization-list.js';
 export type {

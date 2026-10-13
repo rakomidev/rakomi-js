@@ -48,6 +48,9 @@ if (result.ok) {
 
 API keys must start with `akm_live_` (production) or `akm_test_` (testing).
 
+An `akm_test_` key works on test users and sign-in only. Management calls whose data is not separated per
+environment (for example `credentials.*`) need a live key; a test key gets `404 auth/environment_not_permitted`.
+
 ## Secure defaults
 
 Token signatures are verified with a fixed asymmetric algorithm (never read from the token header),

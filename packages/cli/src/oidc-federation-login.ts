@@ -15,6 +15,27 @@ import { describeError, type HttpDeps, request } from './http.js';
  */
 export const OIDC_FEDERATION_SUBJECT_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:id_token';
 
+/**
+ * The query-parameter NAME the REQUIRED tenant selector rides on, appended to the `resource` this
+ * module sends. It mirrors the
+ * server's `OIDC_FEDERATION_TENANT_SELECTOR_QUERY_PARAM` constant; this package ships with zero runtime
+ * dependencies (see the `OIDC_FEDERATION_SUBJECT_TOKEN_TYPE` comment above), so it is a literal that
+ * must stay byte-identical to the server constant.
+ */
+const TENANT_SELECTOR_QUERY_PARAM = 'rakomi_tenant_id';
+
+/**
+ * Appends the tenant selector to a `resource`/audience string. The server requires it on every
+ * workload-identity exchange: it looks up trust policies ONLY in the tenant named here, and rejects a
+ * request without a well-formed selector (`invalid_request`). The selector never widens what a token
+ * can be minted for — trust-policy verification (signature, subject matchers, scope ceiling) still
+ * decides. {@link exchangeOidcSubjectToken} applies it to every request it sends.
+ */
+export function withOidcFederationTenantSelector(baseResource: string, tenantId: string): string {
+  const sep = baseResource.includes('?') ? '&' : '?';
+  return `${baseResource}${sep}${TENANT_SELECTOR_QUERY_PARAM}=${encodeURIComponent(tenantId)}`;
+}
+
 export interface OidcFederationTokenResult {
   readonly access_token: string;
   /** Always `'DPoP'` in practice — this grant runs the server's `dpopMode: 'on'` (mandatory), so a
@@ -36,10 +57,20 @@ export interface OidcFederationTokenResult {
  * but the underlying KEYPAIR is the caller's choice, so a caller that persists and reuses the same
  * keypair across processes gets a token whose `cnf.jkt` a later process can still prove possession
  * of (see `commands/login.ts`'s `runLoginCi`).
+ *
+ * `opts.tenantId` is REQUIRED: it names the tenant whose trust policy the runner's token is checked
+ * against, and is sent as the `rakomi_tenant_id` selector on `resource`
+ * ({@link withOidcFederationTenantSelector}). Callers validate it as a tenant UUID first.
  */
 export async function exchangeOidcSubjectToken(
   deps: HttpDeps,
-  opts: { readonly apiBaseUrl: string; readonly subjectToken: string; readonly resource: string; readonly dpopKey: DpopKeyPair },
+  opts: {
+    readonly apiBaseUrl: string;
+    readonly subjectToken: string;
+    readonly resource: string;
+    readonly tenantId: string;
+    readonly dpopKey: DpopKeyPair;
+  },
 ): Promise<OidcFederationTokenResult> {
   const tokenUrl = `${opts.apiBaseUrl}/oauth/token`;
   const proof = buildDpopProof(opts.dpopKey, { htm: 'POST', htu: canonicalizeHtu(tokenUrl) });
@@ -52,7 +83,7 @@ export async function exchangeOidcSubjectToken(
       grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
       subject_token: opts.subjectToken,
       subject_token_type: OIDC_FEDERATION_SUBJECT_TOKEN_TYPE,
-      resource: opts.resource,
+      resource: withOidcFederationTenantSelector(opts.resource, opts.tenantId),
     },
   });
 

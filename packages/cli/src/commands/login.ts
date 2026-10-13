@@ -14,7 +14,7 @@ import {
   isValidTenantId,
   platformTenantId,
 } from '../env.js';
-import { CliError, EXIT } from '../errors.js';
+import { CliError, EXIT, UsageError } from '../errors.js';
 import type { HttpDeps } from '../http.js';
 import {
   bindInstallKey,
@@ -80,6 +80,23 @@ function platformTenantMissingMessage(): string {
     'set, this Rakomi environment likely does not have a platform tenant provisioned yet — ask ' +
     'your operator.'
   );
+}
+
+/**
+ * The workload-identity commands (`login --ci`, `mcp tools --ci`) must name the tenant whose trust
+ * policy to use: the server rejects an exchange without it. Returns the validated `--tenant-id`;
+ * throws a usage error when it is missing and a failure when it is not a well-formed tenant UUID.
+ */
+export function requireCiTenantId(explicitTenantId: string | undefined, command: string): string {
+  if (explicitTenantId === undefined) {
+    throw new UsageError(
+      `${command} requires --tenant-id <uuid> — the id of the tenant whose OIDC trust policy this CI job signs in with.`,
+    );
+  }
+  if (!isValidTenantId(explicitTenantId)) {
+    throw new CliError(explicitTenantIdMalformedMessage(explicitTenantId), EXIT.FAIL);
+  }
+  return explicitTenantId;
 }
 
 /** An explicit `--tenant-id` that fails `isValidTenantId` is a USAGE mistake on the flag the caller
@@ -258,6 +275,9 @@ export interface LoginCiDeps extends HttpDeps {
   readonly readTextFile: (path: string) => string;
   readonly stdout: { write(s: string): void };
   readonly now: () => number;
+  /** `rakomi login --ci --tenant-id <uuid>` — REQUIRED (see {@link requireCiTenantId}); typed optional
+   * only because it comes straight from argv. There is no `RAKOMI_PLATFORM_TENANT_ID` fallback. */
+  readonly explicitTenantId?: string;
 }
 
 /**
@@ -281,9 +301,18 @@ export interface LoginCiDeps extends HttpDeps {
  * `client_id` sentinel lets a LATER, separate CLI invocation's `resolveDpopKey()` resolve this
  * exact keypair again and attach a valid DPoP proof to that call too, instead of 401ing — a
  * previously-disclosed, now-resolved gap.
+ *
+ * `--tenant-id <uuid>` is REQUIRED: the server looks up trust policies only in the tenant the exchange
+ * names, and rejects an exchange that names none. The value is sent as the tenant selector on
+ * `resource` (`exchangeOidcSubjectToken`, `oidc-federation-login.ts`). It is never read from
+ * `RAKOMI_PLATFORM_TENANT_ID`, deliberately: an env var set for the unrelated loopback flow in the same
+ * CI job's environment must not silently pick whose trust policy `--ci` uses. The tenant id only
+ * narrows the policy lookup; the trust-policy verification (signature, matchers, scope ceiling) still
+ * decides whether a token is minted.
  */
 export async function runLoginCi(deps: LoginCiDeps): Promise<void> {
   const apiUrl = apiBaseUrl(deps.env);
+  const tenantId = requireCiTenantId(deps.explicitTenantId, 'rakomi login --ci');
 
   const subjectToken = await resolveCiOidcToken(deps, {
     env: deps.ciEnv,
@@ -295,7 +324,7 @@ export async function runLoginCi(deps: LoginCiDeps): Promise<void> {
   const existingKey = peekInstallKey(deps.keys, CI_FEDERATION_SESSION_CLIENT_ID);
   const dpopKey: StoredInstallKey =
     existingKey ?? { clientId: CI_FEDERATION_SESSION_CLIENT_ID, ...generateEphemeralDpopKey(), confirmedBound: false };
-  const token = await exchangeOidcSubjectToken(deps, { apiBaseUrl: apiUrl, subjectToken, resource: apiUrl, dpopKey });
+  const token = await exchangeOidcSubjectToken(deps, { apiBaseUrl: apiUrl, subjectToken, resource: apiUrl, tenantId, dpopKey });
   if (!existingKey) persistInstallKey(deps.keys, dpopKey);
 
   const session: StoredSession = {

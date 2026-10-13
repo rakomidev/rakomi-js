@@ -11,6 +11,8 @@ import {
 import type { VerifyResult, WebhookEvent, WebhookVerifyData } from './types.js';
 
 const RKSEC_PREFIX = 'rksec_';
+/** Standard Webhooks secret prefix — `whsec_` + standard base64 (tenant webhook secrets since 2026-10-07). */
+const WHSEC_PREFIX = 'whsec_';
 const EXPECTED_KEY_LENGTH = 32;
 /** Replay window used when the supplied tolerance is not a finite number of seconds. */
 const FALLBACK_TOLERANCE_SECONDS = 300;
@@ -39,14 +41,20 @@ export function getHeader(
 
 /**
  * Derive the raw HMAC key from a webhook signing secret.
- * Prefixed secrets (`rksec_<base64url>`) are stripped and base64url-decoded
- * to recover the original 32-byte key. Plain strings are used as-is.
+ * Prefixed secrets are stripped and decoded to the original 32-byte key: `whsec_<base64>` (the Standard
+ * Webhooks shape Rakomi mints for tenant webhooks) and the earlier `rksec_<base64url>` (still accepted). Plain strings are used as-is.
  * Validates decoded key is exactly 32 bytes. A missing, empty or whitespace-only secret is
  * rejected: an empty HMAC key is publicly known, so anyone could forge a matching signature.
  */
 function deriveKey(secret: string): Buffer | null {
   if (typeof secret !== 'string' || secret.trim() === '') {
     return null;
+  }
+  if (secret.startsWith(WHSEC_PREFIX)) {
+    const encoded = secret.slice(WHSEC_PREFIX.length);
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return null;
+    const key = Buffer.from(encoded, 'base64');
+    return key.length === EXPECTED_KEY_LENGTH ? key : null;
   }
   if (secret.startsWith(RKSEC_PREFIX)) {
     const key = Buffer.from(secret.slice(RKSEC_PREFIX.length), 'base64url');

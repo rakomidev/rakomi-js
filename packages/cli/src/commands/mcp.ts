@@ -9,6 +9,7 @@ import { getOrCreateInstallKey, peekInstallKey, persistInstallKey, type StoredIn
 import { listMcpToolsCi, MCP_RESOURCE, type McpToolListEntry } from '../mcp-tools-ci.js';
 import { exchangeOidcSubjectToken } from '../oidc-federation-login.js';
 import type { KeyStore } from '../session.js';
+import { requireCiTenantId } from './login.js';
 
 export interface McpToolsCiDeps extends HttpDeps {
   readonly env: CliEnv;
@@ -18,6 +19,8 @@ export interface McpToolsCiDeps extends HttpDeps {
   readonly readTextFile: (path: string) => string;
   readonly json: boolean;
   readonly stdout: { write(s: string): void };
+  /** `--tenant-id <uuid>` — REQUIRED: the tenant whose OIDC trust policy the exchange uses. */
+  readonly explicitTenantId?: string;
 }
 
 function hintLine(t: McpToolListEntry): string {
@@ -36,6 +39,7 @@ function hintLine(t: McpToolListEntry): string {
  */
 export async function runMcpToolsCi(deps: McpToolsCiDeps): Promise<void> {
   const apiUrl = apiBaseUrl(deps.env);
+  const tenantId = requireCiTenantId(deps.explicitTenantId, 'rakomi mcp tools --ci');
   const mcpUrl = deps.env.RAKOMI_API_URL ? `${apiUrl}/mcp` : DEFAULT_MCP_URL;
 
   const subjectToken = await resolveCiOidcToken(deps, {
@@ -53,6 +57,7 @@ export async function runMcpToolsCi(deps: McpToolsCiDeps): Promise<void> {
     apiBaseUrl: apiUrl,
     subjectToken,
     resource: MCP_RESOURCE,
+    tenantId,
     dpopKey,
   });
   if (!existingKey) persistInstallKey(deps.keys, dpopKey);

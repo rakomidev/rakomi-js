@@ -148,6 +148,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
           readTextFile: deps.readTextFile ?? ((p) => readFileSync(p, 'utf8')),
           stdout: deps.stdout,
           now: () => Date.now(),
+          explicitTenantId: typeof values['tenant-id'] === 'string' ? values['tenant-id'] : undefined,
         });
         return EXIT.OK;
       }
@@ -230,7 +231,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
     case 'mcp': {
       const [sub] = rest;
       if (sub !== 'tools') {
-        throw new UsageError('Usage: rakomi mcp tools --ci');
+        throw new UsageError('Usage: rakomi mcp tools --ci --tenant-id <uuid>');
       }
       if (values.ci !== true) {
         throw new UsageError('rakomi mcp tools requires --ci (workload-identity federation; no interactive form exists yet).');
@@ -244,6 +245,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         readTextFile: deps.readTextFile ?? ((p) => readFileSync(p, 'utf8')),
         json,
         stdout: deps.stdout,
+        explicitTenantId: typeof values['tenant-id'] === 'string' ? values['tenant-id'] : undefined,
       });
       return EXIT.OK;
     }

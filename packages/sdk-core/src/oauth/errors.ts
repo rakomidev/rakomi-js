@@ -75,7 +75,21 @@ export function parseTokenEndpointError(
   return { code: 'CODE_EXCHANGE_FAILED', message: description, ...detail };
 }
 
-/** Create a transient refresh AuthError for a failure with no usable HTTP response (fetch failure, timeout, unreadable body). */
+/** Create a transient refresh AuthError for a failure with no HTTP response (fetch failure, timeout). */
 export function networkError(message: string): AuthError {
   return { code: 'REFRESH_FAILED', reason: 'network', message };
+}
+
+/**
+ * Create the terminal refresh AuthError for a 2xx refresh response the SDK cannot read (a body
+ * that is not JSON, truncated, or missing `access_token` / `expires_in`).
+ *
+ * A 2xx means the server accepted the refresh token and rotated it, so the token the SDK still
+ * holds is spent: presenting it again is a refresh-token reuse, which the server answers by
+ * revoking every session of the user. The result is therefore `REFRESH_FAILED` with
+ * `reason: 'revoked'` and the 2xx `status`: the SDK clears the local session and never resends
+ * the token; the user signs in again.
+ */
+export function unreadableRefreshResponseError(status: number, message: string): AuthError {
+  return { code: 'REFRESH_FAILED', reason: 'revoked', message, status };
 }

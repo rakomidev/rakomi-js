@@ -49,7 +49,9 @@ export interface VcCredentialResponse {
   vct: string;
   credential_type: VcBuiltinType;
   custom_type_name: string | null;
-  user_id: string;
+  /** `null` when the credential's holder account no longer exists (e.g. after an erasure
+   *  request) — the credential record itself can remain, but with no personal link. */
+  user_id: string | null;
   subject_type: 'user' | 'agent' | 'org';
   issued_at: string;
   valid_from: string | null;
@@ -84,7 +86,8 @@ export interface VcListParams {
   userId?: string;
   credentialType?: VcBuiltinType;
   limit?: number;
-  offset?: number;
+  /** Opaque cursor from the previous page's `pagination.next_cursor`. */
+  cursor?: string;
 }
 
 export interface VcRevokeParams {
@@ -118,17 +121,19 @@ export class CredentialsClient {
     return this.parse<VcOfferResponse>(res, 'issue');
   }
 
-  async list(params: VcListParams = {}): Promise<{ data: VcCredentialResponse[] }> {
+  async list(
+    params: VcListParams = {},
+  ): Promise<{ data: VcCredentialResponse[]; pagination: { next_cursor: string | null; has_more: boolean } }> {
     const url = new URL(`${this.baseUrl}/v1/credentials`);
     if (params.userId) url.searchParams.set('user_id', params.userId);
     if (params.credentialType) url.searchParams.set('credential_type', params.credentialType);
     if (params.limit !== undefined) url.searchParams.set('limit', String(params.limit));
-    if (params.offset !== undefined) url.searchParams.set('offset', String(params.offset));
+    if (params.cursor !== undefined) url.searchParams.set('cursor', params.cursor);
     const res = await fetch(url, {
       headers: { 'X-API-Key': this.apiKey },
       redirect: 'error',
     });
-    return this.parse<{ data: VcCredentialResponse[] }>(res, 'list');
+    return this.parse<{ data: VcCredentialResponse[]; pagination: { next_cursor: string | null; has_more: boolean } }>(res, 'list');
   }
 
   async get(jti: string): Promise<VcCredentialResponse> {

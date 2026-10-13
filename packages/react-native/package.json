@@ -1,6 +1,6 @@
 {
   "name": "@rakomi/react-native",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "React Native / Expo SDK for Rakomi authentication.",
   "keywords": [
     "rakomi",

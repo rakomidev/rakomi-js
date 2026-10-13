@@ -27,6 +27,16 @@ export interface RakomiConfig {
   clockTolerance?: number;
   /** Override environment detection (default: auto-detect from request hostname) */
   environment?: SdkEnvironment;
+  /**
+   * Refuse tokens that do not state their environment (default: `false`).
+   *
+   * `verifyToken()` always rejects a token whose `rkm_env` claim names a different environment than
+   * this client's API key (a test token verified with a live key, or the reverse). With
+   * `strictEnvironment: true` a token that carries NO `rkm_env` claim is rejected the same way
+   * (`auth/environment_mismatch`) instead of being accepted. Rakomi puts the claim on every user
+   * access token; M2M tokens do not carry it and are refused in this mode.
+   */
+  strictEnvironment?: boolean;
   /** Webhook signing secret from Rakomi dashboard (per-tenant) */
   webhookSecret?: string;
   /** Webhook timestamp tolerance in seconds (default: 300, max: 600; a non-finite value uses the default) */
@@ -255,6 +265,18 @@ export interface SdkError {
    * Set on `oauth/temporarily_unavailable`.
    */
   retry_after_seconds?: number;
+  /**
+   * Machine-readable detail for errors that have one. Branch on these stable values, never on
+   * `message`, whose wording may change. Today: `token/invalid_dpop_proof` carries
+   * `details.reason` (a {@link DpopProofRejectionReason}).
+   */
+  details?: SdkErrorDetails;
+}
+
+/** Machine-readable detail of an {@link SdkError}. */
+export interface SdkErrorDetails {
+  /** Stable rejection reason code, e.g. `htu_mismatch` for `token/invalid_dpop_proof`. */
+  reason?: string;
 }
 
 /**
@@ -450,29 +472,41 @@ export interface ChallengeOptions {
 }
 
 /**
- * Webhook event payload delivered by Rakomi.
+ * Webhook event payload delivered by Rakomi — the JSON body, as sent.
  */
 export interface WebhookEvent {
-  /** Delivery ID from X-Rakomi-Delivery-Id */
+  /** Delivery id of this event for this endpoint. */
   id: string;
-  /** Event type (dot.lowercase, e.g. `user.created`) */
+  /** Event type (dot.lowercase, e.g. `user.created`) — the Standard Webhooks `type` member. */
   type: string;
-  /** ISO 8601 timestamp */
-  timestamp: string;
-  /** Tenant ID */
-  tenantId: string;
-  /** User ID (optional for system events) */
-  userId?: string;
+  /**
+   * The same value as `type`, under its earlier name. Present while the platform still sends it; read
+   * `type`.
+   */
+  event?: string;
   /** Event severity */
   severity: 'critical' | 'warning' | 'info';
+  /** ISO 8601 timestamp */
+  timestamp: string;
+  /** Tenant id */
+  tenant_id: string;
   /** Event-specific data */
   data: Record<string, unknown>;
-  /** Event metadata */
+  /** Language and country context of the event */
+  locale: {
+    event_language: string;
+    tenant_country: string | null;
+    user_country: string | null;
+  };
+  /** Envelope metadata */
   meta: {
     api_version: string;
-    event_language?: string;
-    tenant_country?: string;
-    user_country?: string;
+    /** Present only on a delivery replayed from the audit log. */
+    replay?: {
+      original_event_at: string;
+      replayed_at: string;
+      source: 'audit_log';
+    };
   };
 }
 
@@ -619,8 +653,15 @@ export interface MiddlewareDpopOptions {
   /**
    * Public origin of this resource server (for example `https://api.example.com`), used to
    * build the URL a proof's `htu` is compared against: `origin` + the request path.
-   * Set it when a proxy in front of your app rewrites the `Host` header. When omitted, the
-   * origin is taken from the request's `Host` header and `req.protocol` (default `https`).
+   *
+   * **Set this in production.** When omitted, the origin is taken from the request's `Host`
+   * header and `req.protocol` (default `https`), and `Host` is chosen by the client. A token
+   * whose audience is accepted by more than one of your resource servers can then be replayed,
+   * together with a proof captured for one of them, against another one: the caller sends the
+   * first server's `Host`, so the proof's `htu` matches. The window is the proof's `iat`
+   * acceptance window (60 seconds), unless each resource server also rejects reused proofs with
+   * its own `onJti`. A fixed `origin` makes a proof for another server fail with `htu_mismatch`.
+   * Set it also when a proxy in front of your app rewrites the `Host` header.
    * `X-Forwarded-Host` is never read.
    */
   origin?: string;
@@ -673,7 +714,10 @@ export interface VerifyTokenOptions {
   dpop?: DpopVerifyOptions;
 }
 
-/** The `reason` carried in the message of a `token/invalid_dpop_proof` error. */
+/**
+ * The `details.reason` of a `token/invalid_dpop_proof` error. These values are stable; the same
+ * reason also appears in `message`, but read it from `details.reason` — message wording may change.
+ */
 export type DpopProofRejectionReason =
   | 'proof_required'
   | 'scheme_downgrade'

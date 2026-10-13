@@ -1,3 +1,15 @@
+## 0.9.0 — 2026-10-13
+
+- **Breaking: `credentials.list()` pages with a cursor.** `GET /v1/credentials` no longer takes `offset`. Pass `cursor` (the previous page's `pagination.next_cursor`) instead; the result now carries `pagination: { next_cursor, has_more }`. **Action needed** if you passed `offset`: loop on `pagination.next_cursor` until `has_more` is false.
+- **DPoP: set `middleware({ dpop: { origin } })` in production, and read `details.reason`.**
+- **Breaking:** `client.link.initiate()` no longer takes `mfaVerificationToken`. The API never read the field it was sent as, so no working call changes at runtime; the break is compile-time only.
+- **Token endpoint errors: read the sub-reason from the RFC 6749 §5.2 form.**
+- **The client accepts publishable API keys.** `new RakomiClient({ apiKey })` now accepts the `akp_live_` and `akp_test_` prefixes of publishable keys (an `akp_test_` key selects the test environment, like `akm_test_`). Secret `akm_` keys are unchanged. Use publishable keys only where the key is visible to end users; keep a secret key on your server.
+- **Breaking:** `VcCredentialResponse.user_id` is now `string | null` (a type change). It was previously typed as a plain `string`. A verifiable credential's subject can now exercise their right to erasure (e.g. an account-deletion request) while the credential record itself remains listable/fetchable — its revocation history and status-list position are still meaningful to other holders and verifiers. `user_id: null` on a listed or fetched credential means the holder's account no longer exists.
+- Security: new opt-in `strictEnvironment` option on `RakomiClient` hardens `verifyToken()` against tokens that carry no `rkm_env` environment claim.
+- **Breaking: `WebhookEvent` describes the body Rakomi actually sends.**
+- **Webhook verification accepts `whsec_` secrets (Standard Webhooks).**
+
 ## 0.8.0 — 2026-10-04
 
 - `token/invalid_issuer` no longer suggests that every token is issued by `api.rakomi.com`: its suggestion now says the token `iss` must equal the configured issuer exactly — the issuer of the environment whose tokens you accept.

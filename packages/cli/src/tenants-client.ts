@@ -97,10 +97,12 @@ export async function createTenant(deps: HttpDeps, opts: CreateTenantOptions): P
   return result.body;
 }
 
-/** Mirrors `GET /v1/tenants`'s real `{ data: ChildTenantResponse[] }` — there is no `pagination`
- * envelope; the route always returns the caller's full child set in one page. */
+/** Mirrors `GET /v1/tenants`'s real `{ data: ChildTenantResponse[], pagination }` — the route returns the
+ * caller's full child set in one page, so `pagination` is always `{ next_cursor: null, has_more: false }`. */
 export interface ListTenantsResult {
   readonly data: readonly TenantSummary[];
+  /** The list envelope every public list answers; this list is one page. */
+  readonly pagination?: { readonly next_cursor: string | null; readonly has_more: boolean };
 }
 
 export async function listTenants(

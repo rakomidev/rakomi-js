@@ -150,7 +150,7 @@ export {
   discoveryIssuerMatchesBaseUrl,
   UntrustedDiscoveryIssuerError,
 } from './oauth/discovery.js';
-export { networkError, parseOAuthCallbackError, parseTokenEndpointError } from './oauth/errors.js';
+export { networkError, parseOAuthCallbackError, parseTokenEndpointError, unreadableRefreshResponseError } from './oauth/errors.js';
 export { discoveryOriginFor, resolveExpectedIssuer } from './oauth/issuer.js';
 export type { IssuerJwksUriResolver, IssuerJwksUriResolverOptions } from './oauth/issuer-jwks.js';
 export {

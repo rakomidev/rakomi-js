@@ -18,10 +18,11 @@
  * `REFRESH_FAILED` and `CODE_EXCHANGE_FAILED` built from a token-endpoint response also carry the
  * HTTP `status` and the RFC 6749 §5.2 `oauthError` code the server sent. For `REFRESH_FAILED`,
  * `reason` tells the app what happened to the session:
- * - `'expired'` / `'revoked'` — the session is over; the SDK has cleared it.
- * - `'network'` — a transient failure (no connection, a 5xx, 429 or 408, or an unreadable
- *   response). The session is kept and the SDK retries; `retryAfterMs` is the server's
- *   `Retry-After` when it sent one.
+ * - `'expired'` / `'revoked'` — the session is over; the SDK has cleared it. This includes a 2xx
+ *   refresh response the SDK cannot read (`status` is the 2xx): the server already rotated the
+ *   refresh token, so the SDK never sends it again.
+ * - `'network'` — a transient failure (no connection, or a 5xx, 429 or 408). The session is kept
+ *   and the SDK retries; `retryAfterMs` is the server's `Retry-After` when it sent one.
  */
 export type AuthError =
   | {

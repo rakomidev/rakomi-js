@@ -595,7 +595,12 @@ async function tokenRequest(
       errorObj && typeof errorObj.details === 'object' && errorObj.details !== null
         ? (errorObj.details as Record<string, unknown>)
         : undefined;
-    const errorReason = details && typeof details.reason === 'string' ? details.reason : undefined;
+    const errorReason =
+      typeof errorBody.error_reason === 'string'
+        ? errorBody.error_reason
+        : details && typeof details.reason === 'string'
+          ? details.reason
+          : undefined;
     const wwwAuth = response.headers.get('WWW-Authenticate');
 
     if (errorCode === 'use_dpop_nonce' || wwwAuthenticateHasError(wwwAuth, 'use_dpop_nonce')) {
