@@ -120,7 +120,7 @@ export class TokenManager {
   private maxLifetimeExpiresAtMs: number | undefined = undefined;
   private readonly expiringThresholdMinutes: number;
 
-  private lastInteractionTime = Date.now();
+  private lastInteractionTime = 0;
   private lastInteractionUpdate = 0;
   private interactionListenersAdded = false;
 
@@ -933,6 +933,7 @@ export class TokenManager {
 
   private setupSessionTimeout(): void {
     if (!this.sessionTimeout || typeof window === 'undefined') return;
+    this.lastInteractionTime = Date.now();
 
     window.addEventListener('mousemove', this.handleInteraction, { passive: true });
     window.addEventListener('keydown', this.handleInteraction, { passive: true });

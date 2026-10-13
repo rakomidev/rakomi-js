@@ -113,6 +113,11 @@ export interface VerifyTokenCoreOptions {
   clockTolerance: number;
   sdkEnvironment?: 'live' | 'test';
   /**
+   * When true (and `sdkEnvironment` is known), a token WITHOUT an `rkm_env` claim is treated as an
+   * environment mismatch instead of being accepted. Opt-in; see `RakomiConfig.strictEnvironment`.
+   */
+  strictEnvironment?: boolean;
+  /**
    * When true, the JWT header `typ` must identify an OAuth access token
    * (`at+jwt` / `application/at+jwt`, RFC 9068 §2.1/§4, case-insensitive).
    * Blocks cross-JWT confusion: an id_token (`typ: JWT`) presented as a
@@ -143,6 +148,7 @@ export async function verifyToken<T extends TokenPayload = TokenPayload>(
   baseUrl?: string,
   dpop?: DpopVerifyOptions,
   issuer?: string,
+  strictEnvironment?: boolean,
 ): Promise<VerifyResult<T>> {
   return verifyTokenWithOptions<T>(token, jwksCache, {
     issuer: issuer ?? deriveDefaultIssuer(baseUrl),
@@ -150,6 +156,7 @@ export async function verifyToken<T extends TokenPayload = TokenPayload>(
     clockTolerance,
     sdkEnvironment,
     dpop,
+    ...(strictEnvironment === true ? { strictEnvironment: true } : {}),
   });
 }
 
@@ -246,6 +253,8 @@ export async function verifyTokenWithOptions<T extends TokenPayload = TokenPaylo
       if (sdkIsLive !== tokenIsLive) {
         return { ok: false, error: AUTH_ENVIRONMENT_MISMATCH() };
       }
+    } else if (sdkEnvironment && options.strictEnvironment === true) {
+      return { ok: false, error: AUTH_ENVIRONMENT_MISMATCH() };
     }
 
     const dpopError = await enforceDpopBinding(token, payload, options.dpop);

@@ -174,15 +174,20 @@ export const TOKEN_CLIENT_MISMATCH = () =>
 
 /**
  * A DPoP-bound access token (`cnf.jkt`, RFC 9449) was presented without a DPoP proof that
- * verifies for this request and this key — or sent with the `Bearer` scheme. The `reason`
- * (see `DpopProofRejectionReason`) is the text after the colon in `message`.
+ * verifies for this request and this key — or sent with the `Bearer` scheme. The stable
+ * `reason` (see `DpopProofRejectionReason`) is in `details.reason`; `message` repeats it for
+ * humans and is not a contract.
  */
-export const TOKEN_INVALID_DPOP_PROOF = (reason: DpopProofRejectionReason) =>
-  createError(
+export const TOKEN_INVALID_DPOP_PROOF = (
+  reason: DpopProofRejectionReason,
+): SdkError & { details: { reason: DpopProofRejectionReason } } => ({
+  ...createError(
     'token/invalid_dpop_proof',
     `DPoP proof check failed: ${reason}`,
     'This token is bound to a DPoP key. Send it as "Authorization: DPoP <token>" with a fresh "DPoP" proof header signed by that key for this exact method and URL, and pass the proof, method and URL to the verifier.',
-  );
+  ),
+  details: { reason },
+});
 
 export const AUTH_ENVIRONMENT_MISMATCH = () =>
   createError(
@@ -409,7 +414,7 @@ export const CONFIG_MISSING_WEBHOOK_SECRET = () =>
     'config/missing_webhook_secret',
     'webhookSecret is required for webhook verification',
     'Pass your webhook signing key in config',
-    'new Rakomi({ apiKey: "...", webhookSecret: "rksec_xxx" })',
+    'new Rakomi({ apiKey: "...", webhookSecret: "whsec_xxx" })',
   );
 
 /**
@@ -943,5 +948,49 @@ export class LinkStateExpiredError extends Error {
     this.name = 'LinkStateExpiredError';
     this.suggestion = 'Restart the link flow from the Connected Accounts dashboard.';
     this.docs_url = `${DOCS_BASE}#account_linking-link_state_expired_or_missing`;
+  }
+}
+
+/**
+ * Returned when POST /v1/users/me/link/{provider} answers 401 with
+ * `code: 'auth/reauth_required'`: the request did not carry the proof of a
+ * recent re-authentication that the account needs.
+ *
+ * - `reason: 'password_required'` — the account has a password; retry with
+ *   `currentPassword`.
+ * - `reason: 'step_up_required'` — the account needs a fresh step-up token;
+ *   obtain one through one of `availableMethods` and retry with `stepUpToken`.
+ *
+ * `requiredAal` is set when the account's floor is a specific authenticator
+ * assurance level (for example `2` for an account with a second factor).
+ * Retry with every proof the account needs — the API decides, the SDK only
+ * passes on what it is given.
+ */
+export class ReauthRequiredError extends Error {
+  readonly code = 'auth/reauth_required';
+  readonly suggestion: string;
+  readonly docs_url: string;
+  /** Which proof is missing. Open union: unknown reasons are passed through. */
+  readonly reason: 'password_required' | 'step_up_required' | (string & {});
+  /** The authenticator assurance level the step-up token must meet, when the API states one. */
+  readonly requiredAal?: number;
+  /** The step-up methods the account can complete, when the API states them. */
+  readonly availableMethods?: ReadonlyArray<string>;
+
+  constructor(
+    reason: 'password_required' | 'step_up_required' | (string & {}) = 'step_up_required',
+    message = 'Recent re-authentication is required before linking a new identity.',
+    requiredAal?: number,
+    availableMethods?: ReadonlyArray<string>,
+  ) {
+    super(message);
+    this.name = 'ReauthRequiredError';
+    this.reason = reason;
+    this.requiredAal = requiredAal;
+    this.availableMethods = availableMethods;
+    this.suggestion = reason === 'password_required'
+      ? 'Ask the user for their current password and retry with currentPassword.'
+      : 'Have the user complete a step-up and retry with the resulting stepUpToken.';
+    this.docs_url = `${DOCS_BASE}#auth-reauth_required`;
   }
 }

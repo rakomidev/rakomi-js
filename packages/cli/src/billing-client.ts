@@ -22,8 +22,7 @@ export async function getBillingPlan(
     readonly dpop?: StoredInstallKey;
   },
 ): Promise<BillingPlanSummary> {
-  const url = new URL('/v1/billing/plan', opts.apiBaseUrl);
-  url.searchParams.set('tenant_id', opts.tenantId);
+  const url = new URL(`/v1/tenants/${encodeURIComponent(opts.tenantId)}/billing/plan`, opts.apiBaseUrl);
   const result = await request<BillingPlanSummary>(deps, {
     method: 'GET',
     url: url.toString(),
@@ -32,6 +31,13 @@ export async function getBillingPlan(
   });
   if (result.status === 401) {
     throw new CliError('Your session has expired. Run `rakomi login` again.', EXIT.NOT_LOGGED_IN);
+  }
+  if (result.status === 404) {
+    throw new CliError(
+      `Could not fetch your billing plan: tenant ${opts.tenantId} was not found, or you are not one of its owners. ` +
+        'Run `rakomi tenants memberships` to see your tenants and roles.',
+      EXIT.FAIL,
+    );
   }
   if (result.status !== 200) {
     throw new CliError(`Could not fetch your billing plan: ${describeError(result.body, result.status)}`, EXIT.FAIL);

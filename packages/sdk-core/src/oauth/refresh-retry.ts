@@ -6,10 +6,12 @@
  *
  * - **Definitive** (the session is over; clear it, never retry): a 4xx carrying an RFC 6749 §5.2
  *   `error` of `invalid_grant`, `invalid_client`, `invalid_token`, `unauthorized_client` or
- *   `access_denied`, or a bare 401 (client authentication failed).
- * - **Transient** (keep the session, retry with backoff): a 5xx, 429 or 408, a transport failure,
- *   or a response the SDK could not read. A retry re-presents the same refresh token; if the
- *   server had already rotated it, the retry is answered with `invalid_grant`, which is definitive.
+ *   `access_denied`, or a bare 401 (client authentication failed). Also a 2xx whose body the SDK
+ *   cannot read: the server already rotated the refresh token, and presenting it again would be a
+ *   reuse that revokes every session of the user.
+ * - **Transient** (keep the session, retry with backoff): a 5xx, 429 or 408 (whatever the body),
+ *   or a transport failure. A retry re-presents the same refresh token; the server did not accept
+ *   it, so it is still valid.
  */
 
 /** Base backoff delays between refresh attempts. The budget is one retry per entry. */

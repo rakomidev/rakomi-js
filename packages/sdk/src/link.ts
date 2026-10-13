@@ -28,6 +28,7 @@ import {
   LinkStateExpiredError,
   MfaStepUpRequiredError,
   MfaStepUpUnavailableError,
+  ReauthRequiredError,
 } from './errors.js';
 import { extractRequestId } from './internal/request-id.js';
 import type { SdkError, VerifyResult } from './types.js';
@@ -77,10 +78,22 @@ export interface LinkCallOptions {
   userToken: string;
 }
 
+/**
+ * Options for {@link LinkClient.initiate}.
+ *
+ * Linking a new identity requires a recent re-authentication. Pass the proof
+ * the account needs: `currentPassword` for an account that has a password,
+ * `stepUpToken` for a passwordless account or an account with a second factor
+ * (an account with both a password and a second factor needs both). Each proof
+ * is sent only when given; the API decides whether it is enough and answers
+ * `auth/reauth_required` ({@link ReauthRequiredError}) when it is not.
+ */
 export interface LinkInitiateOptions extends LinkCallOptions {
   redirectUri: string;
-  /** Optional MFA step-up token (forward path — server-side gate lives in). */
-  mfaVerificationToken?: string;
+  /** The end user's current password. Required for an account that has one. */
+  currentPassword?: string;
+  /** A fresh step-up token. Required for a passwordless account and for an account with a second factor. */
+  stepUpToken?: string;
 }
 
 export interface LinkClientContext {
@@ -99,6 +112,7 @@ interface ApiErrorBody {
     remaining_methods?: string[];
     unlock_at?: string;
     reason?: string;
+    required_aal?: number;
     mfa_challenge_token?: string;
     next_action?: string;
     available_methods?: string[];
@@ -184,8 +198,16 @@ export class LinkClient {
     options: LinkInitiateOptions,
   ): Promise<VerifyResult<LinkInitiateResponse>> {
     const body: Record<string, string> = { redirect_uri: options.redirectUri };
-    if (options.mfaVerificationToken) {
-      body.mfa_verification_token = options.mfaVerificationToken;
+    if (options.currentPassword) {
+      body.current_password = options.currentPassword;
+    }
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${options.userToken}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    if (options.stepUpToken) {
+      headers['X-Step-Up-Token'] = options.stepUpToken;
     }
 
     let res: Response;
@@ -194,11 +216,7 @@ export class LinkClient {
         `${this.baseUrl}/v1/users/me/link/${encodeURIComponent(provider)}`,
         {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${options.userToken}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
+          headers,
           body: JSON.stringify(body),
           redirect: 'error',
         },
@@ -285,6 +303,36 @@ export class LinkClient {
         }
         break;
       case 401:
+        if (code === 'auth/reauth_required') {
+          const reason = typeof body.details?.reason === 'string' && body.details.reason
+            ? body.details.reason
+            : 'step_up_required';
+          const requiredAal = typeof body.details?.required_aal === 'number'
+            ? body.details.required_aal
+            : undefined;
+          const availableMethods = Array.isArray(body.details?.available_methods)
+            ? body.details!.available_methods.filter((m): m is string => typeof m === 'string')
+            : undefined;
+          const err = new ReauthRequiredError(
+            reason,
+            body.detail || undefined,
+            requiredAal,
+            availableMethods,
+          );
+          return sdkErrorFromClass(err, {
+            reason: err.reason,
+            ...(requiredAal !== undefined ? { required_aal: requiredAal } : {}),
+            ...(availableMethods ? { available_methods: [...availableMethods] } : {}),
+          });
+        }
+        if (code === 'auth/invalid_credentials') {
+          return {
+            code: 'auth/invalid_credentials',
+            message: body.detail || 'The current password is incorrect.',
+            suggestion: 'Ask the user to re-enter their current password and retry.',
+            docs_url: `${DOCS_BASE}#auth-invalid_credentials`,
+          } as SdkError;
+        }
         if (code === 'account_linking/mfa_step_up_unavailable') {
           const err = new MfaStepUpUnavailableError(
             'passwordless_user_no_step_up_route',
@@ -396,7 +444,8 @@ function sdkErrorFromClass(
     | CooldownActiveError
     | MfaStepUpRequiredError
     | MfaStepUpUnavailableError
-    | LinkStateExpiredError,
+    | LinkStateExpiredError
+    | ReauthRequiredError,
   extra?: Record<string, unknown>,
 ): SdkError {
   const base: Record<string, unknown> = {

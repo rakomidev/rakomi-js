@@ -34,12 +34,22 @@ function generateTabId(): string {
 
 export class EventLog {
   private readonly buffer: AuthEvent[] = [];
-  public readonly tabId: string;
+  private tabIdValue: string | undefined;
   private readonly onAuthEvent?: (event: AuthEvent) => void;
 
   constructor(onAuthEvent?: (event: AuthEvent) => void) {
-    this.tabId = generateTabId();
     this.onAuthEvent = onAuthEvent;
+  }
+
+  /**
+   * Identifier of this log's tab, drawn on first use and stable afterwards.
+   *
+   * Drawn lazily rather than in the constructor: a UI provider constructs its log while rendering,
+   * and a framework that prerenders client components rejects a random value read during that pass.
+   */
+  get tabId(): string {
+    this.tabIdValue ??= generateTabId();
+    return this.tabIdValue;
   }
 
   push(partial: Omit<AuthEvent, 'timestamp' | 'tabId'>): void {

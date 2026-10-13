@@ -77,7 +77,7 @@ function clampTolerance(value: unknown, fallback: number, max: number): number {
   return Math.min(Math.max(0, raw), max);
 }
 
-const API_KEY_PREFIXES = ['ca_live_', 'ca_test_', 'akm_live_', 'akm_test_'];
+const API_KEY_PREFIXES = ['ca_live_', 'ca_test_', 'akm_live_', 'akm_test_', 'akp_live_', 'akp_test_'];
 
 export class RakomiClient {
   private readonly apiKey: string;
@@ -86,6 +86,7 @@ export class RakomiClient {
   private readonly issuer: string;
   private readonly clockTolerance: number;
   private readonly environment?: SdkEnvironment;
+  private readonly strictEnvironment: boolean;
   private readonly webhookSecret?: string;
   private readonly webhookTolerance: number;
   private readonly clientId?: string;
@@ -165,6 +166,7 @@ export class RakomiClient {
     this.clockTolerance = clampTolerance(config.clockTolerance, DEFAULT_CLOCK_TOLERANCE, MAX_CLOCK_TOLERANCE);
 
     this.environment = config.environment;
+    this.strictEnvironment = config.strictEnvironment === true;
 
     this.webhookSecret = config.webhookSecret;
     this.webhookTolerance = clampTolerance(
@@ -206,8 +208,8 @@ export class RakomiClient {
         : JwksCache.forIssuer(this.issuer, discoveryOriginFor(this.issuer, this.baseUrl));
     }
 
-    const sdkEnv = this.apiKey.startsWith('akm_test_') ? 'test' : 'live';
-    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv, this.baseUrl, options?.dpop, this.issuer);
+    const sdkEnv = this.apiKey.startsWith('akm_test_') || this.apiKey.startsWith('akp_test_') ? 'test' : 'live';
+    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv, this.baseUrl, options?.dpop, this.issuer, this.strictEnvironment);
   }
 
   async verifyWebhook<T = WebhookEvent>(

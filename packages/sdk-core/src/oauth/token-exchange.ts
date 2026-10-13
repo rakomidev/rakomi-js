@@ -9,7 +9,7 @@ import { parseRetryAfterMs } from '../passkeys/errors.js';
 import type { HttpClient } from '../types/adapters.js';
 import type { OAuthTokenResponse } from '../types/auth.js';
 import type { AuthError } from '../types/auth-error.js';
-import { networkError, parseTokenEndpointError } from './errors.js';
+import { networkError, parseTokenEndpointError, unreadableRefreshResponseError } from './errors.js';
 
 export interface ExchangeAuthCodeInput {
   http: HttpClient;
@@ -96,7 +96,9 @@ export async function exchangeAuthCode(input: ExchangeAuthCodeInput): Promise<To
  * RFC 6749 refresh-token grant. Used by both web and RN runtimes.
  * A definitive rejection (`invalid_grant`, a bare 401, …) is `REFRESH_FAILED` + `'revoked'` and
  * the runtime clears the session (server-side reuse-detection already invalidated the family per
- * OAuth 2.1). A 5xx, 429, 408, a transport failure or an unreadable response is
+ * OAuth 2.1). A 2xx whose body cannot be read (not JSON, or no `access_token` / `expires_in`) is
+ * also `REFRESH_FAILED` + `'revoked'` with the 2xx `status`: the server already rotated the
+ * token, so it is never sent again. A 5xx, 429, 408 or a transport failure is
  * `REFRESH_FAILED` + `'network'` (with `retryAfterMs` from `Retry-After`) and the session is kept.
  */
 export async function refreshAccessToken(input: {
@@ -156,12 +158,12 @@ export async function refreshAccessToken(input: {
     return { ok: false, error: parseTokenEndpointError(response.status, parsed, 'refresh', retryAfterMs) };
   }
   try {
-    const tokens = (await response.json()) as OAuthTokenResponse;
-    if (typeof tokens.access_token !== 'string' || typeof tokens.expires_in !== 'number') {
-      return { ok: false, error: networkError('malformed token response') };
+    const tokens = (await response.json()) as OAuthTokenResponse | null;
+    if (typeof tokens?.access_token !== 'string' || typeof tokens.expires_in !== 'number') {
+      return { ok: false, error: unreadableRefreshResponseError(response.status, 'malformed token response') };
     }
     return { ok: true, tokens };
   } catch {
-    return { ok: false, error: networkError('token response not JSON') };
+    return { ok: false, error: unreadableRefreshResponseError(response.status, 'token response not JSON') };
   }
 }
