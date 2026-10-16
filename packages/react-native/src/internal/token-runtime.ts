@@ -34,6 +34,7 @@ import {
   discoveryOriginFor,
   getErrorMessage,
   type HttpClient,
+  isSettledRefreshResult,
   type IssuerJwksUriResolver,
   type JwksCache,
   type JwksDocument,
@@ -41,7 +42,10 @@ import {
   type MachineAction,
   type OAuthTokenResponse,
   refreshAccessToken,
+  refreshOutcomeUnknownError,
   refreshRetryDelayMs,
+  refreshRetryOnceTriggerOf,
+  refreshWithOneImmediateRetry,
   resolveExpectedIssuer,
   type SessionResource,
   type TokenResult,
@@ -619,12 +623,21 @@ export class TokenRuntime {
       return true;
     }
 
-    const result = await refreshAccessToken({
-      http: this.http,
-      tokenEndpoint: this.tokenEndpoint,
-      refreshToken,
-      clientId: this.clientId,
+    const outcome = await refreshWithOneImmediateRetry({
+      send: () =>
+        refreshAccessToken({
+          http: this.http,
+          tokenEndpoint: this.tokenEndpoint,
+          refreshToken,
+          clientId: this.clientId,
+        }),
+      retryOnceTrigger: refreshRetryOnceTriggerOf,
+      isSettled: isSettledRefreshResult,
     });
+    const result =
+      outcome.uncertainAfter !== undefined
+        ? { ok: false as const, error: refreshOutcomeUnknownError(outcome.uncertainAfter) }
+        : outcome.result;
 
     if (!result.ok) {
       this.emitEvent?.({ type: 'refresh_failed', metadata: { code: result.error.code } });

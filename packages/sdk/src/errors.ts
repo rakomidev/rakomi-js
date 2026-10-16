@@ -62,6 +62,7 @@ export const ERROR_CODES = {
   AUTH_DPOP_ROTATION_NOOP: 'auth/dpop_rotation_noop',
   AUTH_DPOP_ROTATION_DID_NOT_TAKE: 'auth/dpop_rotation_did_not_take',
   AUTH_REFRESH_SUPERSEDED_BY_ROTATION: 'auth/refresh_superseded_by_rotation',
+  AUTH_REFRESH_OUTCOME_UNKNOWN: 'auth/refresh_outcome_unknown',
   OAUTH_TEMPORARILY_UNAVAILABLE: 'oauth/temporarily_unavailable',
   JWKS_FETCH_FAILED: 'jwks/fetch_failed',
   JWKS_NO_MATCHING_KEY: 'jwks/no_matching_key',
@@ -232,6 +233,32 @@ export const AUTH_INVALID_REFRESH_TOKEN = (detail?: string) =>
     detail || 'The refresh token is invalid, expired, or has been revoked',
     'The session has ended. Start a full re-authentication (login) flow.',
   );
+
+/**
+ * The refresh outcome is unknown: the token endpoint answered a 5xx other than 503 and 521–523 —
+ * after which the server may already have rotated the refresh token — or no response arrived, and
+ * the SDK's one immediate retry did not settle it (another 5xx, a 503, a 429, a network failure), or
+ * the first failure arrived too late for a retry to be safe. `status` is the first 5xx; it is absent
+ * when the first request got no response.
+ * App action: end the session and start a full re-authentication (login) flow. Do NOT present
+ * this refresh token again, now or later — if the server did rotate it, a later use is a reuse,
+ * and a reuse revokes every session of the user.
+ */
+export const AUTH_REFRESH_OUTCOME_UNKNOWN = (trigger: number | 'network'): SdkError => {
+  const suggestion =
+    'The session may already have been rotated. Do not send this refresh token again — start a full re-authentication (login) flow.';
+  if (trigger === 'network') {
+    return createError(
+      'auth/refresh_outcome_unknown',
+      'No response arrived from the token endpoint and a retry did not settle the refresh',
+      suggestion,
+    );
+  }
+  return {
+    ...createError('auth/refresh_outcome_unknown', `The token endpoint answered HTTP ${trigger} and a retry did not settle the refresh`, suggestion),
+    status: trigger,
+  };
+};
 
 /**
  * Client-side rotation bug: the SDK attempted to rotate to a key the server

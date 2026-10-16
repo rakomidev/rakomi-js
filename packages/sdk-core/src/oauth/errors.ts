@@ -93,3 +93,29 @@ export function networkError(message: string): AuthError {
 export function unreadableRefreshResponseError(status: number, message: string): AuthError {
   return { code: 'REFRESH_FAILED', reason: 'revoked', message, status };
 }
+
+/**
+ * Create the terminal refresh AuthError for a refresh whose outcome is unknown: the token endpoint
+ * answered a 5xx after which it may already have rotated the refresh token, or no response arrived,
+ * and the one immediate retry did not settle it (see `refreshWithOneImmediateRetry`).
+ *
+ * Presenting the token again later would be a reuse if the server did rotate it, and the server
+ * answers a reuse by revoking every session of the user. The result is therefore `REFRESH_FAILED`
+ * with `reason: 'revoked'` and the first 5xx `status` (none when no response arrived): the SDK clears
+ * the local session and the user signs in again.
+ */
+export function refreshOutcomeUnknownError(trigger: number | 'network'): AuthError {
+  if (trigger === 'network') {
+    return {
+      code: 'REFRESH_FAILED',
+      reason: 'revoked',
+      message: 'No response arrived from the token endpoint and a retry did not settle the refresh; sign in again',
+    };
+  }
+  return {
+    code: 'REFRESH_FAILED',
+    reason: 'revoked',
+    message: `The token endpoint answered HTTP ${trigger} and a retry did not settle the refresh; sign in again`,
+    status: trigger,
+  };
+}

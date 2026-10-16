@@ -150,7 +150,7 @@ export {
   discoveryIssuerMatchesBaseUrl,
   UntrustedDiscoveryIssuerError,
 } from './oauth/discovery.js';
-export { networkError, parseOAuthCallbackError, parseTokenEndpointError, unreadableRefreshResponseError } from './oauth/errors.js';
+export { networkError, parseOAuthCallbackError, parseTokenEndpointError, refreshOutcomeUnknownError, unreadableRefreshResponseError } from './oauth/errors.js';
 export { discoveryOriginFor, resolveExpectedIssuer } from './oauth/issuer.js';
 export type { IssuerJwksUriResolver, IssuerJwksUriResolverOptions } from './oauth/issuer-jwks.js';
 export {
@@ -165,10 +165,17 @@ export type { PkceChallenge } from './oauth/pkce.js';
 export { base64url, generatePkce } from './oauth/pkce.js';
 export {
   isDefinitiveRefreshRejection,
+  isRefreshRetryOnceStatus,
+  isSettledRefreshResult,
   isTransientStatus,
   MAX_REFRESH_RETRY_AFTER_MS,
   REFRESH_RETRY_BASE_DELAYS_MS,
+  REFRESH_RETRY_ONCE_DEADLINE_MS,
   refreshRetryDelayMs,
+  type RefreshRetryOnceOutcome,
+  type RefreshRetryOnceTrigger,
+  refreshRetryOnceTriggerOf,
+  refreshWithOneImmediateRetry,
 } from './oauth/refresh-retry.js';
 export { consumeState, type IssuedState, issueState, timingSafeStringEqual } from './oauth/state.js';
 export type { ExchangeAuthCodeInput, TokenExchangeResult } from './oauth/token-exchange.js';

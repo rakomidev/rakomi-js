@@ -1,14 +1,19 @@
 
 import type { AuthError, HttpClient, OAuthTokenResponse } from '@rakomi/sdk-core';
-import { refreshAccessToken } from '@rakomi/sdk-core';
+import {
+  refreshAccessToken,
+  refreshOutcomeUnknownError,
+  refreshRetryOnceTriggerOf,
+  refreshWithOneImmediateRetry,
+} from '@rakomi/sdk-core';
 
 import type { DpopSession } from './dpop-session.js';
 
 /**
  * RFC 9449 / three-class client-side refresh failure taxonomy (+ network).
  *
- * `network` is every transient failure — no connection, a 5xx, 429 or 408, an unreadable
- * response — and also any rejection that is not definitive. The session is kept and retried;
+ * `network` is every transient failure — no connection, a 503, 521–523, 429 or 408 — and also
+ * any rejection that is not definitive. (Another 5xx is retried once at once; see `refreshWithDpop`.) The session is kept and retried;
  * only `invalid_refresh_token` and `invalid_dpop_proof` end it.
  */
 export type DpopRefreshErrorClass =
@@ -52,8 +57,29 @@ function proverUnavailable(message = 'DPoP prover unavailable'): { ok: false; er
  * Refresh the access token, attaching a DPoP proof IFF the session is bound.
  * Performs the single bounded nonce retry and maps every failure into the
  * three-class taxonomy. On success, re-confirms bound-truth from `token_type`.
+ *
+ * A 5xx other than 503 and 521–523, or a transport failure (no response arrived), is
+ * retried once, immediately, with a fresh proof from the same key: the server may have
+ * rotated the token before failing or before its answer was lost, and hands the rotation
+ * back to an identical retry within its window. If that retry is not a
+ * success or a definitive rejection, the outcome is unknown and the result is
+ * `invalid_refresh_token` (cause: `REFRESH_FAILED` / `revoked` with the first
+ * status, none after a transport failure) — the session ends and the token is never presented later.
  */
 export async function refreshWithDpop(input: RefreshWithDpopInput): Promise<DpopRefreshResult> {
+  const outcome = await refreshWithOneImmediateRetry({
+    send: () => refreshWithDpopOnce(input),
+    retryOnceTrigger: (r) => (!r.ok && r.error.class === 'network' && r.error.cause ? refreshRetryOnceTriggerOf({ ok: false, error: r.error.cause }) : undefined),
+    isSettled: (r) => r.ok || r.error.class === 'invalid_refresh_token' || r.error.class === 'invalid_dpop_proof',
+  });
+  if (outcome.uncertainAfter !== undefined) {
+    const cause = refreshOutcomeUnknownError(outcome.uncertainAfter);
+    return err('invalid_refresh_token', cause.code === 'REFRESH_FAILED' ? cause.message : 'refresh outcome unknown', cause);
+  }
+  return outcome.result;
+}
+
+async function refreshWithDpopOnce(input: RefreshWithDpopInput): Promise<DpopRefreshResult> {
   const session = input.dpopSession;
   const bound = session?.isBound === true;
 

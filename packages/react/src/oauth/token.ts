@@ -6,7 +6,13 @@
  * and avoid CORS credential conflicts with the Rakomi API's origin-echo configuration.
  */
 
-import { parseRetryAfterMs } from '@rakomi/sdk-core';
+import {
+  isSettledRefreshResult,
+  parseRetryAfterMs,
+  refreshOutcomeUnknownError,
+  refreshRetryOnceTriggerOf,
+  refreshWithOneImmediateRetry,
+} from '@rakomi/sdk-core';
 
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { OAuthTokenResponse } from '../types.js';
@@ -44,6 +50,13 @@ export async function exchangeCode(options: {
 /**
  * Refresh an access token using a refresh token.
  * Public client: no client_secret needed (session is bound to client via oauthClientId).
+ *
+ * A 5xx other than 503 and 521–523, or a transport failure (no response arrived), is retried once,
+ * immediately (the server may have rotated the token before failing or before its answer was lost,
+ * and hands the rotation back to an identical retry within its window). If
+ * that retry does not settle the refresh, the outcome is unknown and the result is a terminal
+ * `REFRESH_FAILED` (`reason: 'revoked'`): the session ends and the user signs in again — the
+ * token is never presented later.
  */
 export async function refreshToken(options: {
   refreshToken: string;
@@ -57,7 +70,15 @@ export async function refreshToken(options: {
     client_id: options.clientId,
   });
 
-  return tokenRequest(baseUrl, body, 'refresh');
+  const outcome = await refreshWithOneImmediateRetry({
+    send: () => tokenRequest(baseUrl, body, 'refresh'),
+    retryOnceTrigger: refreshRetryOnceTriggerOf,
+    isSettled: isSettledRefreshResult,
+  });
+  if (outcome.uncertainAfter !== undefined) {
+    return { ok: false, error: refreshOutcomeUnknownError(outcome.uncertainAfter) };
+  }
+  return outcome.result;
 }
 
 /**
