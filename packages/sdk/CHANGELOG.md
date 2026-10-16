@@ -1,3 +1,7 @@
+## 0.10.0 — 2026-10-16
+
+- **A token refresh answered with a 5xx other than 503 and 521–523, or one that gets no response, is retried once, immediately — and if that does not settle it, the session ends instead of being retried later.** The server may have rotated the refresh token before it failed or before its answer was lost, and it hands that rotation back only to an identical retry (same client, same network address and user agent, same DPoP key) within 10 seconds. The SDKs now send that one retry at once, with a fresh DPoP proof from the same key on a bound session, when the first failure arrived within 8 seconds. If the retry is neither a success nor a definitive rejection (another 5xx, a 503, a 429, a network failure), the outcome is unknown and the session ends: before, the failure was transient and the same refresh token was sent again with backoff — after the window, a rotated token sent again is a reuse, and the server revokes every session of the user. A 503, 521–523, 429 or 408 is unchanged: transient, the session kept. **Breaking:** a network failure on the first request is no longer transient on its own — it gets the same one immediate retry, and two in a row end the session.
+
 ## 0.9.0 — 2026-10-13
 
 - **Breaking: `credentials.list()` pages with a cursor.** `GET /v1/credentials` no longer takes `offset`. Pass `cursor` (the previous page's `pagination.next_cursor`) instead; the result now carries `pagination: { next_cursor, has_more }`. **Action needed** if you passed `offset`: loop on `pagination.next_cursor` until `has_more` is false.

@@ -9,6 +9,7 @@ import {
   AUTH_DPOP_ROTATION_NOOP,
   AUTH_INVALID_DPOP_PROOF,
   AUTH_INVALID_REFRESH_TOKEN,
+  AUTH_REFRESH_OUTCOME_UNKNOWN,
   AUTH_REFRESH_SUPERSEDED_BY_ROTATION,
   isTransientHttpStatus,
   OAUTH_INVALID_CLIENT,
@@ -21,6 +22,7 @@ import {
   parseRetryAfterSeconds,
   RakomiError,
 } from './errors.js';
+import { isRefreshRetryOnceStatus, refreshWithOneImmediateRetry } from './internal/refresh-retry-once.js';
 import type {
   AuthorizeUrlOptions,
   OAuthExchangeOptions,
@@ -397,12 +399,39 @@ function decodeCnfJkt(accessToken: string): string | undefined {
 }
 
 /**
- * Build + send the refresh request, attaching a DPoP proof when the session is
- * bound, with a single bounded nonce-challenge retry. Never throws —
- * always resolves to a `VerifyResult`. Runs INSIDE the single-flight critical
- * section registered by `refreshToken`.
+ * One refresh with the 5xx policy: a 5xx other than 503 and 521–523 — after which the server may
+ * already have rotated the token — or a transport failure (no response arrived; the answer may have
+ * been lost after the rotation) is retried once, immediately, with a fresh proof from the same
+ * DPoP key. A retry that is neither a success nor a definitive rejection leaves the outcome
+ * unknown: `auth/refresh_outcome_unknown`, and the caller re-authenticates. Runs INSIDE the
+ * single-flight critical section registered by `refreshToken`.
  */
 async function executeRefresh(
+  options: OAuthRefreshOptions,
+): Promise<VerifyResult<OAuthTokenResponse>> {
+  const outcome = await refreshWithOneImmediateRetry({
+    send: () => executeRefreshOnce(options),
+    retryOnceTrigger: (r) => {
+      if (r.ok) return undefined;
+      if (TRANSPORT_FAILURES.has(r.error)) return 'network';
+      return r.error.code === 'oauth/temporarily_unavailable' && typeof r.error.status === 'number' && isRefreshRetryOnceStatus(r.error.status)
+        ? r.error.status
+        : undefined;
+    },
+    isSettled: (r) => r.ok || r.error.code === 'auth/invalid_refresh_token' || r.error.code === 'auth/invalid_dpop_proof',
+  });
+  if (outcome.uncertainAfter !== undefined) {
+    return { ok: false, error: AUTH_REFRESH_OUTCOME_UNKNOWN(outcome.uncertainAfter) };
+  }
+  return outcome.result;
+}
+
+/**
+ * Build + send the refresh request, attaching a DPoP proof when the session is
+ * bound, with a single bounded nonce-challenge retry. Never throws —
+ * always resolves to a `VerifyResult`.
+ */
+async function executeRefreshOnce(
   options: OAuthRefreshOptions,
 ): Promise<VerifyResult<OAuthTokenResponse>> {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
@@ -535,6 +564,14 @@ function wwwAuthenticateHasError(headerValue: string | null, error: string): boo
   return new RegExp(`error="${error}"`).test(headerValue);
 }
 
+/**
+ * The `oauth/network_error` objects that stand for a transport failure (no response arrived), as
+ * opposed to a response the SDK could not read — only the former gets the one immediate refresh
+ * retry: an unreadable 2xx means the server already rotated the token. Identity, not a field, so the
+ * public error shape is unchanged.
+ */
+const TRANSPORT_FAILURES = new WeakSet<object>();
+
 async function tokenRequest(
   baseUrl: string,
   body: URLSearchParams,
@@ -551,7 +588,9 @@ async function tokenRequest(
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Network error';
-    return { result: { ok: false, error: OAUTH_NETWORK_ERROR(detail) } };
+    const error = OAUTH_NETWORK_ERROR(detail);
+    TRANSPORT_FAILURES.add(error);
+    return { result: { ok: false, error } };
   }
 
   let json: unknown;

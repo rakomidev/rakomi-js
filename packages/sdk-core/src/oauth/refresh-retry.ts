@@ -9,10 +9,22 @@
  *   `access_denied`, or a bare 401 (client authentication failed). Also a 2xx whose body the SDK
  *   cannot read: the server already rotated the refresh token, and presenting it again would be a
  *   reuse that revokes every session of the user.
- * - **Transient** (keep the session, retry with backoff): a 5xx, 429 or 408 (whatever the body),
- *   or a transport failure. A retry re-presents the same refresh token; the server did not accept
- *   it, so it is still valid.
+ * - **Retry once, now** ({@link isRefreshRetryOnceStatus}): a 5xx other than 503 and 521–523, or a
+ *   transport failure (no response arrived). The server may have rotated the refresh token before
+ *   it failed or before its answer was lost, and it hands a lost rotation back
+ *   only to an identical retry (same client, same network address and user agent, same DPoP key)
+ *   within 10 seconds of the rotation. So the refresh is sent once more, immediately, and only
+ *   while the first answer arrived within {@link REFRESH_RETRY_ONCE_DEADLINE_MS}. If that retry is
+ *   not a success or a definitive rejection, the outcome of the first request is unknown: the
+ *   session ends locally and the user signs in again. The token is never presented later — after
+ *   the window, a rotated token presented again revokes every session of the user.
+ *   {@link refreshWithOneImmediateRetry} implements this for every runtime.
+ * - **Transient** (keep the session, retry with backoff): a 503, 521, 522 or 523 (the request did not
+ *   reach a server that could rotate the token), or a 429 or 408 (whatever the body). A retry
+ *   re-presents the same refresh token; the server did not accept it, so it is still valid.
  */
+
+import type { AuthError } from '../types/auth-error.js';
 
 /** Base backoff delays between refresh attempts. The budget is one retry per entry. */
 export const REFRESH_RETRY_BASE_DELAYS_MS: readonly number[] = [2000, 8000, 30000];
@@ -48,6 +60,91 @@ export function isDefinitiveRefreshRejection(status: number, oauthError: string 
   if (status < 400 || status >= 500 || isTransientStatus(status)) return false;
   if (oauthError !== undefined && DEFINITIVE_OAUTH_ERRORS.has(oauthError)) return true;
   return status === 401;
+}
+
+/**
+ * `true` for a refresh failure status after which the server may already have rotated the
+ * refresh token: any 5xx except 503 (Service Unavailable) and 521–523 (the origin was down,
+ * timed out on connect, or unreachable — the request never reached it).
+ */
+export function isRefreshRetryOnceStatus(status: number): boolean {
+  if (status < 500 || status > 599) return false;
+  return status !== 503 && !(status >= 521 && status <= 523);
+}
+
+/**
+ * How long after sending the first refresh its 5xx answer may arrive for the SDK still to retry.
+ * The server keeps a lost rotation for 10 seconds; the margin covers the retry's own trip.
+ */
+export const REFRESH_RETRY_ONCE_DEADLINE_MS = 8000;
+
+/**
+ * What made the first refresh worth one immediate retry: the HTTP status of a
+ * {@link isRefreshRetryOnceStatus} answer, or `'network'` when no response arrived.
+ */
+export type RefreshRetryOnceTrigger = number | 'network';
+
+/** Outcome of {@link refreshWithOneImmediateRetry}. */
+export interface RefreshRetryOnceOutcome<R> {
+  /** The result to act on: the retry's result when one was sent, else the first. */
+  result: R;
+  /**
+   * Set when the refresh outcome is unknown: the first request failed this way and no retry settled
+   * it. End the session and sign in again; never present the refresh token again.
+   */
+  uncertainAfter?: RefreshRetryOnceTrigger;
+  /** `true` when a second request was sent. */
+  retried: boolean;
+}
+
+/**
+ * Send a refresh, and after a {@link isRefreshRetryOnceStatus} failure or a transport failure send it
+ * once more, immediately — never later and never a third time.
+ *
+ * `send` performs one complete refresh attempt (including a DPoP proof with a fresh `jti` from the
+ * same key, and any nonce retry). `retryOnceTrigger` returns the {@link RefreshRetryOnceTrigger} when a
+ * result is a retry-once failure, else `undefined`. The retry is sent only while the first failure
+ * arrived within {@link REFRESH_RETRY_ONCE_DEADLINE_MS}. `isSettled` says whether a result is final: a success or a
+ * definitive rejection (for example `invalid_grant`). Anything else after the retry — another 5xx, a
+ * 503, a 429, a transport failure — leaves the outcome unknown.
+ */
+export async function refreshWithOneImmediateRetry<R>(input: {
+  send: () => Promise<R>;
+  retryOnceTrigger: (result: R) => RefreshRetryOnceTrigger | undefined;
+  isSettled: (result: R) => boolean;
+  now?: () => number;
+}): Promise<RefreshRetryOnceOutcome<R>> {
+  const now = input.now ?? Date.now;
+  const startedAt = now();
+  const first = await input.send();
+  const trigger = input.retryOnceTrigger(first);
+  if (trigger === undefined) return { result: first, retried: false };
+  if (now() - startedAt > REFRESH_RETRY_ONCE_DEADLINE_MS) {
+    return { result: first, uncertainAfter: trigger, retried: false };
+  }
+  const second = await input.send();
+  if (input.isSettled(second)) return { result: second, retried: true };
+  return { result: second, uncertainAfter: trigger, retried: true };
+}
+
+/**
+ * {@link refreshWithOneImmediateRetry} classifiers for a refresh result shaped
+ * `{ ok: true, … } | { ok: false, error: AuthError }`: the retry-once trigger of a failed result — a
+ * {@link isRefreshRetryOnceStatus} status, or `'network'` for a transport failure (a `'network'`
+ * refresh failure without a status).
+ */
+export function refreshRetryOnceTriggerOf(result: { ok: boolean; error?: AuthError }): RefreshRetryOnceTrigger | undefined {
+  const error = result.ok ? undefined : result.error;
+  if (error?.code !== 'REFRESH_FAILED' || error.reason !== 'network') return undefined;
+  if (error.status === undefined) return 'network';
+  return isRefreshRetryOnceStatus(error.status) ? error.status : undefined;
+}
+
+/** A refresh result that needs no retry: a success, or a rejection that ends the session. */
+export function isSettledRefreshResult(result: { ok: boolean; error?: AuthError }): boolean {
+  if (result.ok) return true;
+  const error = result.error;
+  return error?.code === 'REFRESH_FAILED' && (error.reason === 'revoked' || error.reason === 'expired');
 }
 
 /** Uniform `[0, 1)` from the platform CSPRNG; `0.5` (no jitter) where none is available. */

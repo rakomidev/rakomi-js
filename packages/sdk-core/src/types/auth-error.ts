@@ -20,9 +20,13 @@
  * `reason` tells the app what happened to the session:
  * - `'expired'` / `'revoked'` — the session is over; the SDK has cleared it. This includes a 2xx
  *   refresh response the SDK cannot read (`status` is the 2xx): the server already rotated the
- *   refresh token, so the SDK never sends it again.
- * - `'network'` — a transient failure (no connection, or a 5xx, 429 or 408). The session is kept
- *   and the SDK retries; `retryAfterMs` is the server's `Retry-After` when it sent one.
+ *   refresh token, so the SDK never sends it again. It also includes a refresh whose outcome is
+ *   unknown (`status` is a 5xx other than 503 and 521–523, or absent when no response arrived): the
+ *   SDK retried once at once, the retry did not settle it, and the server may already have rotated
+ *   the token.
+ * - `'network'` — a failure the runtime may retry: a 503, 521–523, 429 or 408 (the session is kept;
+ *   `retryAfterMs` is the server's `Retry-After` when it sent one), or, from a single request, a 5xx
+ *   or no response, which the runtimes retry once at once before deciding.
  */
 export type AuthError =
   | {
