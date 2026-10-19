@@ -34,6 +34,12 @@ export interface StoredSession {
    * this story) keeps parsing unchanged.
    */
   readonly home_tenant_id?: string;
+  /**
+   * Set (epoch ms) just before this session's `refresh_token` is sent to the token endpoint, and absent on every
+   * session written after a refresh completed. A session read back with it still set holds a refresh token the
+   * server may already have rotated out: it is never sent again, and the user signs in again instead.
+   */
+  readonly refresh_presented_at?: number;
 }
 
 /** Injectable session store — the real implementation is `FileSessionStore` or `KeychainSessionStore`; tests use an in-memory fake. */
@@ -168,7 +174,8 @@ function isStoredSession(value: unknown): value is StoredSession {
     typeof v.expires_at === 'number' &&
     typeof v.api_base_url === 'string' &&
     typeof v.client_id === 'string' &&
-    (v.home_tenant_id === undefined || typeof v.home_tenant_id === 'string')
+    (v.home_tenant_id === undefined || typeof v.home_tenant_id === 'string') &&
+    (v.refresh_presented_at === undefined || typeof v.refresh_presented_at === 'number')
   );
 }
 

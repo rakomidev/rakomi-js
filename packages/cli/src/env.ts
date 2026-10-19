@@ -50,6 +50,17 @@ export const DEFAULT_PLATFORM_TENANT_ID = '01ef847e-4c40-4960-af05-11112c4764b2'
 export const CI_FEDERATION_SESSION_CLIENT_ID = 'oidc-federation';
 
 /**
+ * The platform's own tenant-administration client (`rakomi login --tenant-admin`): a public client that signs in
+ * through the browser with PKCE and a DPoP key, and asks for the `tenants:manage` scope. The server grants that scope
+ * only to a verified owner of a tenant, issues short-lived DPoP-bound tokens for it, and checks ownership of the
+ * tenant on every request.
+ */
+export const TENANT_ADMIN_CLIENT_ID = 'rakomi-cli-tenant-admin';
+
+/** The scope `rakomi login --tenant-admin` requests — exactly the tenant-administration client's registered scopes. */
+export const TENANT_ADMIN_LOGIN_SCOPE = 'openid profile email tenants:manage';
+
+/**
  * True iff `id` is a CIMD `client_id` — an absolute `https://` URL, no userinfo, no fragment. A
  * deliberate, minimal, standalone re-implementation of the server's own recognizer rather than a
  * dependency on it: this package ships with ZERO runtime dependencies by design (a tiny install
