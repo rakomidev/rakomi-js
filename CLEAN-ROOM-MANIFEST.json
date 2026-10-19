@@ -88,10 +88,10 @@
     },
     {
       "name": "rakomi",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "tagPrefix": "cli",
       "emittedSymbols": [],
-      "fileCount": 36
+      "fileCount": 37
     }
   ],
   "files": [
@@ -121,7 +121,7 @@
     },
     {
       "path": "packages/cli/src/commands/login.ts",
-      "sha256": "sha256:cc3d95cad0e7082835593751c2e9b255d40b1b54f0fa7e59b66f493de930f712"
+      "sha256": "sha256:c811b3bdcbe90f0b5001c4995ceb2a4ca8064cd718f0fcf3212e0b4fc44323d2"
     },
     {
       "path": "packages/cli/src/commands/logout.ts",
@@ -157,7 +157,7 @@
     },
     {
       "path": "packages/cli/src/env.ts",
-      "sha256": "sha256:f71aa2a395d7cf493828df3f3a4a4e16c427222a17d4587a1c2fa1bab293314a"
+      "sha256": "sha256:4c51457ee8ded8e912e2e4e1994f8056caec39e32e1495fc42130fd6df22d4e5"
     },
     {
       "path": "packages/cli/src/errors.ts",
@@ -169,11 +169,11 @@
     },
     {
       "path": "packages/cli/src/index.ts",
-      "sha256": "sha256:1b945313b7e53157ffdecf75ac21bae8a2fe7477af3e9cc225f0b5b9284d22fe"
+      "sha256": "sha256:b9bc0209512a0c8606bd87a871f2b597ba37a0d0c405695429a52b85e81f7242"
     },
     {
       "path": "packages/cli/src/install-key.ts",
-      "sha256": "sha256:a08b81ad911770859791abd4dfe29691b5012ff1949a0c54a5f6700ba9d0250c"
+      "sha256": "sha256:ae78be173e8d7aafc3847131b77f2cf26c2cbd8d225871e72a755b8352c5f679"
     },
     {
       "path": "packages/cli/src/lease-client.ts",
@@ -208,12 +208,16 @@
       "sha256": "sha256:7ccdbd4613960981cc5832318acc59a8f664e6d22fb944dfeecc773fb0a17486"
     },
     {
+      "path": "packages/cli/src/refresh-lock.ts",
+      "sha256": "sha256:74036cf5e16ec4e453694d15e7cde0fdc5b675133fb3733887f9e9a34a85001e"
+    },
+    {
       "path": "packages/cli/src/server-name.ts",
       "sha256": "sha256:a28f2d1c472d3805aa78316db050d38e08ba3ecf54c6e588125da536cb4bbdd1"
     },
     {
       "path": "packages/cli/src/session.ts",
-      "sha256": "sha256:76b4214e0110148168689c8c4cfdb115b1ec14cdbb1b703a39deeb46d3317e36"
+      "sha256": "sha256:d5c15cadc22675d0c4e574c8854d4acb26bf76a088619b218b1cafb3323dcee6"
     },
     {
       "path": "packages/cli/src/tenant-config.ts",
@@ -225,7 +229,7 @@
     },
     {
       "path": "packages/cli/src/token-refresh.ts",
-      "sha256": "sha256:26517075985861964eec54c663bc77c38b4620bb282f7bec387a044b1e919dac"
+      "sha256": "sha256:0fcd88ec809dbe2388750bd2f63c75126c6a4ac5d5622c5fa1b49c5e3ed9cf03"
     },
     {
       "path": "packages/cli/src/toml-config.ts",
@@ -233,7 +237,7 @@
     },
     {
       "path": "packages/cli/src/usage.ts",
-      "sha256": "sha256:4c6247052943a9f2b85c0bd1909fabb3a4a531ac2d6a67bf60e9f98569e7dab3"
+      "sha256": "sha256:9e3253e496f7a041622c1caddbb584c77f2aa116aba4a5e0507c564182b6a019"
     },
     {
       "path": "packages/cli/src/userinfo-client.ts",

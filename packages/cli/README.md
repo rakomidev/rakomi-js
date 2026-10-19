@@ -24,6 +24,12 @@ session to get a short code to enter on another device instead. If you don't alr
 `RAKOMI_PLATFORM_TENANT_ID`) so sign-in knows which tenant to authenticate against — ask your
 Rakomi administrator for the right value.
 
+`rakomi login --tenant-admin` signs in to administer the tenants you own (for example their OAuth clients)
+from scripts and agents. It uses the browser only, binds its tokens to a key kept on this machine
+(DPoP), and its access tokens are short-lived; access is granted only if you own a tenant, and every
+request is checked against the tenant you name. Concurrent `rakomi` processes refresh such a session
+one at a time, so a refresh token is never presented twice.
+
 `rakomi whoami` shows the tenant you signed in against ("Home tenant") and the tenant your other
 commands should treat as active ("Active tenant") — including whether that active selection was
 confirmed by the server or only remembered locally. `rakomi tenants memberships` lists every tenant

@@ -13,6 +13,8 @@ import {
   isCimdPlatformSupported,
   isValidTenantId,
   platformTenantId,
+  TENANT_ADMIN_CLIENT_ID,
+  TENANT_ADMIN_LOGIN_SCOPE,
 } from '../env.js';
 import { CliError, EXIT, UsageError } from '../errors.js';
 import type { HttpDeps } from '../http.js';
@@ -137,11 +139,22 @@ export interface LoginDeps extends HttpDeps {
   readonly now: () => number;
   /** Story rakomi-cli-login-identity-first-platform-tenant — `rakomi login --tenant-id <uuid>`; wins over `RAKOMI_PLATFORM_TENANT_ID` when both are given. */
   readonly explicitTenantId?: string;
+  /** `rakomi login --tenant-admin` — sign in with the tenant-administration client instead of the configured one. */
+  readonly clientIdOverride?: string;
 }
 
 export async function runLogin(deps: LoginDeps): Promise<void> {
   const apiUrl = apiBaseUrl(deps.env);
-  const cid = resolveClientId(deps.env);
+  const cid = deps.clientIdOverride ?? resolveClientId(deps.env);
+  const tenantAdmin = cid === TENANT_ADMIN_CLIENT_ID;
+
+  if (tenantAdmin && deps.noBrowser) {
+    throw new CliError(
+      'rakomi login --tenant-admin signs in through the browser only: its tokens are bound to a key on this machine, ' +
+        'which the device-code sign-in cannot do. Omit --no-browser.',
+      EXIT.FAIL,
+    );
+  }
 
   if (deps.noBrowser && isCimdClientId(cid)) {
     throw new CliError(
@@ -159,10 +172,10 @@ export async function runLogin(deps: LoginDeps): Promise<void> {
     }
   }
 
-  const installKey = isCimdClientId(cid) ? getOrCreateInstallKey(deps.keys, cid) : undefined;
+  const installKey = isCimdClientId(cid) || tenantAdmin ? getOrCreateInstallKey(deps.keys, cid) : undefined;
 
   let tenantId: string | undefined;
-  if (!deps.noBrowser && isCimdClientId(cid)) {
+  if (!deps.noBrowser && (isCimdClientId(cid) || tenantAdmin)) {
     tenantId = resolvePlatformTenantId(deps.env, deps.explicitTenantId);
     if (!tenantId) {
       throw new CliError(platformTenantMissingMessage(), EXIT.FAIL);
@@ -171,7 +184,7 @@ export async function runLogin(deps: LoginDeps): Promise<void> {
 
   const token = deps.noBrowser
     ? await runDeviceGrantLogin(deps, apiUrl, cid)
-    : await runLoopbackLogin(deps, apiUrl, cid, installKey, tenantId);
+    : await runLoopbackLogin(deps, apiUrl, cid, installKey, tenantId, tenantAdmin ? TENANT_ADMIN_LOGIN_SCOPE : LOGIN_SCOPE);
 
   const session: StoredSession = {
     access_token: token.access_token,
@@ -188,7 +201,12 @@ export async function runLogin(deps: LoginDeps): Promise<void> {
   deps.session.write(session);
   deps.stdout.write('Logged in to Rakomi.\n');
 
-  if (installKey) {
+  if (tenantAdmin && session.token_type !== 'DPoP') {
+    deps.session.clear();
+    throw new CliError("The server did not bind this tenant-administration session to this machine's key, so it was not kept.", EXIT.FAIL);
+  }
+
+  if (installKey && !tenantAdmin) {
     await bindInstallKey(
       deps,
       deps.keys,
@@ -204,6 +222,7 @@ async function runLoopbackLogin(
   cid: string,
   installKey: StoredInstallKey | undefined,
   tenantId: string | undefined,
+  scope: string,
 ): Promise<{ access_token: string; refresh_token?: string; token_type: string; expires_in: number }> {
   const listener = await deps.startLoopback();
   try {
@@ -213,7 +232,7 @@ async function runLoopbackLogin(
       clientId: cid,
       redirectUri: listener.redirectUri,
       pkce,
-      scope: LOGIN_SCOPE,
+      scope,
       tenantId,
     });
     deps.stdout.write('Signing you in to your Rakomi developer account (separate from your tenants\' end-user accounts)…\n');

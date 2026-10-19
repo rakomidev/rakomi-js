@@ -18,11 +18,12 @@ import { runTenantsClaim, runTenantsCreate, runTenantsList, runTenantsMembership
 import { runUpgrade } from './commands/upgrade.js';
 import { runUse } from './commands/use.js';
 import { runWhoami } from './commands/whoami.js';
-import { apiBaseUrl, type CliEnv, DEFAULT_MCP_URL } from './env.js';
+import { apiBaseUrl, type CliEnv, DEFAULT_MCP_URL, TENANT_ADMIN_CLIENT_ID } from './env.js';
 import { CliError, EXIT, type ExitCode, UsageError } from './errors.js';
 import type { FetchLike, RefreshedCredentials } from './http.js';
 import { startLoopbackListener } from './loopback-server.js';
-import { type KeyStore, type ResolvedStores, resolveStores, type SessionStore } from './session.js';
+import { createFileRefreshLock, type RefreshLock } from './refresh-lock.js';
+import { configDir, type KeyStore, type ResolvedStores, resolveStores, type SessionStore } from './session.js';
 import { FileTenantConfigStore, type TenantConfigStore } from './tenant-config.js';
 import { refreshSession } from './token-refresh.js';
 import { helpText, type OutputStream, usageLine } from './usage.js';
@@ -48,6 +49,8 @@ export interface RunDeps {
   /** Injectable so `login --ci`'s `--oidc-token-file` path is testable with no real filesystem;
    * defaults to `readFileSync` in `main()`. */
   readonly readTextFile?: (path: string) => string;
+  /** The single-flight refresh lock; defaults to a lock file in the CLI config directory. */
+  readonly refreshLock?: RefreshLock;
 }
 
 const GLOBAL_OPTIONS = {
@@ -64,6 +67,7 @@ const GLOBAL_OPTIONS = {
   owner: { type: 'string' },
   slug: { type: 'string' },
   'tenant-id': { type: 'string' },
+  'tenant-admin': { type: 'boolean' },
   tenant: { type: 'string' },
   'ttl-seconds': { type: 'string' },
   label: { type: 'string' },
@@ -130,7 +134,8 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
   const onUnauthorized = async (): Promise<RefreshedCredentials | undefined> => {
     const current = deps.session.read();
     if (!current) return undefined;
-    return refreshSession({ fetchImpl: deps.fetchImpl }, current, deps.keys, deps.session, () => Date.now());
+    const lock = deps.refreshLock ?? createFileRefreshLock(join(configDir(deps.env), 'refresh.lock'));
+    return refreshSession({ fetchImpl: deps.fetchImpl, lock }, current, deps.keys, deps.session, () => Date.now());
   };
   const authHttpDeps = { ...httpDeps, onUnauthorized };
 
@@ -164,6 +169,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
         stdout: deps.stdout,
         now: () => Date.now(),
         explicitTenantId: typeof values['tenant-id'] === 'string' ? values['tenant-id'] : undefined,
+        ...(values['tenant-admin'] === true ? { clientIdOverride: TENANT_ADMIN_CLIENT_ID } : {}),
       });
       return EXIT.OK;
     }

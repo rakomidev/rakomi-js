@@ -2,7 +2,7 @@
 
 import { createPrivateKey, generateKeyPairSync, randomUUID, sign as cryptoSign } from 'node:crypto';
 
-import { CI_FEDERATION_SESSION_CLIENT_ID, isCimdClientId } from './env.js';
+import { CI_FEDERATION_SESSION_CLIENT_ID, isCimdClientId, TENANT_ADMIN_CLIENT_ID } from './env.js';
 import { type HttpDeps, request } from './http.js';
 import type { KeyStore, StoredSession } from './session.js';
 
@@ -172,6 +172,8 @@ export async function bindInstallKey(
  */
 export function resolveDpopKey(keys: KeyStore, session: StoredSession): StoredInstallKey | undefined {
   if (session.token_type !== 'DPoP') return undefined;
-  if (!isCimdClientId(session.client_id) && session.client_id !== CI_FEDERATION_SESSION_CLIENT_ID) return undefined;
+  if (!isCimdClientId(session.client_id) && session.client_id !== CI_FEDERATION_SESSION_CLIENT_ID && session.client_id !== TENANT_ADMIN_CLIENT_ID) {
+    return undefined;
+  }
   return getOrCreateInstallKey(keys, session.client_id);
 }
