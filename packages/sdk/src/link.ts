@@ -29,6 +29,7 @@ import {
   MfaStepUpRequiredError,
   MfaStepUpUnavailableError,
   ReauthRequiredError,
+  StepUpRequiredError,
 } from './errors.js';
 import { extractRequestId } from './internal/request-id.js';
 import type { SdkError, VerifyResult } from './types.js';
@@ -76,6 +77,15 @@ export interface UnlinkResponse {
 export interface LinkCallOptions {
   /** End-user JWT (Bearer). REQUIRED — these endpoints do NOT accept API keys. */
   userToken: string;
+}
+
+export interface LinkRemoveOptions extends LinkCallOptions {
+  /**
+   * A fresh step-up token, sent as `X-Step-Up-Token`. Unlinking requires one: without it, or
+   * with one that does not meet the account's floor, the call fails with
+   * `passkey/step_up_required` (see {@link StepUpRequiredError}).
+   */
+  stepUpToken?: string;
 }
 
 /**
@@ -242,10 +252,13 @@ export class LinkClient {
     return { ok: false, error: await this.mapError(res, 'initiate') };
   }
 
-  /** DELETE /v1/users/me/link/{provider} — unlink a social identity. */
+  /**
+   * DELETE /v1/users/me/link/{provider} — unlink a social identity. Requires a fresh step-up
+   * token (`options.stepUpToken`); a refusal is `passkey/step_up_required`.
+   */
   async remove(
     provider: AccountLinkingProvider,
-    options: LinkCallOptions,
+    options: LinkRemoveOptions,
   ): Promise<VerifyResult<UnlinkResponse>> {
     let res: Response;
     try {
@@ -256,6 +269,7 @@ export class LinkClient {
           headers: {
             Authorization: `Bearer ${options.userToken}`,
             Accept: 'application/json',
+            ...(options.stepUpToken ? { 'X-Step-Up-Token': options.stepUpToken } : {}),
           },
           redirect: 'error',
         },
@@ -303,6 +317,22 @@ export class LinkClient {
         }
         break;
       case 401:
+        if (code === 'passkey/step_up_required') {
+          const aal = body.details?.required_aal;
+          const methodsRaw = body.details?.available_methods;
+          const methods = Array.isArray(methodsRaw)
+            ? methodsRaw.filter((m): m is string => typeof m === 'string')
+            : undefined;
+          const err = new StepUpRequiredError(
+            body.detail,
+            typeof aal === 'number' ? aal : undefined,
+            methods && methods.length > 0 ? methods : undefined,
+          );
+          return sdkErrorFromClass(err, {
+            ...(err.requiredAal !== undefined ? { required_aal: err.requiredAal } : {}),
+            ...(err.availableMethods ? { available_methods: [...err.availableMethods] } : {}),
+          });
+        }
         if (code === 'auth/reauth_required') {
           const reason = typeof body.details?.reason === 'string' && body.details.reason
             ? body.details.reason
@@ -444,6 +474,7 @@ function sdkErrorFromClass(
     | CooldownActiveError
     | MfaStepUpRequiredError
     | MfaStepUpUnavailableError
+    | StepUpRequiredError
     | LinkStateExpiredError
     | ReauthRequiredError,
   extra?: Record<string, unknown>,

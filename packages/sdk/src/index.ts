@@ -83,6 +83,7 @@ export {
   OAUTH_UNSUPPORTED_GRANT_TYPE,
   RakomiError,
   ReauthRequiredError,
+  StepUpRequiredError,
   TOKEN_CLIENT_MISMATCH,
   TOKEN_EXPIRED,
   TOKEN_INVALID_ALGORITHM,
@@ -116,6 +117,7 @@ export type {
   LinkedVia,
   LinkInitiateOptions,
   LinkInitiateResponse,
+  LinkRemoveOptions,
   UnlinkResponse,
 } from './link.js';
 export { LinkClient } from './link.js';

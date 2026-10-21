@@ -106,7 +106,12 @@ export interface UseLinkedAccountsResult {
    * answers with a {@link ReauthRequiredError} in `error`.
    */
   link: (provider: LinkProvider, reauth?: LinkReauth) => Promise<void>;
-  unlink: (provider: LinkProvider) => Promise<void>;
+  /**
+   * Unlink a social identity. The server requires a fresh step-up token, passed as
+   * `options.stepUpToken` (sent as `X-Step-Up-Token`); without a valid one the call sets
+   * `error.code` to `passkey/step_up_required`.
+   */
+  unlink: (provider: LinkProvider, options?: { stepUpToken?: string }) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -303,13 +308,14 @@ export function useLinkedAccounts(): UseLinkedAccountsResult {
   );
 
   const unlink = useCallback(
-    async (provider: LinkProvider): Promise<void> => {
+    async (provider: LinkProvider, options?: { stepUpToken?: string }): Promise<void> => {
       setIsUnlinking(true);
       setError(null);
       try {
         const res = await doFetch(`/v1/users/me/link/${encodeURIComponent(provider)}`, {
           method: 'DELETE',
           redirect: 'error',
+          ...(options?.stepUpToken ? { headers: { 'X-Step-Up-Token': options.stepUpToken } } : {}),
         });
         if (!res) return;
         if (res.status === 200) {

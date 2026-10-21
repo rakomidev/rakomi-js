@@ -29,14 +29,14 @@
   "packages": [
     {
       "name": "@rakomi/node",
-      "version": "0.10.0",
+      "version": "0.11.0",
       "tagPrefix": "sdk",
       "emittedSymbols": [],
       "fileCount": 38
     },
     {
       "name": "@rakomi/react",
-      "version": "0.9.0",
+      "version": "0.10.0",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -545,7 +545,7 @@
     },
     {
       "path": "packages/react/src/hooks/use-linked-accounts.ts",
-      "sha256": "sha256:36f6dc8b3019c196c2218880d33d00fa00b894262d964015374ae1f553632648"
+      "sha256": "sha256:e59c89e9898517e27cdad3b6688862a0c092dbc0cef065a875128f4bef063a8b"
     },
     {
       "path": "packages/react/src/hooks/use-organization-list.ts",
@@ -1009,7 +1009,7 @@
     },
     {
       "path": "packages/sdk/src/errors.ts",
-      "sha256": "sha256:8e42c424774759c8e318bb496a23940ba85d82d03f8840616ac55b3ba2a59802"
+      "sha256": "sha256:c3693b70e7f1d518d4d29602570db92891e57c1618a968de15184c27c0639bb7"
     },
     {
       "path": "packages/sdk/src/eudi.ts",
@@ -1025,7 +1025,7 @@
     },
     {
       "path": "packages/sdk/src/index.ts",
-      "sha256": "sha256:81e894c45eca6dec199ebd28cf34089f73580f646327dfc742325e948ce8a5a6"
+      "sha256": "sha256:bbb267df6e82b7d53bfc5c100fa78a1b7d8039ba0c20c568cf790792e7faf5ab"
     },
     {
       "path": "packages/sdk/src/internal/canonical-url.ts",
@@ -1061,7 +1061,7 @@
     },
     {
       "path": "packages/sdk/src/link.ts",
-      "sha256": "sha256:8dc380491541197d03941e0057ce8a3532f1e1f4726d5fb5e2beae0feef2ce8c"
+      "sha256": "sha256:d5495ff0535a185ac7a062717b1f9eb155b58a3d0dbea8d4d1b37b472764f009"
     },
     {
       "path": "packages/sdk/src/middleware.ts",
