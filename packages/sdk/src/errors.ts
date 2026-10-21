@@ -960,6 +960,45 @@ export class MfaStepUpUnavailableError extends Error {
 }
 
 /**
+ * Returned when an account-changing call (for example `link.remove()`) is refused
+ * with `401` and `code: 'passkey/step_up_required'`: the call needs a fresh
+ * step-up token in the `X-Step-Up-Token` header, or the token sent was missing,
+ * expired, issued for another session, or too weak for the account.
+ *
+ * An account with an authenticator app or a passkey must step up with one of
+ * them; for such an account the server names the methods it accepts
+ * (`availableMethods`) and the assurance level it requires (`requiredAal`).
+ * Both are absent for an account without a second factor.
+ *
+ * Calling code: obtain a step-up token through one of the
+ * `POST /v1/auth/step-up/*` routes, then retry the same call with it.
+ */
+export class StepUpRequiredError extends Error {
+  readonly code = 'passkey/step_up_required';
+  readonly suggestion: string;
+  readonly docs_url: string;
+  /** Assurance level the server requires (`2` for an account with a second factor), when it said so. */
+  readonly requiredAal?: number;
+  /** Step-up methods the server accepts for this account, when it named them. Open union. */
+  readonly availableMethods?: ReadonlyArray<string>;
+
+  constructor(
+    message = 'A fresh step-up is required for this action.',
+    requiredAal?: number,
+    availableMethods?: ReadonlyArray<string>,
+  ) {
+    super(message);
+    this.name = 'StepUpRequiredError';
+    this.requiredAal = requiredAal;
+    this.availableMethods = availableMethods;
+    this.suggestion = availableMethods && availableMethods.length > 0
+      ? `Step the user up with one of the accepted methods (${availableMethods.join(', ')}) and retry with the resulting token in the X-Step-Up-Token header.`
+      : 'Step the user up through a POST /v1/auth/step-up/* route and retry with the resulting token in the X-Step-Up-Token header.';
+    this.docs_url = `${DOCS_BASE}#passkey-step_up_required`;
+  }
+}
+
+/**
  * Thrown when an OAuth callback rejects a state row that expired or was
  * already used. The SDK typically surfaces this via the
  * link-list read (consumers infer the failure from a `?error=link_state_expired`
