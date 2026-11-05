@@ -114,9 +114,10 @@ jobs:
           mkdir -p /tmp/release-assets
           TMPDIR_PACK=$(mktemp -d)
           npm pack "${PKG_NAME}@${TAG_VERSION}" --pack-destination "$TMPDIR_PACK" --silent
-          TGZ=$(find "$TMPDIR_PACK" -maxdepth 1 -name '*.tgz' | head -1)
+          TGZ=$(find "$TMPDIR_PACK" -maxdepth 1 -name '*.tgz' -print -quit)
           test -n "$TGZ" || { echo "::error::npm pack produced no tarball for ${PKG_NAME}@${TAG_VERSION}"; exit 1; }
-          if tar -tzf "$TGZ" | grep -qx 'package/sbom.cdx.json'; then
+          TGZ_LIST=$(tar -tzf "$TGZ")
+          if grep -qx 'package/sbom.cdx.json' <<<"$TGZ_LIST"; then
             tar -xzf "$TGZ" -C "$TMPDIR_PACK" package/sbom.cdx.json
             cp "$TMPDIR_PACK/package/sbom.cdx.json" /tmp/release-assets/sbom.cdx.json
             echo "SBOM_PRESENT=true" >> "$GITHUB_ENV"
