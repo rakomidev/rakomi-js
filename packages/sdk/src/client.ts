@@ -35,6 +35,7 @@ import {
   exchangeCode as exchangeCodeImpl,
   generatePKCE as generatePKCEImpl,
   generateState as generateStateImpl,
+  refreshAgentToken as refreshAgentTokenImpl,
   refreshToken as refreshTokenImpl,
 } from './oauth.js';
 import {
@@ -44,6 +45,8 @@ import {
   type TokenExchangeResponse,
 } from './token-exchange.js';
 import type {
+  AgentTokenRefreshOptions,
+  AgentTokenRefreshResult,
   AuthorizeUrlOptions,
   MiddlewareOptions,
   OAuthExchangeOptions,
@@ -86,7 +89,6 @@ export class RakomiClient {
   private readonly issuer: string;
   private readonly clockTolerance: number;
   private readonly environment?: SdkEnvironment;
-  private readonly strictEnvironment: boolean;
   private readonly webhookSecret?: string;
   private readonly webhookTolerance: number;
   private readonly clientId?: string;
@@ -166,7 +168,6 @@ export class RakomiClient {
     this.clockTolerance = clampTolerance(config.clockTolerance, DEFAULT_CLOCK_TOLERANCE, MAX_CLOCK_TOLERANCE);
 
     this.environment = config.environment;
-    this.strictEnvironment = config.strictEnvironment === true;
 
     this.webhookSecret = config.webhookSecret;
     this.webhookTolerance = clampTolerance(
@@ -209,7 +210,7 @@ export class RakomiClient {
     }
 
     const sdkEnv = this.apiKey.startsWith('akm_test_') || this.apiKey.startsWith('akp_test_') ? 'test' : 'live';
-    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv, this.baseUrl, options?.dpop, this.issuer, this.strictEnvironment);
+    return verifyToken<T>(token, this.jwksCache, this.clockTolerance, sdkEnv, this.baseUrl, options?.dpop, this.issuer);
   }
 
   async verifyWebhook<T = WebhookEvent>(
@@ -277,6 +278,21 @@ export class RakomiClient {
     options: Omit<OAuthRefreshOptions, 'clientId' | 'clientSecret'> & { clientId?: string; clientSecret?: string },
   ): Promise<VerifyResult<OAuthTokenResponse>> {
     return refreshTokenImpl({
+      ...options,
+      clientId: options.clientId ?? this.clientId,
+      clientSecret: options.clientSecret ?? this.clientSecret,
+      baseUrl: options.baseUrl ?? this.baseUrl,
+    });
+  }
+
+  /**
+   * Renew a background-agent grant (RFC 6749 §6, client authentication in the body). The refresh
+   * token is single-use: store `refreshToken` from the result before anything else. Never throws.
+   */
+  async refreshAgentToken(
+    options: Omit<AgentTokenRefreshOptions, 'clientId' | 'clientSecret'> & { clientId?: string; clientSecret?: string },
+  ): Promise<VerifyResult<AgentTokenRefreshResult>> {
+    return refreshAgentTokenImpl({
       ...options,
       clientId: options.clientId ?? this.clientId,
       clientSecret: options.clientSecret ?? this.clientSecret,

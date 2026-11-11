@@ -193,8 +193,8 @@ export const TOKEN_INVALID_DPOP_PROOF = (
 export const AUTH_ENVIRONMENT_MISMATCH = () =>
   createError(
     'auth/environment_mismatch',
-    'Token environment does not match SDK environment. A test token cannot be verified with a live API key (and vice versa).',
-    'Ensure the API key and token are from the same environment (both live or both test).',
+    'Token environment does not match SDK environment, or the token names no environment. A test token cannot be verified with a live API key (and vice versa).',
+    'Ensure the API key and token are from the same environment (both live or both test), and that the token was issued after the environment claim became required.',
   );
 
 /**

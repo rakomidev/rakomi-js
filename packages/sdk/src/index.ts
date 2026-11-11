@@ -166,6 +166,7 @@ export {
   exchangeCode,
   generatePKCE,
   generateState,
+  refreshAgentToken,
   refreshToken,
   rotateRefreshKey,
 } from './oauth.js';
@@ -213,6 +214,8 @@ export {
   pollCiba,
 } from './ciba.js';
 export type {
+  AgentTokenRefreshOptions,
+  AgentTokenRefreshResult,
   AuthorizeUrlOptions,
   ChallengeErrorCode,
   ChallengeOptions,
