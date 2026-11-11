@@ -21,7 +21,7 @@
   },
   "toolchainPinSha256": "sha256:8457c0b1c9ac469e58d53e24b1e923770893dca1cbb7bbf53854dca53eff66b8",
   "ranUnder": {
-    "node": "v22.23.2",
+    "node": "v22",
     "typescript": "5.9.3"
   },
   "scope": "source-tree (src/** + generated inline barrel). package.json / README / CHANGELOG = publish-config task (dependency sanitization + Changesets regen + README authoring)",
