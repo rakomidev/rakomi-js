@@ -4,6 +4,7 @@
 import { decodeProtectedHeader, errors as joseErrors, jwtVerify } from 'jose';
 
 import {
+  AUTH_ENVIRONMENT_MISMATCH,
   LOGOUT_TOKEN_INVALID_EVENTS,
   LOGOUT_TOKEN_MISSING_CLAIMS,
   LOGOUT_TOKEN_MISSING_SUBJECT,
@@ -162,6 +163,10 @@ export async function verifyLogoutToken(
 
     if (payload.nonce !== undefined) {
       return { ok: false, error: LOGOUT_TOKEN_NONCE_PRESENT() };
+    }
+
+    if (typeof payload.rkm_env !== 'string' || payload.rkm_env.length === 0) {
+      return { ok: false, error: AUTH_ENVIRONMENT_MISMATCH() };
     }
 
     if (!hasBackchannelLogoutEvent(payload.events)) {

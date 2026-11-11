@@ -66,23 +66,51 @@ function isStepUpRequiredResponse(status: number, json: unknown): boolean {
   return status === 401 && body?.code === 'passkey/step_up_required';
 }
 
+type ChangePasswordResult =
+  | { ok: true }
+  | { ok: false; error: AuthError; stepUpRequired?: boolean };
+
+/**
+ * A 401 `auth/reauth_required` whose `details.reason` is `step_up_required` — the change-password
+ * refusal a caller can act on by stepping up. Deliberately narrower than `isStepUpRequiredResponse`:
+ * the same code with `reason: "password_required"` means the current password is missing.
+ */
+function isReauthStepUpRequiredResponse(status: number, json: unknown): boolean {
+  const body = json as { code?: string; details?: { reason?: unknown } } | undefined;
+  return status === 401 && body?.code === 'auth/reauth_required' && body.details?.reason === 'step_up_required';
+}
+
 export async function changePassword(options: {
   baseUrl: string;
   token: string;
   currentPassword: string;
   newPassword: string;
-}): Promise<SimpleResult> {
-  const { baseUrl, token, currentPassword, newPassword } = options;
+  /**
+   * A fresh step-up token, sent as `X-Step-Up-Token`. Required when the account has a second factor
+   * (an authenticator app or a passkey); the token must come from that factor. Optional otherwise.
+   */
+  stepUpToken?: string;
+}): Promise<ChangePasswordResult> {
+  const { baseUrl, token, currentPassword, newPassword, stepUpToken } = options;
 
   try {
-    const response = await authFetch(`${baseUrl}/v1/auth/change-password`, token, {
-      method: 'POST',
-      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-    });
+    const response = await authFetch(
+      `${baseUrl}/v1/auth/change-password`,
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      },
+      stepUpToken ? { 'X-Step-Up-Token': stepUpToken } : undefined,
+    );
 
     if (!response.ok) {
       const json = await response.json().catch(() => undefined);
-      return { ok: false, error: parseError(json, 'Password change failed') };
+      return {
+        ok: false,
+        error: parseError(json, 'Password change failed'),
+        ...(isReauthStepUpRequiredResponse(response.status, json) && { stepUpRequired: true }),
+      };
     }
     return { ok: true };
   } catch (err) {

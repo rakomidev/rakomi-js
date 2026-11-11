@@ -16,6 +16,7 @@ import {
   OAUTH_INVALID_GRANT,
   OAUTH_INVALID_REQUEST,
   OAUTH_MISSING_CLIENT_ID,
+  OAUTH_MISSING_CLIENT_SECRET,
   OAUTH_NETWORK_ERROR,
   OAUTH_TEMPORARILY_UNAVAILABLE,
   OAUTH_UNSUPPORTED_GRANT_TYPE,
@@ -24,6 +25,8 @@ import {
 } from './errors.js';
 import { isRefreshRetryOnceStatus, refreshWithOneImmediateRetry } from './internal/refresh-retry-once.js';
 import type {
+  AgentTokenRefreshOptions,
+  AgentTokenRefreshResult,
   AuthorizeUrlOptions,
   OAuthExchangeOptions,
   OAuthRefreshOptions,
@@ -128,8 +131,11 @@ export function generateState(): string {
  */
 export function buildAuthorizeUrl(options: AuthorizeUrlOptions): string {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-  const scope =
+  let scope =
     Array.isArray(options.scope) ? options.scope.join(' ') : (options.scope ?? DEFAULT_SCOPE);
+  if (options.offlineAccess === true && !scope.split(/\s+/).includes('offline_access')) {
+    scope = `${scope} offline_access`;
+  }
 
   const url = options.authorizationEndpoint
     ? new URL(options.authorizationEndpoint)
@@ -141,6 +147,9 @@ export function buildAuthorizeUrl(options: AuthorizeUrlOptions): string {
   url.searchParams.set('state', options.state);
   url.searchParams.set('code_challenge', options.codeChallenge);
   url.searchParams.set('code_challenge_method', 'S256');
+  if (options.offlineAccess === true) {
+    url.searchParams.set('prompt', 'consent');
+  }
   return url.toString();
 }
 
@@ -225,6 +234,51 @@ export async function refreshToken(
     const detail = err instanceof Error ? err.message : 'Unknown error';
     return { ok: false, error: OAUTH_NETWORK_ERROR(detail) };
   }
+}
+
+/**
+ * Renew a background-agent grant: `grant_type=refresh_token` with the agent client's own
+ * authentication in the request body (RFC 6749 §6), through the same single-flight gate and
+ * lost-response retry as {@link refreshToken}. Never throws.
+ *
+ * The refresh token is SINGLE-USE. The result carries its successor, and the caller MUST store
+ * it before using the new access token: presenting a consumed token ends the grant and every
+ * session of the human. A response without a successor is reported as an error, never as success.
+ */
+export async function refreshAgentToken(
+  options: AgentTokenRefreshOptions,
+): Promise<VerifyResult<AgentTokenRefreshResult>> {
+  if (!options.clientId) {
+    return { ok: false, error: OAUTH_MISSING_CLIENT_ID() };
+  }
+  if (!options.clientSecret) {
+    return { ok: false, error: OAUTH_MISSING_CLIENT_SECRET() };
+  }
+  const result = await refreshToken({
+    refreshToken: options.refreshToken,
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    ...(options.scope !== undefined ? { scope: options.scope } : {}),
+    ...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
+  });
+  if (!result.ok) return result;
+  const { access_token, token_type, expires_in, refresh_token, scope } = result.data;
+  if (typeof refresh_token !== 'string' || refresh_token.length === 0) {
+    return {
+      ok: false,
+      error: OAUTH_NETWORK_ERROR('The token response carried no successor refresh token'),
+    };
+  }
+  return {
+    ok: true,
+    data: {
+      accessToken: access_token,
+      tokenType: token_type,
+      expiresIn: expires_in,
+      refreshToken: refresh_token,
+      scope: scope ?? '',
+    },
+  };
 }
 
 /**
@@ -443,6 +497,10 @@ async function executeRefreshOnce(
   };
   if (options.clientSecret) {
     params.client_secret = options.clientSecret;
+  }
+  if (options.scope !== undefined) {
+    const scope = Array.isArray(options.scope) ? options.scope.join(' ') : options.scope;
+    if (scope.length > 0) params.scope = scope;
   }
   const body = new URLSearchParams(params);
 

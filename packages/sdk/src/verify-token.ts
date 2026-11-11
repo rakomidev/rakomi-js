@@ -113,11 +113,6 @@ export interface VerifyTokenCoreOptions {
   clockTolerance: number;
   sdkEnvironment?: 'live' | 'test';
   /**
-   * When true (and `sdkEnvironment` is known), a token WITHOUT an `rkm_env` claim is treated as an
-   * environment mismatch instead of being accepted. Opt-in; see `RakomiConfig.strictEnvironment`.
-   */
-  strictEnvironment?: boolean;
-  /**
    * When true, the JWT header `typ` must identify an OAuth access token
    * (`at+jwt` / `application/at+jwt`, RFC 9068 §2.1/§4, case-insensitive).
    * Blocks cross-JWT confusion: an id_token (`typ: JWT`) presented as a
@@ -148,7 +143,6 @@ export async function verifyToken<T extends TokenPayload = TokenPayload>(
   baseUrl?: string,
   dpop?: DpopVerifyOptions,
   issuer?: string,
-  strictEnvironment?: boolean,
 ): Promise<VerifyResult<T>> {
   return verifyTokenWithOptions<T>(token, jwksCache, {
     issuer: issuer ?? deriveDefaultIssuer(baseUrl),
@@ -156,7 +150,6 @@ export async function verifyToken<T extends TokenPayload = TokenPayload>(
     clockTolerance,
     sdkEnvironment,
     dpop,
-    ...(strictEnvironment === true ? { strictEnvironment: true } : {}),
   });
 }
 
@@ -246,14 +239,11 @@ export async function verifyTokenWithOptions<T extends TokenPayload = TokenPaylo
       }
     }
 
-    if (sdkEnvironment && payload.rkm_env) {
-      const tokenEnv = payload.rkm_env as string;
-      const sdkIsLive = sdkEnvironment === 'live';
-      const tokenIsLive = tokenEnv === 'live';
-      if (sdkIsLive !== tokenIsLive) {
-        return { ok: false, error: AUTH_ENVIRONMENT_MISMATCH() };
-      }
-    } else if (sdkEnvironment && options.strictEnvironment === true) {
+    const tokenEnv = payload.rkm_env;
+    if (typeof tokenEnv !== 'string' || tokenEnv.length === 0) {
+      return { ok: false, error: AUTH_ENVIRONMENT_MISMATCH() };
+    }
+    if (sdkEnvironment && (sdkEnvironment === 'live') !== (tokenEnv === 'live')) {
       return { ok: false, error: AUTH_ENVIRONMENT_MISMATCH() };
     }
 
@@ -310,7 +300,7 @@ export async function verifyTokenWithOptions<T extends TokenPayload = TokenPaylo
       ...(payload.auth_time != null ? { authTime: payload.auth_time as number } : {}),
       roles: guardedRoles ?? [],
       permissions: guardedPermissions ?? [],
-      ...(payload.rkm_env ? { environment: payload.rkm_env as string } : {}),
+      environment: tokenEnv,
       ...(guardedPublicMetadata !== undefined ? { publicMetadata: guardedPublicMetadata } : {}),
       ...(typeof payload.is_minor === 'boolean' ? { isMinor: payload.is_minor } : {}),
       ...(guardedSubscription !== undefined ? { subscription: guardedSubscription } : {}),

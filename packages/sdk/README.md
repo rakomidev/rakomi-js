@@ -57,6 +57,29 @@ Token signatures are verified with a fixed asymmetric algorithm (never read from
 the signing-key set is fetched only from the pinned issuer host, and issuer/audience/expiry are
 enforced. See the [Secure defaults](https://docs.rakomi.dev/sdk/secure-defaults/) guide.
 
+## Background agents
+
+An agent that must keep working after its human has signed out asks for a background-agent grant
+once, then renews its own access token. The grant exists only for a confidential agent client, in
+a tenant whose policy allows it, on a plan that includes it.
+
+```typescript
+// 1. Ask the human: adds `offline_access` to the scope and sends `prompt=consent`.
+const url = rakomi.buildAuthorizeUrl({ redirectUri, codeChallenge, state, offlineAccess: true });
+
+// 2. Renew, server-side, with the agent client's own credentials.
+const renewed = await rakomi.refreshAgentToken({ refreshToken: stored });
+if (renewed.ok) {
+  await save(renewed.data.refreshToken); // single-use: store the successor FIRST
+  use(renewed.data.accessToken);
+} else if (renewed.error.code === 'auth/invalid_refresh_token') {
+  // The grant has ended; ask the human again.
+}
+```
+
+The refresh token is single-use. Presenting a consumed one ends the grant and every session of the
+human. See [Background agents](https://docs.rakomi.dev/guides/background-agents/).
+
 ## Documentation
 
 - [SDK reference](https://docs.rakomi.dev/sdk/) · [Quickstart](https://docs.rakomi.dev/getting-started/quickstart-sdk/)

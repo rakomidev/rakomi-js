@@ -27,16 +27,6 @@ export interface RakomiConfig {
   clockTolerance?: number;
   /** Override environment detection (default: auto-detect from request hostname) */
   environment?: SdkEnvironment;
-  /**
-   * Refuse tokens that do not state their environment (default: `false`).
-   *
-   * `verifyToken()` always rejects a token whose `rkm_env` claim names a different environment than
-   * this client's API key (a test token verified with a live key, or the reverse). With
-   * `strictEnvironment: true` a token that carries NO `rkm_env` claim is rejected the same way
-   * (`auth/environment_mismatch`) instead of being accepted. Rakomi puts the claim on every user
-   * access token; M2M tokens do not carry it and are refused in this mode.
-   */
-  strictEnvironment?: boolean;
   /** Webhook signing secret from Rakomi dashboard (per-tenant) */
   webhookSecret?: string;
   /** Webhook timestamp tolerance in seconds (default: 300, max: 600; a non-finite value uses the default) */
@@ -150,8 +140,8 @@ export interface TokenPayload {
  * never returned malformed.
  */
   permissions: string[];
-  /** Environment slug from rkm_env JWT claim ('live' or 'test'). Absent in pre-15.4 tokens. */
-  environment?: string;
+  /** Environment slug from the rkm_env JWT claim ('live', 'test' or a named environment). Every verified token has one. */
+  environment: string;
   /**
  * Custom public metadata from the public_metadata JWT claim.
  * Present only when non-empty and under 1 KB. Absent from M2M tokens.
@@ -766,6 +756,14 @@ export interface AuthorizeUrlOptions {
    * Omit to keep the previous `${baseUrl}/oauth/authorize` behavior unchanged.
    */
   authorizationEndpoint?: string;
+  /**
+   * Ask the human for a background-agent grant: adds `offline_access` to the scope and sends
+   * `prompt=consent`, so the hosted consent screen asks for this decision on its own. Only a
+   * confidential agent client of a tenant whose policy allows it receives a grant; otherwise the
+   * authorization server ignores the request and the flow goes on with no grant. Check the
+   * token response: a grant exists only if a refresh token came back.
+   */
+  offlineAccess?: boolean;
 }
 
 /** Token response from OAuth token endpoint. */
@@ -840,6 +838,11 @@ export interface OAuthRefreshOptions {
   clientSecret?: string;
   baseUrl?: string;
   /**
+   * Narrow the scope on refresh (RFC 6749 §6). Honoured for a background-agent grant, where it may
+   * narrow and never widen; a session refresh keeps its scopes and ignores it.
+   */
+  scope?: string | string[];
+  /**
    * The same {@link DpopSession} that was passed to `exchangeCode` for this
    * session. A DPoP proof is attached on refresh IFF the server has confirmed
    * the session is bound (`token_type === "DPoP"`); a Bearer session attaches
@@ -847,6 +850,34 @@ export interface OAuthRefreshOptions {
    * the SDK's capability). Omit for a Bearer session.
    */
   dpop?: DpopSession;
+}
+
+/** Options for renewing a background-agent grant with {@link RakomiClient.refreshAgentToken}. */
+export interface AgentTokenRefreshOptions {
+  /**
+   * The grant's current refresh token. It is single-use: the response carries its successor, and
+   * the caller MUST store that one before doing anything else.
+   */
+  refreshToken: string;
+  /** Narrow the scope (never widen). Defaults to the scope the grant holds. */
+  scope?: string | string[];
+  clientId?: string;
+  /** The agent client's secret. Required: a background-agent grant belongs to a confidential client. */
+  clientSecret?: string;
+  baseUrl?: string;
+}
+
+/** Result of a successful {@link RakomiClient.refreshAgentToken}. */
+export interface AgentTokenRefreshResult {
+  accessToken: string;
+  tokenType: string;
+  expiresIn: number;
+  /**
+   * The rotated refresh token. The one you presented is now consumed; storing this one is not
+   * optional. Presenting a consumed token ends the grant and every session of the human.
+   */
+  refreshToken: string;
+  scope: string;
 }
 
 /**
