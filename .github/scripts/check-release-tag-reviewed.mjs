@@ -16,9 +16,16 @@
 // pushed on a branch commit runs THAT commit's publish.yml, so a commit whose publish.yml drops or
 // weakens this step is not stopped by it. Against that, the controls are the tag-creation ruleset (only
 // the release-push App may create a release tag) and the release environment's tag deployment policy.
+//
+// Source equality: the release-tag workflow creates a release tag only after re-deriving the release
+// surface from the upstream source and finding it equal to the merged head, and records that tree in the
+// annotated tag (Source-Tree). This check recomputes the surface tree of the tag commit and refuses a tag
+// whose annotation does not name exactly that tree (a lightweight tag has no annotation and is refused).
 import { execFileSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+
+import { parseTrailers, surfaceTree, TRAILER_SOURCE_TREE } from './lib/release-source-surface.mjs'
 
 export class CannotEvaluateError extends Error {}
 
@@ -27,7 +34,8 @@ const FULL_SHA_RE = /^[0-9a-f]{40}$/
 /**
  * Pure decision core.
  * @param {{tagRef:string, eventSha:string, tagCommitSha:string|null, defaultBranch:string,
- *          mainSha:string|null, isAncestor:boolean, shallow:boolean, mergedHeads:Set<string>}} f
+ *          mainSha:string|null, isAncestor:boolean, shallow:boolean, mergedHeads:Set<string>,
+ *          tagSourceTree:string|null, commitSourceTree:string|null}} f
  * @returns {{ok:boolean, violations:string[]}}
  */
 export function evaluateReleaseTag(f) {
@@ -56,6 +64,11 @@ export function evaluateReleaseTag(f) {
     v.push(`the tag commit ${f.eventSha} is not an ancestor of origin/${f.defaultBranch} — it never reached the default branch`)
   } else if (!(f.mergedHeads instanceof Set) || !f.mergedHeads.has(f.eventSha)) {
     v.push(`the tag commit ${f.eventSha} is on origin/${f.defaultBranch} but is not the reviewed head of a merged pull request (the public sha must equal the reviewed sha)`)
+  }
+  if (typeof f.tagSourceTree !== 'string' || !FULL_SHA_RE.test(f.tagSourceTree)) {
+    v.push('the tag annotation names no Source-Tree (release tags are created by the release-tag workflow after the source-equality check)')
+  } else if (f.tagSourceTree !== f.commitSourceTree) {
+    v.push(`the release surface tree of the tag commit (${f.commitSourceTree}) differs from the verified Source-Tree in the tag annotation (${f.tagSourceTree})`)
   }
   return { ok: v.length === 0, violations: v }
 }
@@ -94,7 +107,16 @@ function gatherFacts(env, git) {
     try { git(['merge-base', '--is-ancestor', eventSha, mainSha]); isAncestor = true } catch { isAncestor = false }
     if (isAncestor) mergedHeads = mergedHeadsFromRevList(git(['rev-list', '--first-parent', '--parents', mainSha]))
   }
-  return { tagRef, eventSha, tagCommitSha, defaultBranch, mainSha, isAncestor, shallow, mergedHeads }
+  let tagSourceTree = null
+  let commitSourceTree = null
+  if (tagRef.startsWith('refs/tags/') && tagCommitSha) {
+    if (tryRev(`${tagRef}^{tag}`)) {
+      const named = parseTrailers(git(['for-each-ref', '--format=%(contents)', tagRef]))[TRAILER_SOURCE_TREE]
+      tagSourceTree = typeof named === 'string' ? named.toLowerCase() : null
+    }
+    commitSourceTree = surfaceTree('.', tagCommitSha)
+  }
+  return { tagRef, eventSha, tagCommitSha, defaultBranch, mainSha, isAncestor, shallow, mergedHeads, tagSourceTree, commitSourceTree }
 }
 
 function main() {
