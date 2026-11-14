@@ -865,6 +865,13 @@ export interface AgentTokenRefreshOptions {
   /** The agent client's secret. Required: a background-agent grant belongs to a confidential client. */
   clientSecret?: string;
   baseUrl?: string;
+  /**
+   * The {@link DpopSession} passed to `exchangeCode` when the grant was approved. A grant whose code
+   * exchange was DPoP-bound is bound to that key (RFC 9449 §5): every renewal then needs a proof from
+   * it, and the SDK attaches one IFF the server has confirmed the binding (`token_type === "DPoP"`).
+   * Omit for a bearer grant.
+   */
+  dpop?: DpopSession;
 }
 
 /** Result of a successful {@link RakomiClient.refreshAgentToken}. */

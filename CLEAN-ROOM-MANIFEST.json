@@ -29,7 +29,7 @@
   "packages": [
     {
       "name": "@rakomi/node",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "tagPrefix": "sdk",
       "emittedSymbols": [],
       "fileCount": 38
@@ -1069,7 +1069,7 @@
     },
     {
       "path": "packages/sdk/src/oauth.ts",
-      "sha256": "sha256:94c2f40c2a1bedd1ac8e20b35b12d2e557bb263624fad4886028fec05cdde92b"
+      "sha256": "sha256:7881facb0505512db7ef2b01b82b66b60c577a9ab276501d68823a963f74c77a"
     },
     {
       "path": "packages/sdk/src/rbac.ts",
@@ -1085,7 +1085,7 @@
     },
     {
       "path": "packages/sdk/src/types.ts",
-      "sha256": "sha256:8ee728b8fdf4010510422278abb9d88eecb34d39919f8e3ec2ed5b54b348f4e1"
+      "sha256": "sha256:ef185d7d900ec417fb8af5e437264b28cf69ceecaad8d7cf07f765ecca7a0870"
     },
     {
       "path": "packages/sdk/src/verify-dpop-binding.ts",

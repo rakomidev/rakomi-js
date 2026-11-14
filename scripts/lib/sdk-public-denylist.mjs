@@ -43,7 +43,7 @@ export function assertReDoSSafe(src) {
 }
 
 function normalizeLiteral(entry, catCase, catId) {
-  let value, termCase, boundary
+  let value, termCase, boundary, predicateOnly = false
   if (typeof entry === 'string') {
     value = entry
     termCase = catCase
@@ -58,6 +58,10 @@ function normalizeLiteral(entry, catCase, catId) {
     if (typeof boundary !== 'boolean') {
       throw new DenylistError(`deny-list literal '${value}' (category '${catId}') has non-boolean boundary`)
     }
+    if (entry.scope !== undefined && entry.scope !== 'predicate') {
+      throw new DenylistError(`deny-list literal '${value}' (category '${catId}') has invalid scope '${entry.scope}' — expected predicate or none`)
+    }
+    predicateOnly = entry.scope === 'predicate'
   } else {
     throw new DenylistError(`deny-list literal in category '${catId}' must be a string or {value,…}: ${JSON.stringify(entry)}`)
   }
@@ -65,7 +69,7 @@ function normalizeLiteral(entry, catCase, catId) {
   if (boundary && (!WORD_CHAR_RE.test(value[0]) || !WORD_CHAR_RE.test(value[value.length - 1]))) {
     throw new DenylistError(`deny-list literal '${value}' (category '${catId}') sets boundary:true but has a non-word edge — \\b cannot anchor it; drop boundary or list it as a regex`)
   }
-  return { value, caseInsensitive: termCase === 'insensitive', boundary }
+  return { value, caseInsensitive: termCase === 'insensitive', boundary, predicateOnly }
 }
 
 function validateRegex(rx) {
@@ -110,7 +114,8 @@ export function loadDenylist(repoRoot = REPO_ROOT) {
       throw new DenylistError(`deny-list category '${cat.id}' has invalid case '${catCase}' — expected sensitive|insensitive`)
     }
     for (const lit of cat.literals || []) {
-      const { value, caseInsensitive, boundary } = normalizeLiteral(lit, catCase, cat.id)
+      const { value, caseInsensitive, boundary, predicateOnly } = normalizeLiteral(lit, catCase, cat.id)
+      if (predicateOnly) continue
       const wrapped = boundary ? `\\b${escapeLiteral(value)}\\b` : escapeLiteral(value)
       const bucket = caseInsensitive ? insensitive : sensitive
       bucket.source.push({ category: cat.id, raw: value })
