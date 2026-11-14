@@ -260,6 +260,7 @@ export async function refreshAgentToken(
     clientSecret: options.clientSecret,
     ...(options.scope !== undefined ? { scope: options.scope } : {}),
     ...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
+    ...(options.dpop !== undefined ? { dpop: options.dpop } : {}),
   });
   if (!result.ok) return result;
   const { access_token, token_type, expires_in, refresh_token, scope } = result.data;

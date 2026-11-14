@@ -48,8 +48,9 @@ if (result.ok) {
 
 API keys must start with `akm_live_` (production) or `akm_test_` (testing).
 
-An `akm_test_` key works on test users and sign-in only. Management calls whose data is not separated per
-environment (for example `credentials.*`) need a live key; a test key gets `404 auth/environment_not_permitted`.
+An `akm_test_` key acts on the test environment's data only; a record of the live environment answers `404`. The
+account compliance endpoints (DPA, audit package, breach assessments, DPIAs and the like) need a live key; a test key
+gets `404 auth/environment_not_permitted`. A user's data export works with a key of the user's environment.
 
 ## Secure defaults
 
