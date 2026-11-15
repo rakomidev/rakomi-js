@@ -24,6 +24,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      attestations: write
 
     steps:
       - name: Assert repository is PUBLIC on a durable SHA
@@ -161,6 +162,15 @@ jobs:
       - name: Pack-install gate (zero workspace:* leak + sdk-core-as-real-dep) [DANGER]
         run: node scripts/sdk-pack-install-gate.mjs --tarball "$RUNNER_TEMP/tgz"
 
+      # GitHub artifact attestation of the same verified bytes, so `gh attestation verify --repo
+      # rakomidev/rakomi-js` (VERIFY.md) finds them; npm's own provenance (--provenance) lives on the
+      # registry and is not visible to the GitHub attestations API. It runs after every gate and before the
+      # publish, so a published version always has one.
+      - name: Attest build provenance of the verified tarball (GitHub attestations)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.TGZ }}
+
       - name: Publish the verified bytes to npm with provenance
         run: npm publish "$TGZ" --provenance --access public --tag latest
 
@@ -170,3 +180,34 @@ jobs:
         run: node scripts/check-provenance-predicate.mjs --package "$PKG_NAME" --version "$TAG_VERSION"
       - name: Rekor inclusion-proof issuer assertion
         run: node scripts/check-rekor-issuer.mjs --package "$PKG_NAME" --version "$TAG_VERSION" --expect-digest "$GATE_SHA512"
+
+      # The command VERIFY.md gives a third party, run on the bytes the registry serves: the published
+      # tarball must be the gate-verified one and its GitHub attestation must verify, else the job fails.
+      - name: GitHub attestation of the published tarball verifies (VERIFY.md §1)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNER_WORKFLOW: rakomidev/rakomi-js/.github/workflows/publish.yml
+        run: |
+          set -euo pipefail
+          PUB_DIR="$RUNNER_TEMP/published"
+          mkdir -p "$PUB_DIR"
+          PUB_TGZ=""
+          for ATTEMPT in 1 2 3 4 5 6 7 8 9 10; do
+            if NAME=$(cd "$PUB_DIR" && npm pack "${PKG_NAME}@${TAG_VERSION}" --ignore-scripts --silent); then
+              PUB_TGZ="$PUB_DIR/$NAME"
+              break
+            fi
+            echo "the registry does not serve ${PKG_NAME}@${TAG_VERSION} yet (attempt $ATTEMPT)"
+            sleep 30
+          done
+          test -n "$PUB_TGZ" && test -f "$PUB_TGZ" || { echo "ERROR: could not download ${PKG_NAME}@${TAG_VERSION} from the registry"; exit 1; }
+          PUB_SHA512=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write('sha512:'+c.createHash('sha512').update(f.readFileSync(process.argv[1])).digest('hex'))" "$PUB_TGZ")
+          if [ "$PUB_SHA512" != "$GATE_SHA512" ]; then
+            echo "ERROR: the registry serves other bytes ($PUB_SHA512) than the verified tarball ($GATE_SHA512)"
+            exit 1
+          fi
+          gh attestation verify "$PUB_TGZ" --repo rakomidev/rakomi-js
+          gh attestation verify "$PUB_TGZ" --repo rakomidev/rakomi-js \
+            --signer-workflow "$SIGNER_WORKFLOW" --source-ref "$GITHUB_REF" --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners
+          echo "${PKG_NAME}@${TAG_VERSION}: published bytes = verified bytes; GitHub attestation verified"

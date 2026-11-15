@@ -12,7 +12,7 @@ name: Dispatch release notes for un-released tags
 # restriction, so an explicit dispatch is reliable where the completion-event chain is not.
 #
 # This lives in its own workflow file, never as an extra step inside Publish, because Publish's
-# `permissions:` block is pinned to exactly {contents: read, id-token: write} to bound its OIDC token's
+# `permissions:` block is pinned to exactly {contents: read, id-token: write, attestations: write} to bound its OIDC token's
 # blast radius — adding `actions: write` there so it could dispatch this workflow directly would widen
 # that boundary. release-notes.yml's `workflow_run` trigger is left in place as a harmless second path in
 # case a future platform change makes it fire; Create GitHub Release is idempotent (create-or-update by
