@@ -4,8 +4,11 @@
 // The tags come from the head's Release-Tags trailer and each one must hold up against the head itself:
 //   - `<prefix>/v<semver>` with a prefix among the six publish namespaces;
 //   - the version equals the `version` of that package's package.json at the head;
-//   - the tag does not exist yet;
-//   - the version is above every existing version of that prefix (no downgrade, no re-release).
+//   - the tag does not exist yet, or it already exists AND its commit is the verified head: then it is
+//     skipped (an earlier partial run created it; creating nothing for it completes the release). A tag that
+//     exists on any other commit is refused, and nothing is ever moved;
+//   - the version is above every OTHER existing version of that prefix (no downgrade, no re-release).
+// Every listed tag already at the head = nothing to create (empty `tags`, exit 0).
 // Output order puts sdk-core first: dependent packages resolve it during their own publish.
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, realpathSync } from 'node:fs'
@@ -13,7 +16,8 @@ import { fileURLToPath } from 'node:url'
 
 import { parseTrailers, readReleaseTrailers, RELEASE_TAG_PACKAGE_DIRS, TRAILER_SOURCE_TREE } from './lib/release-source-surface.mjs'
 
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
+const FULL_SHA_RE = /^[0-9a-f]{40}$/
+const SEMVER_RE =/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
 const TAG_RE = /^([a-z-]+)\/v(.+)$/
 
 /** semver precedence: <0, 0, >0. Returns null when either side is not a semver. */
@@ -43,13 +47,17 @@ export function compareSemver(a, b) {
 }
 
 /**
- * @param {{tags:string[], versionsAtHead:Record<string,string|null>, existingTags:string[]}} f
- * @returns {{ok:boolean, tags:string[], violations:string[]}}
+ * @param {{tags:string[], versionsAtHead:Record<string,string|null>, existingTags:string[],
+ *          existingTargets?:Record<string,string|null>, headSha?:string}} f
+ *   existingTargets: for each listed tag that already exists, the commit it peels to (`^{commit}`), or null.
+ * @returns {{ok:boolean, tags:string[], skipped:string[], violations:string[]}}
  */
-export function planReleaseTags({ tags, versionsAtHead, existingTags }) {
+export function planReleaseTags({ tags, versionsAtHead, existingTags, existingTargets = {}, headSha = '' }) {
   const v = []
   const existing = new Set(existingTags)
+  const head = String(headSha).toLowerCase()
   const seen = new Set()
+  const skipped = []
   for (const t of tags) {
     const m = TAG_RE.exec(t)
     if (!m || !(m[1] in RELEASE_TAG_PACKAGE_DIRS) || !SEMVER_RE.test(m[2])) { v.push(`${t} is not a release tag of a published package`); continue }
@@ -57,8 +65,13 @@ export function planReleaseTags({ tags, versionsAtHead, existingTags }) {
     if (seen.has(prefix)) { v.push(`${prefix} is listed more than once`); continue }
     seen.add(prefix)
     if (versionsAtHead[prefix] !== version) v.push(`${t} does not match ${RELEASE_TAG_PACKAGE_DIRS[prefix]}/package.json at the head (${versionsAtHead[prefix] ?? 'absent'})`)
-    if (existing.has(t)) v.push(`${t} already exists`)
+    if (existing.has(t)) {
+      const target = String(existingTargets[t] ?? '').toLowerCase()
+      if (FULL_SHA_RE.test(head) && target === head) skipped.push(t)
+      else v.push(`${t} already exists at ${FULL_SHA_RE.test(target) ? target : 'an unreadable commit'}, not at the verified head`)
+    }
     for (const e of existing) {
+      if (e === t) continue
       const em = TAG_RE.exec(e)
       if (!em || em[1] !== prefix) continue
       const c = compareSemver(version, em[2])
@@ -66,8 +79,9 @@ export function planReleaseTags({ tags, versionsAtHead, existingTags }) {
     }
   }
   if (tags.length === 0) v.push('no release tags listed')
-  const ordered = [...tags].sort((a, b) => (a.startsWith('sdk-core/') ? -1 : b.startsWith('sdk-core/') ? 1 : a.localeCompare(b)))
-  return { ok: v.length === 0, tags: v.length ? [] : ordered, violations: v }
+  if (v.length) return { ok: false, tags: [], skipped: [], violations: v }
+  const ordered = tags.filter((t) => !skipped.includes(t)).sort((a, b) => (a.startsWith('sdk-core/') ? -1 : b.startsWith('sdk-core/') ? 1 : a.localeCompare(b)))
+  return { ok: true, tags: ordered, skipped, violations: [] }
 }
 
 function main() {
@@ -93,7 +107,11 @@ function main() {
     try { versionsAtHead[prefix] = JSON.parse(git(['show', `${HEAD_SHA}:${dir}/package.json`])).version ?? null } catch { versionsAtHead[prefix] = null }
   }
   const existingTags = git(['tag', '--list']).split('\n').filter(Boolean)
-  const plan = planReleaseTags({ tags: trailers.tags, versionsAtHead, existingTags })
+  const existingTargets = {}
+  for (const t of trailers.tags.filter((x) => existingTags.includes(x))) {
+    try { existingTargets[t] = git(['rev-parse', '--verify', '-q', `refs/tags/${t}^{commit}`]) } catch { existingTargets[t] = null }
+  }
+  const plan = planReleaseTags({ tags: trailers.tags, versionsAtHead, existingTags, existingTargets, headSha: HEAD_SHA })
   if (!plan.ok) {
     console.error('release-tag-plan: REFUSED')
     for (const line of plan.violations) console.error(`  - ${line}`)
@@ -102,7 +120,8 @@ function main() {
   if (GITHUB_OUTPUT) {
     appendFileSync(GITHUB_OUTPUT, `tags=${plan.tags.join(' ')}\nall_tags=${trailers.tags.join(' ')}\n`)
   }
-  console.error(`release-tag-plan: ${plan.tags.join(' ')}`)
+  for (const t of plan.skipped) console.error(`release-tag-plan: ${t} already exists at the verified head — skipped`)
+  console.error(`release-tag-plan: ${plan.tags.length ? plan.tags.join(' ') : 'every listed tag already exists at the verified head — nothing to create'}`)
 }
 
 const isCliEntry = (() => {

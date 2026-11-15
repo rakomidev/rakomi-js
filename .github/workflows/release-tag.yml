@@ -9,6 +9,13 @@ name: Release tags (after a verified release pull request)
 # copy of this file on refs/pull/<n>/merge, which the `release-tag` environment (main only) refuses; a push
 # to main runs main's copy. `pull_request_target` is never used.
 #
+# workflow_dispatch (input pr_number) completes the release of ONE already-merged release pull request when
+# an earlier run created only some of its tags. The gate resolves that pull request's merge commit and
+# applies the same checks as on a push (plus: reachable from main), verify re-runs in full against that
+# merge commit, and the plan skips a listed tag that already exists at the verified head, so only the
+# missing tags are created. The scripts run from main's current .github (the dispatched ref), which verify
+# matches against the reviewed template; the `release-tag` environment admits main only.
+#
 # This repository's logs are public. The verify job prints only tree hashes, closed reason codes and
 # OK/FAIL; the upstream checkout lives in a temporary directory removed on exit, and nothing from it is
 # uploaded.
@@ -16,9 +23,15 @@ name: Release tags (after a verified release pull request)
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Number of the merged release pull request whose release tags to complete
+        required: true
+        type: string
 
 concurrency:
-  group: release-tag-${{ github.sha }}
+  group: release-tag-${{ inputs.pr_number && format('pr-{0}', inputs.pr_number) || github.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -34,6 +47,7 @@ jobs:
     outputs:
       release: ${{ steps.gate.outputs.release }}
       head_sha: ${{ steps.gate.outputs.head_sha }}
+      merge_sha: ${{ steps.gate.outputs.merge_sha }}
       pr_number: ${{ steps.gate.outputs.pr_number }}
       release_id: ${{ steps.gate.outputs.release_id }}
     steps:
@@ -50,6 +64,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PUSH_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ inputs.pr_number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SOURCE_READ_ENABLED: ${{ vars.RELEASE_TAG_SOURCE_READ }}
         run: node .github/scripts/release-tag-gate.mjs
@@ -89,7 +105,8 @@ jobs:
         env:
           SOURCE_TOKEN: ${{ steps.source-token.outputs.token }}
           SOURCE_REPO: rakomidev/rakomi
-          MERGE_SHA: ${{ github.sha }}
+          MERGE_SHA: ${{ needs.gate.outputs.merge_sha }}
+          EVENT_NAME: ${{ github.event_name }}
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
           RELEASE_ID: ${{ needs.gate.outputs.release_id }}
         run: |
@@ -137,16 +154,27 @@ jobs:
           quiet git -C "${SRC}" merge-base --is-ancestor "${SOURCE_COMMIT}" refs/remotes/origin/main || fail source-not-on-default-branch
           quiet git -C "${SRC}" -c advice.detachedHead=false checkout -q "${SOURCE_COMMIT}" || fail source-checkout 2
 
-          # Every script this job runs below comes from .github of the merge commit. Run none of them unless
-          # that tree is the reviewed template of the upstream source (at the source revision or at the tip
-          # of its default branch), and the release pull request head carries the same tree.
-          GH_TREE="$(git rev-parse "${MERGE_SHA}:.github")"
+          # Every script this job runs below comes from .github of the checkout (the run's commit: on a push
+          # the merge commit, on a dispatch main's tip). Run none of them unless that tree is the reviewed
+          # template of the upstream source (at the source revision or at the tip of its default branch).
+          # The release head's .github is code too: the tags point at the head, and publish.yml runs from the
+          # tagged commit with the OIDC publish token. On a push it must equal the checkout's tree; on a dispatch the
+          # checkout is main's tip, so the head's own tree must be a reviewed template by itself.
+          [[ "${MERGE_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail missing-input 2
+          GH_TREE="$(git rev-parse "HEAD:.github")"
           HEAD_GH_TREE="$(git rev-parse "${HEAD_SHA}:.github")"
           TPL_AT_SOURCE="$(git -C "${SRC}" rev-parse "${SOURCE_COMMIT}:public-repo-template/.github" 2>/dev/null || echo none)"
           TPL_AT_MAIN="$(git -C "${SRC}" rev-parse "refs/remotes/origin/main:public-repo-template/.github" 2>/dev/null || echo none)"
-          if [ "${GH_TREE}" != "${HEAD_GH_TREE}" ] || { [ "${GH_TREE}" != "${TPL_AT_SOURCE}" ] && [ "${GH_TREE}" != "${TPL_AT_MAIN}" ]; }; then
-            fail workflow-tree-not-reviewed
+          # workflow-tree-check: begin
+          tree_reviewed() { [ "$1" != none ] && { [ "$1" = "${TPL_AT_SOURCE}" ] || [ "$1" = "${TPL_AT_MAIN}" ]; }; }
+          tree_reviewed "${GH_TREE}" || fail workflow-tree-not-reviewed
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            tree_reviewed "${HEAD_GH_TREE}" || fail workflow-tree-not-reviewed
+          else
+            [ "${GH_TREE}" = "${HEAD_GH_TREE}" ] || fail workflow-tree-not-reviewed
           fi
+          # workflow-tree-check: end
+          quiet git merge-base --is-ancestor "${MERGE_SHA}" HEAD || fail merge-not-on-default-branch
           echo "workflow-tree ${GH_TREE} OK"
 
           # From here on nothing needs the upstream credential: drop it from the checkout's git config and from
@@ -207,9 +235,28 @@ jobs:
           echo "::add-mask::${AUTH_B64}"
           git config user.name "Rakomi Release Bot"
           git config user.email "release-bot@rakomi.com"
+          authgit() { git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${AUTH_B64}" "$@"; }
+          # The commit a tag on the remote peels to; empty when the tag is absent (or the read failed).
+          remote_tag_commit() {
+            authgit ls-remote origin "refs/tags/$1^{}" "refs/tags/$1" 2>/dev/null \
+              | awk -v t="refs/tags/$1" '$2 == t "^{}" { p = $1 } $2 == t { l = $1 } END { print (p != "" ? p : l) }'
+          }
+          if [ -z "${TAGS}" ]; then echo "every release tag already exists at ${HEAD_SHA} — nothing to create"; fi
           for TAG in ${TAGS}; do
             MESSAGE="$(printf '%s\n\nRelease-PR: #%s\nSource-Tree: %s\nRelease-Tags: %s\n' "${TAG}" "${PR_NUMBER}" "${SOURCE_TREE}" "${ALL_TAGS}")"
             git tag -a "${TAG}" -m "${MESSAGE}" "${HEAD_SHA}"
-            git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${AUTH_B64}" push origin "refs/tags/${TAG}"
+            # A tag push can be answered `! [remote rejected] <tag> -> <tag> (failed)` by a transient GitHub
+            # failure. At most 3 attempts, 15 s apart; before each retry the remote is read: the tag already at
+            # the head = done, at any other commit = refused. Never forced, a tag is never moved.
+            # flake-register: gh-tag-push-remote-rejected-failed
+            ATTEMPT=1
+            until authgit push origin "refs/tags/${TAG}"; do
+              if [ "${ATTEMPT}" -ge 3 ]; then echo "::error::${TAG}: push failed ${ATTEMPT} times"; exit 1; fi
+              sleep 15
+              REMOTE="$(remote_tag_commit "${TAG}")" || REMOTE=""
+              if [ "${REMOTE}" = "${HEAD_SHA}" ]; then echo "${TAG} is on the remote at ${HEAD_SHA}"; break; fi
+              if [ -n "${REMOTE}" ]; then echo "::error::${TAG} exists on the remote at another commit"; exit 1; fi
+              ATTEMPT=$((ATTEMPT + 1))
+            done
             echo "created ${TAG} at ${HEAD_SHA}"
           done
