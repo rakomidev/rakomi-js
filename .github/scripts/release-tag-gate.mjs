@@ -14,6 +14,9 @@
 //   - a release is also refused (exit 1, reason `source-read-disabled`) while the repository variable
 //     RELEASE_TAG_SOURCE_READ is not `true`: the read-only source token does not exist until a director
 //     creates its App, and without it no release can be verified.
+// A workflow_dispatch run (input pr_number) completes the release of one already-merged release pull request
+// after a partial run: its merge commit is resolved from GET /pulls/{n} and must pass the same checks, belong
+// to that pull request, be a release and be reachable from the default branch (evaluateDispatchedRelease).
 import { appendFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -61,6 +64,33 @@ export function evaluateReleaseMerge(f) {
   }
   return { release: true, ok: true, prNumber: pr.number, headSha, releaseId, violations: [] }
 }
+
+export const PR_NUMBER_RE = /^[1-9][0-9]{0,9}$/
+
+/**
+ * A dispatched run completes the release of ONE already-merged release pull request (a partial earlier run).
+ * Its merge commit (`merge_commit_sha` of that pull request) goes through exactly the push-path checks
+ * (evaluateReleaseMerge with pushSha = the merge commit), and in addition: the requested number is digits
+ * only, the checks resolve to THAT pull request, it is a release (a normal merge is refused, not "nothing
+ * to do"), and the merge commit is reachable from the default branch.
+ * @param {{requestedPr:string, mergeSha:string, mergeReachable:boolean, parents:string[], pulls:Array<object>,
+ *          defaultBranch:string, repoFullName:string, sourceReadEnabled:boolean, allowedAuthors?:readonly string[]}} f
+ */
+export function evaluateDispatchedRelease(f) {
+  if (!PR_NUMBER_RE.test(String(f.requestedPr ?? ''))) {
+    return { release: false, ok: false, violations: ['pr_number must be the number of a pull request (digits only)'] }
+  }
+  const requested = Number(f.requestedPr)
+  const r = evaluateReleaseMerge({ ...f, pushSha: f.mergeSha })
+  if (!r.ok) return r
+  const v = []
+  if (r.prNumber !== requested) v.push(`the merge commit belongs to #${r.prNumber}, not to the requested #${requested}`)
+  if (!r.release) v.push(`#${requested} is not a release pull request (head branch outside release/) — nothing to complete`)
+  if (f.mergeReachable !== true) v.push(`the merge commit of #${requested} is not reachable from ${f.defaultBranch}`)
+  if (v.length) return { release: false, ok: false, prNumber: r.prNumber, violations: v }
+  return r
+}
+
 export class GateApiError extends Error {}
 
 async function api(path, token) {
@@ -73,24 +103,50 @@ async function api(path, token) {
 }
 
 async function main() {
-  const { GH_TOKEN, REPO, PUSH_SHA, DEFAULT_BRANCH, GITHUB_OUTPUT } = process.env
-  if (!GH_TOKEN || !REPO || !PUSH_SHA || !DEFAULT_BRANCH) {
+  // EVENT_NAME=workflow_dispatch: PR_NUMBER names the merged release pull request to complete; otherwise the
+  // pushed sha (PUSH_SHA) is the candidate merge commit.
+  const { GH_TOKEN, REPO, PUSH_SHA, DEFAULT_BRANCH, GITHUB_OUTPUT, EVENT_NAME, PR_NUMBER } = process.env
+  const dispatched = EVENT_NAME === 'workflow_dispatch'
+  if (!GH_TOKEN || !REPO || !DEFAULT_BRANCH || (!dispatched && !PUSH_SHA)) {
     console.error('release-tag-gate: CANNOT-EVALUATE — missing GH_TOKEN, REPO, PUSH_SHA or DEFAULT_BRANCH')
     process.exit(2)
   }
-  let commit, pulls
+  if (dispatched && !PR_NUMBER_RE.test(PR_NUMBER || '')) {
+    console.error('release-tag-gate: REFUSED')
+    console.error('  - pr_number must be the number of a pull request (digits only)')
+    process.exit(1)
+  }
+  const sourceReadEnabled = process.env.SOURCE_READ_ENABLED === 'true'
+  let r
+  let mergeSha = String(PUSH_SHA || '').toLowerCase()
   try {
-    commit = await api(`/repos/${REPO}/commits/${PUSH_SHA}`, GH_TOKEN)
-    pulls = await api(`/repos/${REPO}/commits/${PUSH_SHA}/pulls`, GH_TOKEN)
+    let mergeReachable = false
+    if (dispatched) {
+      const pr = await api(`/repos/${REPO}/pulls/${PR_NUMBER}`, GH_TOKEN)
+      mergeSha = String(pr.merge_commit_sha || '').toLowerCase()
+      if (!FULL_SHA_RE.test(mergeSha) || !pr.merged_at) {
+        console.error('release-tag-gate: REFUSED')
+        console.error(`  - #${PR_NUMBER} is not merged`)
+        process.exit(1)
+      }
+      // base...head = <merge commit>...<default branch>: "identical" or "ahead" = the merge commit is an
+      // ancestor of the default branch tip.
+      const cmp = await api(`/repos/${REPO}/compare/${mergeSha}...${encodeURIComponent(DEFAULT_BRANCH)}`, GH_TOKEN)
+      mergeReachable = (cmp.status === 'identical' || cmp.status === 'ahead') && cmp.behind_by === 0
+    }
+    const commit = await api(`/repos/${REPO}/commits/${mergeSha}`, GH_TOKEN)
+    const pulls = await api(`/repos/${REPO}/commits/${mergeSha}/pulls`, GH_TOKEN)
+    const parents = (commit.parents || []).map((p) => p.sha)
+    const facts = { parents, pulls, defaultBranch: DEFAULT_BRANCH, repoFullName: REPO, sourceReadEnabled }
+    r = dispatched
+      ? evaluateDispatchedRelease({ ...facts, requestedPr: PR_NUMBER, mergeSha, mergeReachable })
+      : evaluateReleaseMerge({ ...facts, pushSha: mergeSha })
   } catch (e) {
     console.error(`release-tag-gate: CANNOT-EVALUATE — ${e.message}`)
     process.exit(2)
   }
-  const parents = (commit.parents || []).map((p) => p.sha)
-  const sourceReadEnabled = process.env.SOURCE_READ_ENABLED === 'true'
-  const r = evaluateReleaseMerge({ pushSha: PUSH_SHA, parents, pulls, defaultBranch: DEFAULT_BRANCH, repoFullName: REPO, sourceReadEnabled })
   if (GITHUB_OUTPUT) {
-    appendFileSync(GITHUB_OUTPUT, `release=${r.release}\npr_number=${r.prNumber ?? ''}\nhead_sha=${r.headSha ?? ''}\nrelease_id=${r.releaseId ?? ''}\n`)
+    appendFileSync(GITHUB_OUTPUT, `release=${r.release}\npr_number=${r.prNumber ?? ''}\nhead_sha=${r.headSha ?? ''}\nmerge_sha=${r.release ? mergeSha : ''}\nrelease_id=${r.releaseId ?? ''}\n`)
   }
   if (!r.ok) {
     console.error(`release-tag-gate: REFUSED${r.reason ? ` ${r.reason}` : ''}`)
