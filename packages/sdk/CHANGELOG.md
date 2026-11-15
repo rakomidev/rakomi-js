@@ -1,3 +1,7 @@
+## 0.13.2 — 2026-11-15
+
+- Versions 0.13.0 and 0.13.1 were never published to npm; 0.13.2 is the first published release with the changes listed under 0.13.0.
+
 ## 0.13.1 — 2026-11-15
 
 - Version 0.13.0 was never published to npm; 0.13.1 is the first published release with the changes listed under 0.13.0.
