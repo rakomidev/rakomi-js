@@ -1,3 +1,7 @@
+## 0.13.1 — 2026-11-15
+
+- Version 0.13.0 was never published to npm; 0.13.1 is the first published release with the changes listed under 0.13.0.
+
 ## 0.13.0 — 2026-11-14
 
 - Added: `refreshAgentToken()` takes `dpop`, the `DpopSession` you passed to `exchangeCode` when the human approved the background-agent grant. A grant approved through a DPoP-bound code exchange is bound to that key: every renewal needs a proof from it, and the SDK attaches one when the server has confirmed the binding (`token_type` is `DPoP`). The renewed access token is bound to the same key. A bearer grant attaches no proof.
