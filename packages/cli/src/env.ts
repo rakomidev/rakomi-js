@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import { CliError, EXIT } from './errors.js';
 import type { HttpDeps } from './http.js';
 import { request } from './http.js';
 
@@ -111,8 +112,27 @@ export interface CliEnv {
   readonly NO_COLOR?: string;
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * The API the CLI talks to. `RAKOMI_API_URL` must be an `https://` URL — the CLI sends bearer tokens, DPoP proofs and CI
+ * identity tokens there — except plain `http://` on a loopback host (a local `mise run dev` API). Anything else is refused
+ * before any request is made.
+ */
 export function apiBaseUrl(env: CliEnv): string {
-  return env.RAKOMI_API_URL || DEFAULT_API_BASE_URL;
+  const raw = env.RAKOMI_API_URL;
+  if (!raw) return DEFAULT_API_BASE_URL;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new CliError('RAKOMI_API_URL is not a valid URL.', EXIT.USAGE);
+  }
+  const loopbackHttp = url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname);
+  if (url.protocol !== 'https:' && !loopbackHttp) {
+    throw new CliError('RAKOMI_API_URL must be an https:// URL (plain http:// only on localhost).', EXIT.USAGE);
+  }
+  return raw;
 }
 
 export function accountsBaseUrl(env: CliEnv): string {

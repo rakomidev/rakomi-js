@@ -88,7 +88,7 @@
     },
     {
       "name": "rakomi",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "tagPrefix": "cli",
       "emittedSymbols": [],
       "fileCount": 37
@@ -105,7 +105,7 @@
     },
     {
       "path": "packages/cli/src/ci-oidc-token.ts",
-      "sha256": "sha256:31ede9d773002b08cbde2fd6b53715cbfdd967ba7fa71fbf91eed7c97545ee2b"
+      "sha256": "sha256:e4684e774b6a14af6e18da6e4876beca5c7e85016caecb45c055b00274b5d781"
     },
     {
       "path": "packages/cli/src/client-registry.generated.ts",
@@ -145,7 +145,7 @@
     },
     {
       "path": "packages/cli/src/commands/whoami.ts",
-      "sha256": "sha256:4ed1ace8fbf77bb39eaad87cd62afd37bc100af73416bca849e579e90a5a2bd7"
+      "sha256": "sha256:98522c4b8b943afecf2491711d0b38cf2a0a8f72b238fda7720c8cb0ff7b2145"
     },
     {
       "path": "packages/cli/src/connect-client.ts",
@@ -157,7 +157,7 @@
     },
     {
       "path": "packages/cli/src/env.ts",
-      "sha256": "sha256:4c51457ee8ded8e912e2e4e1994f8056caec39e32e1495fc42130fd6df22d4e5"
+      "sha256": "sha256:cc33848583f84fc56948748a9813e9c878efcb953ee03ee64a693221c31bffad"
     },
     {
       "path": "packages/cli/src/errors.ts",
@@ -169,7 +169,7 @@
     },
     {
       "path": "packages/cli/src/index.ts",
-      "sha256": "sha256:b9bc0209512a0c8606bd87a871f2b597ba37a0d0c405695429a52b85e81f7242"
+      "sha256": "sha256:bef66502441fb65b7eb4cd77d67a33439ea6737cef6479c607f77a87308b16b6"
     },
     {
       "path": "packages/cli/src/install-key.ts",
@@ -237,7 +237,7 @@
     },
     {
       "path": "packages/cli/src/usage.ts",
-      "sha256": "sha256:9e3253e496f7a041622c1caddbb584c77f2aa116aba4a5e0507c564182b6a019"
+      "sha256": "sha256:3f0e638ca85bb8705601d81f0f044dd9d257ee9406617e9680f671f8a276d33c"
     },
     {
       "path": "packages/cli/src/userinfo-client.ts",
