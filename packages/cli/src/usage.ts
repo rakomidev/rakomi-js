@@ -21,7 +21,7 @@ export function helpText(): string {
     '    --tenant-id <uuid>     the tenant to authenticate against (or set RAKOMI_PLATFORM_TENANT_ID); required with --ci: the tenant whose trust policy to use',
     '    --tenant-admin         sign in to administer the tenants you own (short-lived, key-bound tokens; browser only)',
     '  logout                   clear the local session',
-    '  whoami                   show the signed-in account, home tenant, and active tenant',
+    '  whoami                   show the signed-in account, home tenant, and active tenant (after login --ci: tenant, environment, trust policy)',
     '  use <tenant-id-or-slug>  remember a tenant locally (whoami/future commands); a UUID is stored as-is, a slug is server-verified',
     '  upgrade                  open your current tenant\'s upgrade page in the browser',
     '  connect                  connect an MCP client to your tenant (read access)',

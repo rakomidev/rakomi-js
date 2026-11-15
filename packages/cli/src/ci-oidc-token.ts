@@ -24,6 +24,9 @@ export interface CiOidcEnv {
    * CLI directly. Checked LAST among env sources — `--oidc-token-file` (a same-purpose, file-based
    * escape hatch) is checked first, ahead of every env var. */
   readonly RAKOMI_OIDC_TOKEN?: string;
+  /** GitHub Actions sets `GITHUB_ACTIONS=true` in every job. With it set but no `ACTIONS_ID_TOKEN_REQUEST_*` pair, the
+   * job was not granted `id-token: write` — the one case worth its own message (see `GITHUB_NO_ID_TOKEN_MESSAGE`). */
+  readonly GITHUB_ACTIONS?: string;
 }
 
 export interface ResolveCiOidcTokenOpts {
@@ -43,6 +46,12 @@ export const NO_OIDC_SOURCE_MESSAGE =
   'rakomi login --ci found no OIDC identity token. Set RAKOMI_OIDC_TOKEN, pass ' +
   '--oidc-token-file <path>, or run on a CI platform this command recognizes automatically ' +
   '(GitHub Actions with `permissions: id-token: write`, or GitLab CI with CI_JOB_JWT_V2).';
+
+/** A GitHub Actions job without the `id-token: write` permission gets no `ACTIONS_ID_TOKEN_REQUEST_*` variables, so it
+ * cannot request an OIDC token at all; this says exactly that, and how to fix it. */
+export const GITHUB_NO_ID_TOKEN_MESSAGE =
+  'rakomi login --ci is running in GitHub Actions, but this job cannot request an OIDC token: it lacks the ' +
+  '`id-token: write` permission. Add `permissions: { id-token: write }` to the job (or the workflow) and run it again.';
 
 /**
  * Resolves the runner's own OIDC identity token — never a browser, never a loopback listener.
@@ -80,6 +89,9 @@ export async function resolveCiOidcToken(deps: HttpDeps, opts: ResolveCiOidcToke
     return gitlabToken;
   }
 
+  if (opts.env.GITHUB_ACTIONS === 'true') {
+    throw new CliError(GITHUB_NO_ID_TOKEN_MESSAGE, EXIT.FAIL);
+  }
   throw new CliError(NO_OIDC_SOURCE_MESSAGE, EXIT.FAIL);
 }
 

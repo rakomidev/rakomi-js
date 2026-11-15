@@ -349,6 +349,7 @@ async function main(): Promise<void> {
     CI_JOB_JWT_V2: process.env.CI_JOB_JWT_V2,
     CI_JOB_JWT: process.env.CI_JOB_JWT,
     RAKOMI_OIDC_TOKEN: process.env.RAKOMI_OIDC_TOKEN,
+    GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
   };
   const noKeychainFlag = process.argv.slice(2).includes('--no-keychain');
   const resolved = resolveStores(env, { noKeychain: noKeychainFlag || Boolean(env.CI) || Boolean(noKeychainEnv) });

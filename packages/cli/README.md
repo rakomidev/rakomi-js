@@ -74,7 +74,7 @@ token), sends a real invitation e-mail, and is refused under `--ci` — see
 | --- | --- |
 | `login` | sign in (browser by default; `--no-browser` for a device code) |
 | `logout` | clear the local session |
-| `whoami` | show the signed-in account, home tenant, and active tenant |
+| `whoami` | show the signed-in account, home tenant, and active tenant; after `login --ci`, the tenant, environment and trust policy of the CI session |
 | `use <tenant-id-or-slug>` | remember a tenant locally for `whoami`/future commands; a slug is server-verified |
 | `connect` | connect an MCP client (Claude Code, Claude Desktop, and others — see `--help`) to your tenant (read access) |
 | `tenants create <name>` | create a tenant (`--owner me\|<email>`, `--slug <slug>`) |
