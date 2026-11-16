@@ -1,3 +1,7 @@
+## 0.13.4 — 2026-11-16
+
+- No changes to the package. This release restores the CLI's changelog in the public repository, which the 0.13.2 release removed by mistake.
+
 ## 0.13.2 — 2026-11-15
 
 - Versions 0.13.0 and 0.13.1 were never published to npm; 0.13.2 is the first published release with the changes listed under 0.13.0.
