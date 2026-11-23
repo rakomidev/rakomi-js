@@ -136,19 +136,25 @@ function formatResult(result: CheckResult): string {
   return `  ${icon} ${result.name}: ${result.detail}`;
 }
 
-function parseArgs(args: string[]): { baseUrl: string; apiKey: string; issuer: string } {
+class DoctorUsageError extends Error {}
+
+export function parseArgs(
+  args: string[],
+  env: Record<string, string | undefined>,
+): { baseUrl: string; apiKey: string; issuer: string } {
   let baseUrl = 'https://api.rakomi.com';
-  let apiKey = 'ca_test_doctor_check';
+  const apiKey = env.RAKOMI_API_KEY || 'ca_test_doctor_check';
   let issuer: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--base-url' && args[i + 1]) {
+    const arg = args[i]!;
+    if (arg === '--api-key' || arg.startsWith('--api-key=')) {
+      throw new DoctorUsageError('--api-key is not accepted; set the RAKOMI_API_KEY environment variable instead');
+    }
+    if (arg === '--base-url' && args[i + 1]) {
       baseUrl = args[i + 1]!;
       i++;
-    } else if (args[i] === '--api-key' && args[i + 1]) {
-      apiKey = args[i + 1]!;
-      i++;
-    } else if (args[i] === '--issuer' && args[i + 1]) {
+    } else if (arg === '--issuer' && args[i + 1]) {
       issuer = args[i + 1]!;
       i++;
     }
@@ -157,8 +163,13 @@ function parseArgs(args: string[]): { baseUrl: string; apiKey: string; issuer: s
   return { baseUrl, apiKey, issuer: issuer ?? baseUrl };
 }
 
+function readEnv(): Record<string, string | undefined> {
+  const g = globalThis as unknown as { process?: { env?: Record<string, string | undefined> } };
+  return g.process?.env ?? {};
+}
+
 async function main(): Promise<void> {
-  const { baseUrl, apiKey, issuer } = parseArgs(process.argv.slice(2));
+  const { baseUrl, apiKey, issuer } = parseArgs(process.argv.slice(2), readEnv());
   const version = getSdkVersion();
 
   process.stdout.write(`\n${BOLD}@rakomi/node Doctor v${version}${RESET}\n`);

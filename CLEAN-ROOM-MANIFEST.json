@@ -29,14 +29,14 @@
   "packages": [
     {
       "name": "@rakomi/node",
-      "version": "0.13.4",
+      "version": "0.15.0",
       "tagPrefix": "sdk",
       "emittedSymbols": [],
       "fileCount": 38
     },
     {
       "name": "@rakomi/react",
-      "version": "0.11.0",
+      "version": "0.12.0",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -285,7 +285,7 @@
     },
     {
       "path": "packages/create-rakomi-app/src/usage.ts",
-      "sha256": "sha256:c689640d7cf0193bc2e5d21b2fda4c0c03d724ae78173f9e0f8e529c758aee67"
+      "sha256": "sha256:4c694ec8fbbd6e9bf3ed2d24e1d505ceb35ce86cab9226a063ba456eb401bcc9"
     },
     {
       "path": "packages/react-native/src/components/conditional.tsx",
@@ -545,7 +545,7 @@
     },
     {
       "path": "packages/react/src/hooks/use-linked-accounts.ts",
-      "sha256": "sha256:e59c89e9898517e27cdad3b6688862a0c092dbc0cef065a875128f4bef063a8b"
+      "sha256": "sha256:838099045f8aa444a3aec64cfc15119919f764744ca92880207cfc8a9f49e157"
     },
     {
       "path": "packages/react/src/hooks/use-organization-list.ts",
@@ -993,7 +993,7 @@
     },
     {
       "path": "packages/sdk/src/doctor.ts",
-      "sha256": "sha256:2af3a0bb5dff18db222447c95b195134dfd9a9b929de24657f3634bcfc5fe1e2"
+      "sha256": "sha256:936f7cd76fe63b348e9f74b55723a0df0818f7ff25990552b1c2d991260569f7"
     },
     {
       "path": "packages/sdk/src/dpop-session.ts",
@@ -1025,7 +1025,7 @@
     },
     {
       "path": "packages/sdk/src/index.ts",
-      "sha256": "sha256:acc41a5027ef7c2cf5d96338b41bc26d05fd2a2999b94cbbdda6aebd1c9598dd"
+      "sha256": "sha256:2ec94ae311a61877418c94fd1f7fb572d7932a4c454d87bcba09a06d020bd99f"
     },
     {
       "path": "packages/sdk/src/internal/canonical-url.ts",
@@ -1061,7 +1061,7 @@
     },
     {
       "path": "packages/sdk/src/link.ts",
-      "sha256": "sha256:d5495ff0535a185ac7a062717b1f9eb155b58a3d0dbea8d4d1b37b472764f009"
+      "sha256": "sha256:40808cf4d713554b4a03a284ab2ed4eaa4e17edb0a16cf391dc45d060066cdaf"
     },
     {
       "path": "packages/sdk/src/middleware.ts",
@@ -1085,7 +1085,7 @@
     },
     {
       "path": "packages/sdk/src/types.ts",
-      "sha256": "sha256:ef185d7d900ec417fb8af5e437264b28cf69ceecaad8d7cf07f765ecca7a0870"
+      "sha256": "sha256:77862a1963912824fe1946af75ddbf931aec7cb3645ef2b78eda2775a50aa185"
     },
     {
       "path": "packages/sdk/src/verify-dpop-binding.ts",

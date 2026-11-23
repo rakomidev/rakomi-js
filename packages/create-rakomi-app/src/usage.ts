@@ -39,7 +39,7 @@ export function helpText(): string {
     '',
     'Usage:',
     '  npx create-rakomi-app@latest --template <slug> [directory]',
-    '  npm create @rakomi/rakomi-app@latest -- --template <slug> [directory]',
+    '  npm create rakomi-app@latest -- --template <slug> [directory]',
     '',
     'Templates:',
     list,

@@ -19,15 +19,11 @@ claude mcp add --transport http rakomi https://mcp.rakomi.com/mcp
 npx create-rakomi-app@latest --template nextjs my-app
 ```
 
-The `@latest` tag sidesteps a stale `npx` cache. The scoped `npm create` form also works:
+The `@latest` tag sidesteps a stale `npx` cache. The `npm create` form runs the same package:
 
 ```sh
-npm create @rakomi/rakomi-app@latest -- --template nextjs my-app
+npm create rakomi-app@latest -- --template nextjs my-app
 ```
-
-> The unscoped `npm create rakomi-app` form is **not** supported — `npm create` cannot resolve a
-> scoped package from the bare name. Use one of the two forms above. (An unscoped alias may be
-> offered in the future.)
 
 ## Usage
 
@@ -72,8 +68,6 @@ it with `--region` or the `RAKOMI_REGION` environment variable for any other reg
   analytics and nothing to opt out of.
 - **Refuses to overwrite.** Scaffolding into a directory that already contains files is refused
   outright — your existing work is never clobbered. Pick a fresh directory name.
-- **Scoped package name.** The published name is scoped, which is why the bare `npm create
-  rakomi-app` form does not resolve; use the two supported invocations above.
 - **Stores and transmits nothing else.** The only data involved is the values you type, written to
   your own local `.env` file on your own machine — exporting or deleting that data is simply
   reading or removing that file.

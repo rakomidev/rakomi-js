@@ -22,8 +22,8 @@
     "react-native": ">=0.81",
     "expo": ">=54",
     "jose": "^6.2.3",
-    "publint": "0.3.21",
-    "@arethetypeswrong/cli": "0.18.3",
+    "publint": "0.3.25",
+    "@arethetypeswrong/cli": "0.18.5",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1"
   },

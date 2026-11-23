@@ -12,8 +12,11 @@
  * Never trusts URL hints or localStorage for the methods list.
  *
  * REDIRECT FLOW: `link(provider)` POSTs to initiate then navigates same-window
- * (`window.location.assign`). Callers who need popups (mobile, embedded iframes)
- * should drop down to the `@rakomi/node` SDK directly.
+ * (`window.location.assign`). The provider sends the user back to this page with
+ * `?link_code=...&provider=...`; on load the hook removes both from the URL and
+ * completes the link (`POST /v1/users/me/link/complete`) with this session's
+ * token — nothing is linked before that. Callers who need popups (mobile,
+ * embedded iframes) should drop down to the `@rakomi/node` SDK directly.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -259,6 +262,42 @@ export function useLinkedAccounts(): UseLinkedAccountsResult {
     } catch {
     }
   }, [userId]);
+
+  const completionStartedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (!auth.isLoaded || !auth.isSignedIn) return;
+    if (typeof window === 'undefined' || completionStartedRef.current) return;
+    const { pathname, hash } = window.location;
+    const params = new URLSearchParams(window.location.search ?? '');
+    const code = params.get('link_code');
+    const provider = params.get('provider');
+    if (!code || !provider) return;
+    completionStartedRef.current = true;
+    params.delete('link_code');
+    params.delete('provider');
+    const rest = params.toString();
+    window.history.replaceState(window.history.state, '', `${pathname}${rest ? `?${rest}` : ''}${hash ?? ''}`);
+    void (async () => {
+      setIsLinking(true);
+      setError(null);
+      try {
+        const res = await doFetch('/v1/users/me/link/complete', {
+          method: 'POST',
+          body: JSON.stringify({ provider, code, redirect_uri: `${window.location.origin}${pathname}` }),
+        });
+        if (!res || !mountedRef.current) return;
+        if (res.status === 200) {
+          broadcastMutation();
+          await refresh();
+          return;
+        }
+        const errBody = (await res.json().catch(() => ({}))) as ProblemBody;
+        setError(errorFromResponse(res.status, errBody));
+      } finally {
+        if (mountedRef.current) setIsLinking(false);
+      }
+    })();
+  }, [auth.isLoaded, auth.isSignedIn, doFetch, refresh, broadcastMutation]);
 
   const link = useCallback(
     async (provider: LinkProvider, reauth?: LinkReauth): Promise<void> => {
