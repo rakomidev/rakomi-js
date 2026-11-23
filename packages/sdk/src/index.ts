@@ -112,6 +112,8 @@ export { requirePermission, requireRole } from './guards.js';
 export type {
   AccountLinkingProvider,
   LinkCallOptions,
+  LinkCompleteOptions,
+  LinkCompleteResponse,
   LinkedMethod,
   LinkedMethodsResponse,
   LinkedVia,
@@ -219,6 +221,7 @@ export type {
   AuthorizeUrlOptions,
   ChallengeErrorCode,
   ChallengeOptions,
+  CibaRequestCreatedWebhookData,
   DpopJtiHook,
   DpopProofRejectionReason,
   DpopVerifyOptions,

@@ -1,7 +1,7 @@
 /**
  * Node SDK surface for user-scoped account linking.
  *
- * Wraps the three `/v1/users/me/link*` endpoints.
+ * Wraps the `/v1/users/me/link*` endpoints.
  * These endpoints require an end-user JWT (NOT an API key), so each helper
  * takes a `{ userToken }` option. The SDK client (constructed with an API key)
  * only carries the `baseUrl`; the user token flows per-call.
@@ -104,6 +104,23 @@ export interface LinkInitiateOptions extends LinkCallOptions {
   currentPassword?: string;
   /** A fresh step-up token. Required for a passwordless account and for an account with a second factor. */
   stepUpToken?: string;
+}
+
+/**
+ * Options for {@link LinkClient.complete}: the `link_code` your `redirectUri`
+ * received, and that same `redirectUri`. Use the access token of the session
+ * that called {@link LinkClient.initiate}; any other session is refused.
+ */
+export interface LinkCompleteOptions extends LinkCallOptions {
+  code: string;
+  redirectUri: string;
+}
+
+export interface LinkCompleteResponse {
+  status: 'linked';
+  provider: AccountLinkingProvider;
+  /** True when the identity was already linked to this user. */
+  already_linked: boolean;
 }
 
 export interface LinkClientContext {
@@ -253,6 +270,46 @@ export class LinkClient {
   }
 
   /**
+   * POST /v1/users/me/link/complete — finish a link started with {@link LinkClient.initiate}.
+   * After the provider, the user returns to your `redirectUri` with
+   * `?link_code=...&provider=...`; pass both here. Nothing is linked until this
+   * call succeeds. A refused code is `account_linking/link_completion_invalid`.
+   */
+  async complete(
+    provider: AccountLinkingProvider,
+    options: LinkCompleteOptions,
+  ): Promise<VerifyResult<LinkCompleteResponse>> {
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}/v1/users/me/link/complete`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${options.userToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ provider, code: options.code, redirect_uri: options.redirectUri }),
+        redirect: 'error',
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        error: ACCOUNT_LINKING_NETWORK_ERROR(err instanceof Error ? err.message : undefined),
+      };
+    }
+
+    if (res.status === 200) {
+      const body = await safeJson<LinkCompleteResponse>(res);
+      if (!body || body.status !== 'linked' || typeof body.already_linked !== 'boolean') {
+        return { ok: false, error: ACCOUNT_LINKING_NETWORK_ERROR('malformed response body') };
+      }
+      return { ok: true, data: body };
+    }
+
+    return { ok: false, error: await this.mapError(res, 'complete') };
+  }
+
+  /**
    * DELETE /v1/users/me/link/{provider} — unlink a social identity. Requires a fresh step-up
    * token (`options.stepUpToken`); a refusal is `passkey/step_up_required`.
    */
@@ -299,14 +356,14 @@ export class LinkClient {
    * bridge, inline literal, or a factory call) carries it without each one threading it through
    * by hand.
    */
-  private async mapError(res: Response, op: 'list' | 'initiate' | 'remove'): Promise<SdkError> {
+  private async mapError(res: Response, op: 'list' | 'initiate' | 'complete' | 'remove'): Promise<SdkError> {
     const body = await parseErrorBody(res);
     const requestId = extractRequestId(body);
     const error = this.resolveError(res, op, body);
     return requestId ? { ...error, request_id: requestId } : error;
   }
 
-  private resolveError(res: Response, op: 'list' | 'initiate' | 'remove', body: ApiErrorBody): SdkError {
+  private resolveError(res: Response, op: 'list' | 'initiate' | 'complete' | 'remove', body: ApiErrorBody): SdkError {
     const code = body.code ?? '';
 
     switch (res.status) {

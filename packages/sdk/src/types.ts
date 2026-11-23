@@ -501,6 +501,37 @@ export interface WebhookEvent {
 }
 
 /**
+ * `data` of an `oauth.ciba.request_created` webhook event: a CIBA request waits for the user's decision, so your own
+ * app can show the prompt. Pass `request_handle` as `token` to `GET /v1/users/me/ciba/request` and as `url_token` to
+ * `POST /v1/users/me/ciba/decision`, with the bearer of the user the request is for. The handle decides nothing on its
+ * own: any other caller gets 404. Optional members are omitted when absent, never `null`.
+ *
+ * @public — additive-only after the first public release.
+ */
+export interface CibaRequestCreatedWebhookData {
+  /** The request handle (the same one the consent e-mail links carry). */
+  request_handle: string;
+  /** The end user asked to approve. */
+  user_id: string;
+  /** The OAuth client that started the request. */
+  client_id: string;
+  /** The client's display name. */
+  client_name: string;
+  /** Present when the client is an agent. */
+  agent_client_id?: string;
+  /** The requested scopes. */
+  scopes: string[];
+  /** The client's `binding_message`, verbatim: show it to the user. */
+  binding_message: string;
+  /** The language the client wrote `binding_message` in, when it said so. */
+  binding_message_locale?: string;
+  /** The RFC 8707 resource an approval would bind, when the request names one: show it to the user. */
+  resource?: string;
+  /** When the request expires (ISO 8601). */
+  expires_at: string;
+}
+
+/**
  * Webhook headers sent with each delivery (Standard Webhooks + Rakomi supplementary).
  * Accepts both exact header names and raw Express headers (lowercased).
  */

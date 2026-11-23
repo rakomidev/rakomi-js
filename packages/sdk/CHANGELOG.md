@@ -1,3 +1,8 @@
+## 0.15.0 — 2026-11-23
+
+- Breaking: `rakomi-doctor` no longer accepts `--api-key`; a key on the command line leaks into shell history and the process list. It now exits with an error when the flag is given. Set the `RAKOMI_API_KEY` environment variable instead.
+- Breaking: linking a provider now takes two calls. After `link.initiate()` and the provider, the user returns to your `redirectUri` with `?link_code=...&provider=...` instead of `?linked=1`, and nothing is linked until you call the new `link.complete(provider, { userToken, code, redirectUri })` with the access token of the session that started the link. A code from another session, a used or expired code, or another `redirectUri` is refused with `account_linking/link_completion_invalid`. New types: `LinkCompleteOptions`, `LinkCompleteResponse`.
+
 ## 0.13.4 — 2026-11-16
 
 - No changes to the package. This release restores the CLI's changelog in the public repository, which the 0.13.2 release removed by mistake.
