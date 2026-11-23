@@ -1,0 +1,174 @@
+name: Publish to JSR and Docker Hub
+
+# Two registries besides npm, each from its own job in the environment `release`, on the release tags
+# publish.yml publishes from (created only by the release-tag App on a reviewed release head):
+#   - jsr: on an sdk/v<version> tag, JSR `@rakomi/sdk` (.github/packages/jsr-sdk, OpenID Connect discovery
+#     with no dependencies) at the version its jsr.json declares, through JSR's GitHub Actions OIDC
+#     publishing (no stored JSR token). A version JSR already serves is not published again.
+#   - docker-hub: on a cli/v<version> tag, Docker Hub `rakomi/rakomi:<version>` and `:latest`, the image of
+#     .github/docker/rakomi/Dockerfile (a digest-pinned node:22-alpine running that version of the `rakomi`
+#     CLI from npm as the non-root `node` user), once npm serves that version. Pushed with the Docker Hub
+#     access token DOCKERHUB_TOKEN (environment secret) of the account `rakomi`, with build provenance and an
+#     SBOM attached; the pushed digest is read back.
+# This file never holds npm's id-token: publish.yml stays the only workflow that publishes to npm.
+
+on:
+  push:
+    tags:
+      - "sdk/v[0-9]*.[0-9]*.[0-9]*"
+      - "cli/v[0-9]*.[0-9]*.[0-9]*"
+
+concurrency:
+  group: registries-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  jsr:
+    if: startsWith(github.ref, 'refs/tags/sdk/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Assert the tag commit is the reviewed head merged into the default branch
+        env:
+          TAG_REF: ${{ github.ref }}
+          TAG_SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node .github/scripts/check-release-tag-reviewed.mjs
+
+      - name: Test the package
+        run: node --test .github/packages/jsr-sdk/mod.test.ts
+
+      - name: Does JSR already serve this version?
+        id: served
+        working-directory: .github/packages/jsr-sdk
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./jsr.json').version")"
+          [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "ERROR: jsr.json declares no release version"; exit 1; }
+          CODE="$(curl -sS -o "${RUNNER_TEMP}/meta.json" -w '%{http_code}' --proto '=https' "https://jsr.io/@rakomi/sdk/meta.json")"
+          SERVED=false
+          if [ "${CODE}" = "200" ]; then
+            SERVED="$(node -e "const m=require(process.argv[1]); process.stdout.write(String(Object.prototype.hasOwnProperty.call(m.versions||{}, process.argv[2])))" "${RUNNER_TEMP}/meta.json" "${VERSION}")"
+          elif [ "${CODE}" != "404" ]; then
+            echo "ERROR: jsr.io answered HTTP ${CODE}"; exit 1
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "served=${SERVED}" >> "${GITHUB_OUTPUT}"
+          echo "@rakomi/sdk ${VERSION}: served=${SERVED}"
+
+      - name: Publish @rakomi/sdk to JSR (GitHub Actions OIDC)
+        if: steps.served.outputs.served == 'false'
+        working-directory: .github/packages/jsr-sdk
+        run: npx --yes jsr@0.14.3 publish
+
+      - name: Read the version back from JSR
+        env:
+          VERSION: ${{ steps.served.outputs.version }}
+        run: |
+          set -euo pipefail
+          for ATTEMPT in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS --proto '=https' -o /dev/null "https://jsr.io/@rakomi/sdk/${VERSION}_meta.json"; then
+              echo "JSR serves @rakomi/sdk ${VERSION}"; exit 0
+            fi
+            echo "JSR does not serve @rakomi/sdk ${VERSION} yet (attempt ${ATTEMPT})"
+            sleep 30
+          done
+          echo "ERROR: JSR does not serve @rakomi/sdk ${VERSION}"
+          exit 1
+
+  docker-hub:
+    if: startsWith(github.ref, 'refs/tags/cli/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Assert the tag commit is the reviewed head merged into the default branch
+        env:
+          TAG_REF: ${{ github.ref }}
+          TAG_SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node .github/scripts/check-release-tag-reviewed.mjs
+
+      - name: Wait until npm serves the tagged rakomi version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${REF_NAME#cli/v}"
+          [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "ERROR: ${REF_NAME} names no release version"; exit 1; }
+          for ATTEMPT in $(seq 1 30); do
+            if [ "$(npm view "rakomi@${VERSION}" version 2>/dev/null)" = "${VERSION}" ]; then
+              echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+              echo "npm serves rakomi ${VERSION}"
+              exit 0
+            fi
+            echo "npm does not serve rakomi ${VERSION} yet (attempt ${ATTEMPT})"
+            sleep 30
+          done
+          echo "ERROR: npm does not serve rakomi ${VERSION}"
+          exit 1
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: rakomi
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push rakomi/rakomi
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .github/docker/rakomi
+          platforms: linux/amd64,linux/arm64
+          build-args: RAKOMI_VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            rakomi/rakomi:${{ steps.version.outputs.version }}
+            rakomi/rakomi:latest
+          provenance: mode=max
+          sbom: true
+          push: true
+
+      - name: Read the pushed image back from Docker Hub
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          SERVED="$(docker buildx imagetools inspect "rakomi/rakomi:${VERSION}" --format '{{json .Manifest}}' | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).digest))")"
+          if [ "${SERVED}" != "${DIGEST}" ]; then
+            echo "ERROR: Docker Hub serves ${SERVED} for rakomi/rakomi:${VERSION}, not the pushed ${DIGEST}"
+            exit 1
+          fi
+          docker run --rm "rakomi/rakomi:${VERSION}@${DIGEST}" --version
+          echo "rakomi/rakomi:${VERSION} = ${DIGEST}"
