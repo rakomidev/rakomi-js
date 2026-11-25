@@ -56,6 +56,8 @@ export const fi: Translations = {
   'signUp.verifyTitle': 'Vahvista sähköpostisi',
   'signUp.verifyMessage': 'Lähetimme vahvistuslinkin osoitteeseen {email}',
   'signUp.verifyCheckSpam': 'Tarkista roskapostikansiosi',
+  'signUp.credentialsResetTitle': 'Sähköposti vahvistettu — aseta uusi salasana',
+  'signUp.credentialsResetMessage': 'Sähköpostiosoitteesi on vahvistettu. Koska linkki avattiin muualla kuin selaimen välilehdellä, jossa rekisteröidyit, rekisteröitymisen salasana poistettiin tilisi suojaamiseksi. Aseta uusi salasana kirjautumissivun kohdasta ”Unohditko salasanasi?”.',
   'signUp.resend': 'Lähetä vahvistussähköposti uudelleen',
   'signUp.hasAccount': 'Onko sinulla jo tili? {link}',
   'signUp.dataLocation': 'Tietosi tallennetaan EU:ssa',

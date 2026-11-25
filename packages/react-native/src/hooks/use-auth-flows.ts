@@ -1,5 +1,5 @@
 /**
- * Direct-auth hooks — (magic-link, email-OTP, register).
+ * Direct-auth hooks — (magic-link, email-OTP, register, verify-email).
  *
  * Wraps `@rakomi/sdk-core` direct-auth helpers with `useRakomiContext` wiring so
  * consumers don't have to thread `http` / `baseUrl` / `clientId` themselves.
@@ -16,16 +16,21 @@
 import {
   type AuthError,
   register as coreRegister,
+  type RegisterFlowResult,
   requestEmailOtp as coreRequestEmailOtp,
   requestMagicLink as coreRequestMagicLink,
   type RequestResult,
+  resendVerification as coreResendVerification,
+  verifyEmail as coreVerifyEmail,
   verifyEmailOtp as coreVerifyEmailOtp,
+  type VerifyEmailResult,
   verifyMagicLink as coreVerifyMagicLink,
   type VerifyResult,
   verifyTotp as coreVerifyTotp,
 } from '@rakomi/sdk-core';
 
 import { useRakomiContext } from '../context.js';
+import { forgetSignupBindings, keepSignupBinding, readSignupBindings } from '../internal/signup-binding-memory.js';
 
 export interface UseMagicLinkResult {
   request: (email: string) => Promise<RequestResult>;
@@ -78,15 +83,51 @@ export function useEmailOtp(): UseEmailOtpResult {
 }
 
 export interface UseRegisterResult {
-  register: (email: string, password: string) => Promise<RequestResult>;
+  /** `consent`: the user accepted the tenant's terms and privacy policy (the API refuses a registration without it). The
+   *  answer's signup binding is kept in memory for {@link useVerifyEmail} (never persisted). */
+  register: (email: string, password: string, consent: boolean) => Promise<RegisterFlowResult>;
+  /** Resends the verification e-mail with the binding kept in memory, and keeps the new link's binding instead. */
+  resendVerification: (email: string) => Promise<RegisterFlowResult>;
 }
 
 export function useRegister(): UseRegisterResult {
   const ctx = useRakomiContext();
   return {
-    register: async (email, password) => {
+    register: async (email, password, consent) => {
       ctx.events.push({ type: 'sign_in_attempted', severity: 'info', metadata: { method: 'register' } });
-      return coreRegister({ http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, email, password });
+      const result = await coreRegister({ http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, email, password, consent });
+      if (result.ok) keepSignupBinding(ctx.publishableKey, result.signupBinding);
+      return result;
+    },
+    resendVerification: async (email) => {
+      const result = await coreResendVerification({
+        http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, email, signupBindings: readSignupBindings(ctx.publishableKey),
+      });
+      if (result.ok) keepSignupBinding(ctx.publishableKey, result.signupBinding);
+      return result;
+    },
+  };
+}
+
+export interface UseVerifyEmailResult {
+  /**
+   * Verifies the token from the verification link with the binding kept in memory since `register` in this app process,
+   * then forgets it. `credentialsReset: true` (the link was opened on another device, or after the app restarted) means
+   * the registration password was removed: send the user to set a new one (forgot password).
+   */
+  verify: (token: string) => Promise<VerifyEmailResult>;
+}
+
+export function useVerifyEmail(): UseVerifyEmailResult {
+  const ctx = useRakomiContext();
+  return {
+    verify: async (token) => {
+      const result = await coreVerifyEmail({
+        http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, token, signupBindings: readSignupBindings(ctx.publishableKey),
+      });
+      if (result.ok) forgetSignupBindings(ctx.publishableKey);
+      else emitError(ctx.events, result.error);
+      return result;
     },
   };
 }

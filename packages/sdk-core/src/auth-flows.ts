@@ -7,6 +7,8 @@
  * - POST /v1/auth/email-otp
  * - POST /v1/auth/email-otp/verify
  * - POST /v1/auth/register
+ * - POST /v1/auth/verify-email
+ * - POST /v1/auth/resend-verification
  *
  * Both magic-link and email-otp verify endpoints can return either a token bundle
  * directly or an OAuth `code` to be exchanged via `/oauth/token`. Callers normalise
@@ -100,13 +102,122 @@ export interface RegisterInput {
   clientId: string;
   email: string;
   password: string;
+  /** The user ticked the consent to the tenant's terms and privacy policy. The API refuses a registration without it. */
+  consent: boolean;
 }
 
-export async function register(input: RegisterInput): Promise<RequestResult> {
-  return postNoContent(input.http, `${input.baseUrl}/v1/auth/register`, input.clientId, {
+/**
+ * `signupBinding` — the value the device or browser that registered keeps and sends back with the
+ * verification token ({@link verifyEmail}): only then does the password chosen at registration survive
+ * the first verification. Keep it for this flow only (a browser: `sessionStorage`; a native app: in
+ * memory), never in persistent storage. When no link was mailed it is a random value of the same shape.
+ */
+export type RegisterFlowResult =
+  | { ok: true; signupBinding?: string }
+  | { ok: false; error: AuthError };
+
+export async function register(input: RegisterInput): Promise<RegisterFlowResult> {
+  const result = await postJson(input.http, `${input.baseUrl}/v1/auth/register`, input.clientId, {
     email: input.email,
     password: input.password,
+    consent: input.consent,
   });
+  if (!result.ok) return result;
+  const signupBinding = bindingOf(result.data);
+  return signupBinding ? { ok: true, signupBinding } : { ok: true };
+}
+
+export interface VerifyEmailInput {
+  http: HttpClient;
+  baseUrl: string;
+  clientId: string;
+  /** The token from the verification link. */
+  token: string;
+  /** Every binding kept since {@link register} and each {@link resendVerification} on this device (at most 5, newest last). */
+  signupBindings?: readonly string[];
+}
+
+/**
+ * `credentialsReset` — the verification was the first proof of the address and carried no matching
+ * `signupBinding` (another tab, browser or device): every credential set before it ended, the
+ * registration password included. Tell the user and send them to set a password (forgot password).
+ */
+export type VerifyEmailResult =
+  | { ok: true; email?: string; alreadyVerified: boolean; credentialsReset: boolean }
+  | { ok: false; error: AuthError };
+
+export async function verifyEmail(input: VerifyEmailInput): Promise<VerifyEmailResult> {
+  const result = await postJson(input.http, `${input.baseUrl}/v1/auth/verify-email`, input.clientId, {
+    token: input.token,
+    ...(input.signupBindings && input.signupBindings.length > 0 ? { signup_binding: [...input.signupBindings] } : {}),
+  });
+  if (!result.ok) return result;
+  const email = typeof result.data['email'] === 'string' ? result.data['email'] : undefined;
+  return {
+    ok: true,
+    ...(email ? { email } : {}),
+    alreadyVerified: result.data['already_verified'] === true,
+    credentialsReset: result.data['credentials_reset'] === true,
+  };
+}
+
+export interface ResendVerificationInput {
+  http: HttpClient;
+  baseUrl: string;
+  clientId: string;
+  email: string;
+  /** The bindings kept on this device; the answer then carries the binding of the new link. */
+  signupBindings?: readonly string[];
+}
+
+/**
+ * `signupBinding` is ADDED to the kept list (the new link's, or a decoy of the same shape — indistinguishable, so never
+ * put in place of an earlier link's binding, which may still be the one clicked). Keep at most the 5 newest.
+ */
+export async function resendVerification(input: ResendVerificationInput): Promise<RegisterFlowResult> {
+  const result = await postJson(input.http, `${input.baseUrl}/v1/auth/resend-verification`, input.clientId, {
+    email: input.email,
+    ...(input.signupBindings && input.signupBindings.length > 0 ? { signup_binding: [...input.signupBindings] } : {}),
+  });
+  if (!result.ok) return result;
+  const signupBinding = bindingOf(result.data);
+  return signupBinding ? { ok: true, signupBinding } : { ok: true };
+}
+
+const SIGNUP_BINDING_SHAPE = /^[0-9a-f]{64}$/;
+
+function bindingOf(data: Record<string, unknown>): string | undefined {
+  const value = data['signup_binding'];
+  return typeof value === 'string' && SIGNUP_BINDING_SHAPE.test(value) ? value : undefined;
+}
+
+async function postJson(
+  http: HttpClient,
+  url: string,
+  clientId: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: AuthError }> {
+  let response: Response;
+  try {
+    response = await http.fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-API-Key': clientId },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    return { ok: false, error: networkError(err instanceof Error ? err.message : 'fetch failed') };
+  }
+  if (!response.ok) {
+    let parsed: { detail?: string; request_id?: string } = {};
+    try { parsed = (await response.json()) as typeof parsed; } catch { }
+    return { ok: false, error: parseAuthEndpointError(response.status, parsed) };
+  }
+  try {
+    const data = (await response.json()) as unknown;
+    return { ok: true, data: data && typeof data === 'object' ? (data as Record<string, unknown>) : {} };
+  } catch {
+    return { ok: true, data: {} };
+  }
 }
 
 async function postNoContent(http: HttpClient, url: string, clientId: string, body: Record<string, unknown>): Promise<RequestResult> {

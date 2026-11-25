@@ -65,13 +65,15 @@ export const TENANT_ADMIN_LOGIN_SCOPE = 'openid profile email tenants:manage';
  * True iff `id` is a CIMD `client_id` — an absolute `https://` URL, no userinfo, no fragment. A
  * deliberate, minimal, standalone re-implementation of the server's own recognizer rather than a
  * dependency on it: this package ships with ZERO runtime dependencies by design (a tiny install
- * footprint), so importing server-side code is not an option. The two predicates MUST agree (both
- * accept exactly "absolute https URL, no credentials, no fragment"); a should-FAIL/should-PASS parity
- * check lives in `env.test.ts`. This copy is used ONLY to decide user-facing behaviour (which error to
+ * footprint), so importing server-side code is not an option. The predicates MUST agree (all accept
+ * exactly "absolute https URL, no credentials, no fragment, no C0 control/space/DEL, no `\` or `@`"); a
+ * should-FAIL/should-PASS parity check lives in `env.test.ts`. This copy is used ONLY to decide user-facing behaviour (which error to
  * print for `--no-browser` — see `login.ts`) — it never gates anything security-relevant, that stays
  * server-side.
  */
 export function isCimdClientId(id: string): boolean {
+  if (/[\u0000-\u0020\u007f]/.test(id)) return false;
+  if (/[\\@]/.test(id)) return false;
   let url: URL;
   try {
     url = new URL(id);

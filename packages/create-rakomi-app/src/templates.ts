@@ -46,11 +46,12 @@ export function portalUrl(slug: string): string {
 
 /**
  * The codeload archive URL for a template, derived from its `publicRepo` and the given base.
- * Pinned to the `main` branch ref (a future enhancement could pin a tagged ref per template).
+ * Pinned to the release-time commit (`template.commit`), never a moving branch; the archive's
+ * sha512 is checked against `template.archiveSha512` before it is unpacked (`assertArchiveDigest`).
  */
 export function archiveUrl(template: Template, base: string = DEFAULT_TEMPLATE_BASE): string {
   let end = base.length;
   while (end > 0 && base.charCodeAt(end - 1) === 47) end -= 1;
   const trimmed = base.slice(0, end);
-  return `${trimmed}/${template.publicRepo}/tar.gz/refs/heads/main`;
+  return `${trimmed}/${template.publicRepo}/tar.gz/${template.commit}`;
 }

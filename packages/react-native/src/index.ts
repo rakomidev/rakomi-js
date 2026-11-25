@@ -119,8 +119,8 @@ export type {
 export { usePasskeys } from './hooks/use-passkeys.js';
 export { useSubmitOAuthTokens } from './hooks/use-submit-oauth-tokens.js';
 
-export type { UseEmailOtpResult, UseMagicLinkResult, UseMfaResult, UseRegisterResult } from './hooks/use-auth-flows.js';
-export { useEmailOtp, useMagicLink, useMfa, useRegister } from './hooks/use-auth-flows.js';
+export type { UseEmailOtpResult, UseMagicLinkResult, UseMfaResult, UseRegisterResult, UseVerifyEmailResult } from './hooks/use-auth-flows.js';
+export { useEmailOtp, useMagicLink, useMfa, useRegister, useVerifyEmail } from './hooks/use-auth-flows.js';
 
 export type {
   AssertPasskeyResult,

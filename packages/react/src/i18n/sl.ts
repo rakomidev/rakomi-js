@@ -52,6 +52,8 @@ export const sl: Translations = {
   'signUp.verifyTitle': 'Potrdite svoj e-poštni naslov',
   'signUp.verifyMessage': 'Poslali smo potrditveno povezavo na {email}',
   'signUp.verifyCheckSpam': 'Preverite mapo z vsiljeno pošto',
+  'signUp.credentialsResetTitle': 'E-pošta potrjena — nastavite novo geslo',
+  'signUp.credentialsResetMessage': 'Vaš e-poštni naslov je potrjen. Ker je bila povezava odprta zunaj zavihka brskalnika, v katerem ste se registrirali, je bilo geslo iz registracije zaradi zaščite računa odstranjeno. Novo geslo nastavite z možnostjo »Ste pozabili geslo?« na strani za prijavo.',
   'signUp.resend': 'Znova pošlji potrditveno e-pošto',
   'signUp.hasAccount': 'Že imate račun? {link}',
   'signUp.dataLocation': 'Vaši podatki so shranjeni v EU',

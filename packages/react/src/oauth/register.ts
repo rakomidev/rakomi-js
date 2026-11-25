@@ -9,9 +9,13 @@ import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError } from '../types.js';
 import { requiresHttpsUpgrade } from '../utils/safe-url.js';
 
+/** `signupBinding` — the registering-browser binding of the mailed link; `<SignUp />` keeps it in
+ *  `sessionStorage` and sends it with the verification token. */
 type RegisterApiResult =
-  | { ok: true }
+  | { ok: true; signupBinding?: string }
   | { ok: false; error: AuthError };
+
+const SIGNUP_BINDING_SHAPE = /^[0-9a-f]{64}$/;
 
 export async function registerUser(options: {
   baseUrl: string;
@@ -44,5 +48,10 @@ export async function registerUser(options: {
     return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Registration failed', ...(extractRequestId(body) && { requestId: extractRequestId(body) }) } };
   }
 
+  try {
+    const body = (await response.json()) as { signup_binding?: unknown };
+    const binding = body?.signup_binding;
+    if (typeof binding === 'string' && SIGNUP_BINDING_SHAPE.test(binding)) return { ok: true, signupBinding: binding };
+  } catch { }
   return { ok: true };
 }

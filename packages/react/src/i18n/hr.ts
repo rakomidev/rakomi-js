@@ -52,6 +52,8 @@ export const hr: Translations = {
   'signUp.verifyTitle': 'Potvrdite svoju e-poštu',
   'signUp.verifyMessage': 'Poslali smo poveznicu za potvrdu na {email}',
   'signUp.verifyCheckSpam': 'Provjerite mapu neželjene pošte',
+  'signUp.credentialsResetTitle': 'E-pošta potvrđena — postavite novu lozinku',
+  'signUp.credentialsResetMessage': 'Vaša adresa e-pošte je potvrđena. Budući da je poveznica otvorena izvan kartice preglednika u kojoj ste se registrirali, lozinka iz registracije uklonjena je radi zaštite vašeg računa. Novu lozinku postavite putem „Zaboravili ste lozinku?“ na stranici za prijavu.',
   'signUp.resend': 'Ponovno pošalji e-poštu za potvrdu',
   'signUp.hasAccount': 'Već imate račun? {link}',
   'signUp.dataLocation': 'Vaši podaci pohranjeni su u EU',

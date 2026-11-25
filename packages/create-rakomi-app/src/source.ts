@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -157,6 +158,22 @@ export class LocalFixtureSource implements TemplateSource {
     const bytes = this.bySlug[template.slug];
     if (!bytes) throw new CliError(`No fixture for template "${template.slug}".`, EXIT.FAIL);
     return bytes;
+  }
+}
+
+/**
+ * Refuse an archive whose sha512 differs from the digest pinned for its template at release time
+ * (`templates.generated.ts`, from `template-pins.json`). Runs before the archive is unpacked, so
+ * a changed upstream repository or a hostile mirror never reaches the target directory.
+ */
+export function assertArchiveDigest(archive: Buffer, template: Template): void {
+  const expected = Buffer.from(template.archiveSha512, 'hex');
+  const actual = createHash('sha512').update(archive).digest();
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    throw new CliError(
+      `The downloaded template "${template.slug}" does not match the checksum pinned in this release; refusing.`,
+      EXIT.FAIL,
+    );
   }
 }
 

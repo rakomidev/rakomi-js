@@ -52,6 +52,8 @@ export const et: Translations = {
   'signUp.verifyTitle': 'Kinnita oma e-post',
   'signUp.verifyMessage': 'Saatsime kinnituslingi aadressile {email}',
   'signUp.verifyCheckSpam': 'Kontrolli rämpsposti kausta',
+  'signUp.credentialsResetTitle': 'E-post kinnitatud — määrake uus parool',
+  'signUp.credentialsResetMessage': 'Teie e-posti aadress on kinnitatud. Kuna link avati väljaspool brauseri vahekaarti, kus te registreerusite, eemaldati registreerimisel määratud parool teie konto kaitseks. Uue parooli määramiseks kasutage sisselogimislehel valikut „Unustasid parooli?“.',
   'signUp.resend': 'Saada kinnitusmeil uuesti',
   'signUp.hasAccount': 'Kas sul on juba konto? {link}',
   'signUp.dataLocation': 'Sinu andmeid hoitakse EL-is',

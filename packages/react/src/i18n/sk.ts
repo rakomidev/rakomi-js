@@ -56,6 +56,8 @@ export const sk: Translations = {
   'signUp.verifyTitle': 'Overte svoj e-mail',
   'signUp.verifyMessage': 'Odoslali sme overovací odkaz na {email}',
   'signUp.verifyCheckSpam': 'Skontrolujte priečinok so spamom',
+  'signUp.credentialsResetTitle': 'E-mail potvrdený — nastavte si nové heslo',
+  'signUp.credentialsResetMessage': 'Vaša e-mailová adresa je potvrdená. Keďže odkaz bol otvorený mimo karty prehliadača, v ktorej ste sa registrovali, heslo z registrácie bolo z bezpečnostných dôvodov odstránené. Nové heslo si nastavte cez „Zabudli ste heslo?“ na prihlasovacej stránke.',
   'signUp.resend': 'Odoslať overovací e-mail znova',
   'signUp.hasAccount': 'Už máte účet? {link}',
   'signUp.dataLocation': 'Vaše údaje sú uložené v EÚ',

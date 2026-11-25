@@ -69,11 +69,15 @@ export { deriveTenantStorageKey } from './storage-keys.js';
 export { isSafeUrl, type PasswordStrength, scorePassword } from './utils.js';
 
 export type {
+  RegisterFlowResult,
   RegisterInput,
   RequestEmailOtpInput,
   RequestMagicLinkInput,
   RequestResult,
+  ResendVerificationInput,
+  VerifyEmailInput,
   VerifyEmailOtpInput,
+  VerifyEmailResult,
   VerifyMagicLinkInput,
   VerifyResult,
 } from './auth-flows.js';
@@ -81,6 +85,8 @@ export {
   register,
   requestEmailOtp,
   requestMagicLink,
+  resendVerification,
+  verifyEmail,
   verifyEmailOtp,
   verifyMagicLink,
 } from './auth-flows.js';

@@ -52,6 +52,8 @@ export const mt: Translations = {
   'signUp.verifyTitle': 'Ivverifika l-email tiegħek',
   'signUp.verifyMessage': 'Bgħatna link ta\' verifika lil {email}',
   'signUp.verifyCheckSpam': 'Iċċekkja l-folder tal-ispam',
+  'signUp.credentialsResetTitle': 'Email ikkonfermat — issettja password ġdida',
+  'signUp.credentialsResetMessage': 'L-indirizz tal-email tiegħek huwa kkonfermat. Peress li l-link infetaħ barra mit-tab tal-browser li fih irreġistrajt, il-password tar-reġistrazzjoni tneħħiet biex jiġi protett il-kont tiegħek. Uża “Insejt il-password?” fil-paġna tad-dħul biex tissettja waħda ġdida.',
   'signUp.resend': 'Erġa\' ibgħat l-email ta\' verifika',
   'signUp.hasAccount': 'Diġà għandek kont? {link}',
   'signUp.dataLocation': 'Id-dejta tiegħek hija maħżuna fl-UE',

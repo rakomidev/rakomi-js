@@ -16,6 +16,8 @@ interface RnPrimitives {
   Text: Primitive;
   TextInput: Primitive;
   Pressable: Primitive;
+  /** `Linking.openURL(url)` — opens a document link outside the app. */
+  Linking: Primitive;
 }
 
 let cached: RnPrimitives | null = null;

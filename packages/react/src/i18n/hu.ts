@@ -56,6 +56,8 @@ export const hu: Translations = {
   'signUp.verifyTitle': 'Erősítse meg e-mail-címét',
   'signUp.verifyMessage': 'Megerősítő linket küldtünk a(z) {email} címre',
   'signUp.verifyCheckSpam': 'Ellenőrizze a levélszemét mappát',
+  'signUp.credentialsResetTitle': 'E-mail megerősítve — állítson be új jelszót',
+  'signUp.credentialsResetMessage': 'E-mail-címe megerősítve. Mivel a hivatkozást nem abban a böngészőlapban nyitotta meg, amelyben regisztrált, fiókja védelmében a regisztrációkor megadott jelszót eltávolítottuk. Új jelszót a bejelentkezési oldal „Elfelejtette jelszavát?” lehetőségével állíthat be.',
   'signUp.resend': 'Megerősítő e-mail újraküldése',
   'signUp.hasAccount': 'Már van fiókja? {link}',
   'signUp.dataLocation': 'Adatait az EU területén tároljuk',

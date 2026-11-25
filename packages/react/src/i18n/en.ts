@@ -52,6 +52,8 @@ export const en: Translations = {
   'signUp.verifyTitle': 'Verify your email',
   'signUp.verifyMessage': 'We sent a verification link to {email}',
   'signUp.verifyCheckSpam': 'Check your spam folder',
+  'signUp.credentialsResetTitle': 'Email confirmed — set a new password',
+  'signUp.credentialsResetMessage': 'Your email address is confirmed. Because the link was opened outside the browser tab you signed up in, the password from sign-up was removed to protect your account. Use “Forgot your password?” on the sign-in page to set a new one.',
   'signUp.resend': 'Resend verification email',
   'signUp.hasAccount': 'Already have an account? {link}',
   'signUp.dataLocation': 'Your data is stored in the EU',

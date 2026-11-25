@@ -56,6 +56,8 @@ export const de: Translations = {
   'signUp.verifyTitle': 'E-Mail bestätigen',
   'signUp.verifyMessage': 'Wir haben einen Bestätigungslink an {email} gesendet',
   'signUp.verifyCheckSpam': 'Prüfen Sie Ihren Spam-Ordner',
+  'signUp.credentialsResetTitle': 'E-Mail bestätigt — legen Sie ein neues Passwort fest',
+  'signUp.credentialsResetMessage': 'Ihre E-Mail-Adresse ist bestätigt. Da der Link außerhalb des Browser-Tabs geöffnet wurde, in dem Sie sich registriert haben, wurde das Passwort aus der Registrierung zum Schutz Ihres Kontos entfernt. Legen Sie über „Passwort vergessen?“ auf der Anmeldeseite ein neues fest.',
   'signUp.resend': 'Bestätigungs-E-Mail erneut senden',
   'signUp.hasAccount': 'Bereits ein Konto? {link}',
   'signUp.dataLocation': 'Ihre Daten werden in der EU gespeichert',

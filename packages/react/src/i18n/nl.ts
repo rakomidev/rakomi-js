@@ -56,6 +56,8 @@ export const nl: Translations = {
   'signUp.verifyTitle': 'Bevestig uw e-mailadres',
   'signUp.verifyMessage': 'We hebben een bevestigingslink gestuurd naar {email}',
   'signUp.verifyCheckSpam': 'Controleer uw spammap',
+  'signUp.credentialsResetTitle': 'E-mail bevestigd — stel een nieuw wachtwoord in',
+  'signUp.credentialsResetMessage': 'Uw e-mailadres is bevestigd. Omdat de link is geopend buiten het browsertabblad waarin u zich hebt geregistreerd, is het wachtwoord van de registratie verwijderd om uw account te beschermen. Stel via „Wachtwoord vergeten?” op de inlogpagina een nieuw wachtwoord in.',
   'signUp.resend': 'Bevestigingsmail opnieuw versturen',
   'signUp.hasAccount': 'Heeft u al een account? {link}',
   'signUp.dataLocation': 'Uw gegevens worden opgeslagen in de EU',

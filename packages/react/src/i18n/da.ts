@@ -56,6 +56,8 @@ export const da: Translations = {
   'signUp.verifyTitle': 'Bekræft din e-mail',
   'signUp.verifyMessage': 'Vi har sendt et bekræftelseslink til {email}',
   'signUp.verifyCheckSpam': 'Tjek din spammappe',
+  'signUp.credentialsResetTitle': 'E-mail bekræftet — vælg en ny adgangskode',
+  'signUp.credentialsResetMessage': 'Din e-mailadresse er bekræftet. Fordi linket blev åbnet uden for den browserfane, du tilmeldte dig i, er adgangskoden fra tilmeldingen fjernet for at beskytte din konto. Brug „Glemt din adgangskode?“ på login-siden for at vælge en ny.',
   'signUp.resend': 'Send bekræftelsesmail igen',
   'signUp.hasAccount': 'Har du allerede en konto? {link}',
   'signUp.dataLocation': 'Dine data opbevares i EU',

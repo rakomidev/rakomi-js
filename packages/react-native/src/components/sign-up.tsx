@@ -17,12 +17,17 @@ import { type AuthError, extractRequestId, isSafeUrl, scorePassword } from '@rak
 
 import { useRakomiContext } from '../context.js';
 import { loadRnPrimitives as loadRn } from '../internal/rn-primitives.js';
+import { keepSignupBinding } from '../internal/signup-binding-memory.js';
 
 export interface SignUpProps {
   /** Registration endpoint, default `/v1/auth/register`. */
   registerEndpoint?: string;
   /** Optional return URL after email confirmation — validated via `isSafeUrl`. */
   returnTo?: string;
+  /** Terms of service URL; shown as a link in the consent label only when it is a safe `https` URL, else as plain text. */
+  termsOfServiceUrl?: string;
+  /** Privacy policy URL; same rule as `termsOfServiceUrl`. */
+  privacyPolicyUrl?: string;
   style?: any;
 }
 
@@ -30,24 +35,38 @@ type Step = { kind: 'form' } | { kind: 'verification_required' } | { kind: 'erro
 
 export function SignUp(props: SignUpProps): ReactNode {
   const ctx = useRakomiContext();
-  const { View, Text, TextInput, Pressable } = loadRn();
+  const { View, Text, TextInput, Pressable, Linking } = loadRn();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<Step>({ kind: 'form' });
 
   const strength = password ? scorePassword(password) : null;
   const returnTo = props.returnTo && isSafeUrl(props.returnTo, ['http', 'https', 'rakomi']) ? props.returnTo : undefined;
 
+  const termsUrl = props.termsOfServiceUrl && isSafeUrl(props.termsOfServiceUrl, ['https']) ? props.termsOfServiceUrl : undefined;
+  const privacyUrl = props.privacyPolicyUrl && isSafeUrl(props.privacyPolicyUrl, ['https']) ? props.privacyPolicyUrl : undefined;
+  const termsName = ctx.translate('signUp.termsOfService');
+  const privacyName = ctx.translate('signUp.privacyPolicy');
+  const consentLabel = ctx.translate('signUp.consentLabel', { termsLink: termsName, privacyLink: privacyName });
+  const consentParts = ctx
+    .translate('signUp.consentLabel', { termsLink: '%%T%%', privacyLink: '%%P%%' })
+    .split(/(%%[TP]%%)/);
+
   async function onSubmit() {
     if (busy) return;
+    if (!consent) {
+      setStep({ kind: 'error', error: { code: 'SIGN_IN_FAILED', message: ctx.translate('signUp.consentRequired') } });
+      return;
+    }
     setBusy(true);
     ctx.events.push({ type: 'sign_in_attempted', severity: 'info', metadata: { mode: 'register' } });
     try {
       const response = await ctx.http.fetch(props.registerEndpoint ?? '/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-API-Key': ctx.publishableKey },
-        body: JSON.stringify({ email, password, returnTo }),
+        body: JSON.stringify({ email, password, consent: true, returnTo }),
       });
       if (!response.ok) {
         let parsed: { detail?: string; request_id?: string } = {};
@@ -61,6 +80,11 @@ export function SignUp(props: SignUpProps): ReactNode {
           error: { code: 'SIGN_IN_FAILED', message: parsed.detail ?? `Register failed (${response.status})`, ...(requestId && { requestId }) },
         });
       } else {
+        try {
+          const body = (await response.json()) as { signup_binding?: unknown };
+          if (typeof body?.signup_binding === 'string') keepSignupBinding(ctx.publishableKey, body.signup_binding);
+        } catch {
+        }
         setStep({ kind: 'verification_required' });
       }
     } catch (err) {
@@ -100,6 +124,31 @@ export function SignUp(props: SignUpProps): ReactNode {
         onChangeText={setPassword}
       />
       {strength ? <Text accessibilityLabel={`Password strength: ${strength}`}>Strength: {strength}</Text> : null}
+      <View>
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: consent }}
+          accessibilityLabel={consentLabel}
+          onPress={() => setConsent(c => !c)}
+        >
+          <Text>{consent ? '[x]' : '[ ]'}</Text>
+        </Pressable>
+        <Text>
+          {consentParts.map((part, i) => {
+            const isTerms = part === '%%T%%';
+            if (!isTerms && part !== '%%P%%') return part;
+            const url = isTerms ? termsUrl : privacyUrl;
+            const name = isTerms ? termsName : privacyName;
+            return url ? (
+              <Text key={i} accessibilityRole="link" onPress={() => void Linking.openURL(url)}>
+                {name}
+              </Text>
+            ) : (
+              name
+            );
+          })}
+        </Text>
+      </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={ctx.translate('signup.submit')}

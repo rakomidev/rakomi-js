@@ -69,6 +69,8 @@ export interface Translations {
   'signUp.verifyTitle': string;
   'signUp.verifyMessage': string;
   'signUp.verifyCheckSpam': string;
+  'signUp.credentialsResetTitle': string;
+  'signUp.credentialsResetMessage': string;
   'signUp.resend': string;
   'signUp.hasAccount': string;
   'signUp.dataLocation': string;

@@ -52,6 +52,8 @@ export const pl: Translations = {
   'signUp.verifyTitle': 'Zweryfikuj e-mail',
   'signUp.verifyMessage': 'Wysłaliśmy link weryfikacyjny na {email}',
   'signUp.verifyCheckSpam': 'Sprawdź folder spam',
+  'signUp.credentialsResetTitle': 'Adres potwierdzony — ustaw nowe hasło',
+  'signUp.credentialsResetMessage': 'Twój adres e-mail jest potwierdzony. Link otwarto poza kartą przeglądarki, w której zakładano konto, więc dla ochrony konta hasło z rejestracji zostało usunięte. Ustaw nowe hasło przez „Nie pamiętasz hasła?” na stronie logowania.',
   'signUp.resend': 'Wyślij ponownie e-mail weryfikacyjny',
   'signUp.hasAccount': 'Masz już konto? {link}',
   'signUp.dataLocation': 'Twoje dane są przechowywane w UE',
