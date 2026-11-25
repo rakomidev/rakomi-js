@@ -1,3 +1,7 @@
+## 0.9.1 — 2026-11-25
+
+- `@rakomi/sdk-core` 0.9.0, `@rakomi/react` 0.13.0, `@rakomi/react-native` 0.9.0 and `create-rakomi-app` 0.2.1 were tagged but never published to npm. This release (`@rakomi/sdk-core` 0.9.1, `@rakomi/react` 0.13.1, `@rakomi/react-native` 0.9.1, `create-rakomi-app` 0.2.2) is the first published one after `@rakomi/sdk-core` 0.8.0, `@rakomi/react` 0.12.0, `@rakomi/react-native` 0.8.0 and `create-rakomi-app` 0.2.0, and contains everything listed under the unpublished versions. If you upgrade from those versions, note the breaking changes made there:
+
 ## 0.9.0 — 2026-11-25
 
 - `@rakomi/react-native`: `<SignUp />` asks for consent and sends `consent: true` with the registration; before, every registration was refused with `400 auth/consent_required`. New optional props `termsOfServiceUrl` and `privacyPolicyUrl` (https only) turn the document names in the consent label into links. `@rakomi/sdk-core`: the translator has the keys `signUp.consentLabel`, `signUp.consentRequired`, `signUp.termsOfService`, `signUp.privacyPolicy` (en, pl, de, fr, es).
