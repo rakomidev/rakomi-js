@@ -36,7 +36,7 @@
     },
     {
       "name": "@rakomi/react",
-      "version": "0.13.0",
+      "version": "0.13.1",
       "tagPrefix": "react",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -62,14 +62,14 @@
     },
     {
       "name": "@rakomi/react-native",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "tagPrefix": "react-native",
       "emittedSymbols": [],
       "fileCount": 33
     },
     {
       "name": "@rakomi/sdk-core",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "tagPrefix": "sdk-core",
       "emittedSymbols": [
         "GA_LOCALES",
@@ -81,7 +81,7 @@
     },
     {
       "name": "create-rakomi-app",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "tagPrefix": "create-rakomi-app",
       "emittedSymbols": [],
       "fileCount": 11

@@ -1,3 +1,7 @@
+## 0.2.2 — 2026-11-25
+
+- `@rakomi/sdk-core` 0.9.0, `@rakomi/react` 0.13.0, `@rakomi/react-native` 0.9.0 and `create-rakomi-app` 0.2.1 were tagged but never published to npm. This release (`@rakomi/sdk-core` 0.9.1, `@rakomi/react` 0.13.1, `@rakomi/react-native` 0.9.1, `create-rakomi-app` 0.2.2) is the first published one after `@rakomi/sdk-core` 0.8.0, `@rakomi/react` 0.12.0, `@rakomi/react-native` 0.8.0 and `create-rakomi-app` 0.2.0, and contains everything listed under the unpublished versions. If you upgrade from those versions, note the breaking changes made there:
+
 ## 0.2.1 — 2026-11-25
 
 - Templates are downloaded at the commit pinned in this release, and the archive is refused before unpacking when its sha512 differs from the pinned checksum. A `--template-source` mirror must serve the same archive at `/<owner>/<repo>/tar.gz/<commit>`.
