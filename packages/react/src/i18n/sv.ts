@@ -56,6 +56,8 @@ export const sv: Translations = {
   'signUp.verifyTitle': 'Bekräfta din e-post',
   'signUp.verifyMessage': 'Vi har skickat en bekräftelselänk till {email}',
   'signUp.verifyCheckSpam': 'Kolla din skräppostmapp',
+  'signUp.credentialsResetTitle': 'E-post bekräftad — välj ett nytt lösenord',
+  'signUp.credentialsResetMessage': 'Din e-postadress är bekräftad. Eftersom länken öppnades utanför den webbläsarflik där du registrerade dig togs lösenordet från registreringen bort för att skydda ditt konto. Använd ”Glömt lösenordet?” på inloggningssidan för att välja ett nytt.',
   'signUp.resend': 'Skicka bekräftelsemejlet igen',
   'signUp.hasAccount': 'Har du redan ett konto? {link}',
   'signUp.dataLocation': 'Din data lagras inom EU',

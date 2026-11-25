@@ -52,6 +52,8 @@ export const ga: Translations = {
   'signUp.verifyTitle': 'Deimhnigh do ríomhphost',
   'signUp.verifyMessage': 'Sheoltamar nasc deimhnithe chuig {email}',
   'signUp.verifyCheckSpam': 'Seiceáil d\'fhillteán turscair',
+  'signUp.credentialsResetTitle': 'Ríomhphost deimhnithe — socraigh pasfhocal nua',
+  'signUp.credentialsResetMessage': 'Tá do sheoladh ríomhphoist deimhnithe. Ós rud é gur osclaíodh an nasc lasmuigh den chluaisín brabhsálaí inar chláraigh tú, baineadh an pasfhocal ón gclárú chun do chuntas a chosaint. Úsáid “Ar dhearmad tú do phasfhocal?” ar an leathanach síniú isteach chun ceann nua a shocrú.',
   'signUp.resend': 'Seol an ríomhphost deimhnithe arís',
   'signUp.hasAccount': 'Cuntas agat cheana? {link}',
   'signUp.dataLocation': 'Stóráiltear do chuid sonraí san AE',

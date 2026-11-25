@@ -52,6 +52,8 @@ export const lv: Translations = {
   'signUp.verifyTitle': 'Apstipriniet savu e-pastu',
   'signUp.verifyMessage': 'Nosūtījām apstiprinājuma saiti uz {email}',
   'signUp.verifyCheckSpam': 'Pārbaudiet mēstuļu mapi',
+  'signUp.credentialsResetTitle': 'E-pasts apstiprināts — iestatiet jaunu paroli',
+  'signUp.credentialsResetMessage': 'Jūsu e-pasta adrese ir apstiprināta. Tā kā saite tika atvērta ārpus pārlūka cilnes, kurā reģistrējāties, reģistrācijas parole tika noņemta, lai aizsargātu jūsu kontu. Jaunu paroli iestatiet pieteikšanās lapā, izvēloties “Aizmirsāt paroli?”.',
   'signUp.resend': 'Sūtīt apstiprinājuma e-pastu atkārtoti',
   'signUp.hasAccount': 'Jau ir konts? {link}',
   'signUp.dataLocation': 'Jūsu dati tiek glabāti ES',

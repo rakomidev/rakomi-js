@@ -56,6 +56,8 @@ export const fr: Translations = {
   'signUp.verifyTitle': 'Vérifier votre e-mail',
   'signUp.verifyMessage': 'Nous avons envoyé un lien de vérification à {email}',
   'signUp.verifyCheckSpam': 'Vérifiez votre dossier spam',
+  'signUp.credentialsResetTitle': 'E-mail confirmé — définissez un nouveau mot de passe',
+  'signUp.credentialsResetMessage': 'Votre adresse e-mail est confirmée. Le lien ayant été ouvert hors de l’onglet du navigateur dans lequel vous vous êtes inscrit, le mot de passe de l’inscription a été supprimé pour protéger votre compte. Utilisez « Mot de passe oublié ? » sur la page de connexion pour en définir un nouveau.',
   'signUp.resend': "Renvoyer l'e-mail de vérification",
   'signUp.hasAccount': 'Vous avez déjà un compte ? {link}',
   'signUp.dataLocation': 'Vos données sont stockées dans l\'UE',

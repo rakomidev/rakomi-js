@@ -57,6 +57,8 @@ export const pt: Translations = {
   'signUp.verifyTitle': 'Verifique o seu email',
   'signUp.verifyMessage': 'Enviámos um link de verificação para {email}',
   'signUp.verifyCheckSpam': 'Verifique a pasta de spam',
+  'signUp.credentialsResetTitle': 'E-mail confirmado — defina uma nova palavra-passe',
+  'signUp.credentialsResetMessage': 'O seu endereço de e-mail está confirmado. Como a ligação foi aberta fora do separador do navegador em que se registou, a palavra-passe do registo foi removida para proteger a sua conta. Utilize «Esqueceu-se da palavra-passe?» na página de início de sessão para definir uma nova.',
   'signUp.resend': 'Reenviar email de verificação',
   'signUp.hasAccount': 'Já tem conta? {link}',
   'signUp.dataLocation': 'Os seus dados são armazenados na UE',

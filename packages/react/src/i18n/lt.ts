@@ -52,6 +52,8 @@ export const lt: Translations = {
   'signUp.verifyTitle': 'Patvirtinkite savo el. paštą',
   'signUp.verifyMessage': 'Išsiuntėme patvirtinimo nuorodą į {email}',
   'signUp.verifyCheckSpam': 'Patikrinkite šlamšto aplanką',
+  'signUp.credentialsResetTitle': 'El. paštas patvirtintas — nustatykite naują slaptažodį',
+  'signUp.credentialsResetMessage': 'Jūsų el. pašto adresas patvirtintas. Kadangi nuoroda buvo atidaryta ne toje naršyklės kortelėje, kurioje registravotės, registracijos slaptažodis buvo pašalintas, kad apsaugotume jūsų paskyrą. Naują slaptažodį nustatykite prisijungimo puslapyje pasirinkę „Pamiršote slaptažodį?“.',
   'signUp.resend': 'Iš naujo siųsti patvirtinimo el. laišką',
   'signUp.hasAccount': 'Jau turite paskyrą? {link}',
   'signUp.dataLocation': 'Jūsų duomenys saugomi ES',

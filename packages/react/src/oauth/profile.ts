@@ -427,19 +427,27 @@ export async function resendVerification(options: {
   baseUrl: string;
   email: string;
   apiKey: string;
-}): Promise<SimpleResult> {
-  const { baseUrl, email, apiKey } = options;
+  /** Sign-up binding: the bindings this tab keeps; the answer then carries the binding of the new link. */
+  signupBindings?: readonly string[];
+}): Promise<{ ok: true; signupBinding?: string } | { ok: false; error: AuthError }> {
+  const { baseUrl, email, apiKey, signupBindings } = options;
 
   try {
     const response = await sdkFetch(`${baseUrl}/v1/auth/resend-verification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(signupBindings && signupBindings.length > 0 ? { email, signup_binding: signupBindings } : { email }),
     });
 
     if (!response.ok) {
       return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: 'Resend verification failed' } };
     }
+    try {
+      const body = (await response.json()) as { signup_binding?: unknown };
+      if (typeof body?.signup_binding === 'string' && /^[0-9a-f]{64}$/.test(body.signup_binding)) {
+        return { ok: true, signupBinding: body.signup_binding };
+      }
+    } catch { }
     return { ok: true };
   } catch (err) {
     return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: normalizeNetworkError(err) } };

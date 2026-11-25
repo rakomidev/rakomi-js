@@ -57,6 +57,8 @@ export const ro: Translations = {
   'signUp.verifyTitle': 'Verificați-vă emailul',
   'signUp.verifyMessage': 'Am trimis un link de verificare la {email}',
   'signUp.verifyCheckSpam': 'Verificați folderul de spam',
+  'signUp.credentialsResetTitle': 'E-mail confirmat — setați o parolă nouă',
+  'signUp.credentialsResetMessage': 'Adresa dumneavoastră de e-mail este confirmată. Deoarece linkul a fost deschis în afara filei de browser în care v-ați înregistrat, parola de la înregistrare a fost eliminată pentru a vă proteja contul. Folosiți „Ați uitat parola?” pe pagina de autentificare pentru a seta una nouă.',
   'signUp.resend': 'Retrimiteți emailul de verificare',
   'signUp.hasAccount': 'Aveți deja un cont? {link}',
   'signUp.dataLocation': 'Datele dumneavoastră sunt stocate în UE',

@@ -57,6 +57,8 @@ export const cs: Translations = {
   'signUp.verifyTitle': 'Ověřte svůj e-mail',
   'signUp.verifyMessage': 'Odeslali jsme ověřovací odkaz na {email}',
   'signUp.verifyCheckSpam': 'Zkontrolujte složku se spamem',
+  'signUp.credentialsResetTitle': 'E-mail potvrzen — nastavte si nové heslo',
+  'signUp.credentialsResetMessage': 'Vaše e-mailová adresa je potvrzena. Protože byl odkaz otevřen mimo kartu prohlížeče, ve které jste se registrovali, bylo heslo z registrace z bezpečnostních důvodů odstraněno. Nové heslo si nastavte přes „Zapomněli jste heslo?“ na přihlašovací stránce.',
   'signUp.resend': 'Znovu odeslat ověřovací e-mail',
   'signUp.hasAccount': 'Již máte účet? {link}',
   'signUp.dataLocation': 'Vaše údaje jsou uloženy v EU',

@@ -13,7 +13,13 @@ import { type EnvKey, writeEnvFile } from './env.js';
 import { CliError, EXIT, type ExitCode, UsageError } from './errors.js';
 import { writeMcpConfig } from './mcp-config.js';
 import { collectEnv, createTtyAsk } from './prompt.js';
-import { assertTargetWritable, GithubCodeloadSource, materializeArchive, type TemplateSource } from './source.js';
+import {
+  assertArchiveDigest,
+  assertTargetWritable,
+  GithubCodeloadSource,
+  materializeArchive,
+  type TemplateSource,
+} from './source.js';
 import { findTemplate, slugList } from './templates.js';
 import { detectPackageManager, helpText, type OutputStream, postInstallMessage, usageLine } from './usage.js';
 
@@ -110,6 +116,7 @@ async function dispatch(args: readonly string[], deps: RunDeps): Promise<ExitCod
 
   const source = deps.source ?? makeDefaultSource(values, deps.env);
   const archive = await source.fetchArchive(template);
+  assertArchiveDigest(archive, template);
   await materializeArchive(archive, targetDir);
   await ensureEnvIgnored(targetDir);
   await writeEnvFile(targetDir, envValues, template.slug);

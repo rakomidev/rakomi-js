@@ -56,6 +56,8 @@ export const es: Translations = {
   'signUp.verifyTitle': 'Verificar su correo electrónico',
   'signUp.verifyMessage': 'Hemos enviado un enlace de verificación a {email}',
   'signUp.verifyCheckSpam': 'Revise su carpeta de spam',
+  'signUp.credentialsResetTitle': 'Correo confirmado: establezca una nueva contraseña',
+  'signUp.credentialsResetMessage': 'Su dirección de correo está confirmada. Como el enlace se abrió fuera de la pestaña del navegador en la que se registró, la contraseña del registro se eliminó para proteger su cuenta. Use «¿Olvidó su contraseña?» en la página de inicio de sesión para establecer una nueva.',
   'signUp.resend': 'Reenviar correo de verificación',
   'signUp.hasAccount': '¿Ya tiene cuenta? {link}',
   'signUp.dataLocation': 'Sus datos se almacenan en la UE',

@@ -17,6 +17,7 @@ import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
 import { PasswordInput } from '../../internal/password-input.js';
+import { forgetSignupBindings, keepSignupBinding, readSignupBindings } from '../../internal/signup-binding-store.js';
 import { useColorScheme, usePrefersDarkScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
 import { sdkFetch } from '../../lib/fetch-client.js';
 import { resendVerification } from '../../oauth/profile.js';
@@ -26,7 +27,7 @@ import { getPasswordStrength } from '../../utils/password-strength.js';
 import { isSafeImageSrc, isSafeRedirectUrl } from '../../utils/safe-url.js';
 import type { SignUpProps } from './types.js';
 
-type SignUpStep = 'form' | 'verification_pending' | 'complete';
+type SignUpStep = 'form' | 'verification_pending' | 'complete' | 'credentials_reset';
 
 function SignUpInner(props: SignUpProps): React.ReactElement {
   const {
@@ -114,13 +115,15 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
       const controller = new AbortController();
       void (async () => {
         try {
+          const signupBindings = readSignupBindings(internals.clientId);
           const response = await sdkFetch(`${internals.baseUrl}/v1/auth/verify-email`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-API-Key': internals.clientId },
-            body: JSON.stringify({ token }),
+            body: JSON.stringify(signupBindings.length > 0 ? { token, signup_binding: signupBindings } : { token }),
             signal: controller.signal,
           });
           if (controller.signal.aborted) return;
+          if (response.ok) forgetSignupBindings(internals.clientId);
           if (response.ok) {
             try {
               const data = await response.json() as Record<string, unknown>;
@@ -129,7 +132,7 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
                 url.searchParams.delete('token');
                 url.searchParams.delete('action');
                 window.history.replaceState(window.history.state, '', url.toString());
-                setStep('complete');
+                setStep(data['credentials_reset'] === true ? 'credentials_reset' : 'complete');
               }
             } catch {
             }
@@ -234,6 +237,7 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
       });
 
       if (result.ok) {
+        keepSignupBinding(internals.clientId, result.signupBinding);
         setStep('verification_pending');
         setResendCooldown(60);
       } else {
@@ -255,8 +259,10 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
         baseUrl: internals.baseUrl,
         email,
         apiKey: internals.clientId,
+        signupBindings: readSignupBindings(internals.clientId),
       });
       if (result.ok) {
+        keepSignupBinding(internals.clientId, result.signupBinding);
         setResendCooldown(60);
       } else if (result.error.code === 'NETWORK_ERROR') {
         setError(t('error.networkError'));
@@ -272,6 +278,20 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
 
   const termsUrlSafe = termsOfServiceUrl && isSafeRedirectUrl(termsOfServiceUrl);
   const privacyUrlSafe = privacyPolicyUrl && isSafeRedirectUrl(privacyPolicyUrl);
+
+  if (step === 'credentials_reset') {
+    return (
+      <div data-rakomi-sign-up-root data-rakomi-card className={[cls('root'), className].filter(Boolean).join(' ') || undefined} style={style}>
+        <h2 data-rakomi-sign-up-title>{t('signUp.credentialsResetTitle')}</h2>
+        <p role="status" aria-live="polite">{t('signUp.credentialsResetMessage')}</p>
+        {signInUrl && isSafeRedirectUrl(signInUrl) && (
+          <p data-rakomi-sign-up-link>
+            <a href={signInUrl}>{t('signIn.forgotPassword')}</a>
+          </p>
+        )}
+      </div>
+    );
+  }
 
   if (step === 'verification_pending') {
     return (
