@@ -7,6 +7,8 @@
  * - POST /v1/auth/email-otp
  * - POST /v1/auth/email-otp/verify
  * - POST /v1/auth/register
+ * - POST /v1/auth/login
+ * - POST /v1/auth/forgot-password
  * - POST /v1/auth/verify-email
  * - POST /v1/auth/resend-verification
  *
@@ -15,6 +17,7 @@
  * via the discriminated `MagicLinkVerifyResult` / `EmailOtpVerifyResult` shapes.
  */
 
+import { botChallengeError, type BotChallengeOptions, resolveBotChallengeToken } from './bot-challenge.js';
 import { extractRequestId } from './internal/request-id.js';
 import { networkError } from './oauth/errors.js';
 import type { HttpClient } from './types/adapters.js';
@@ -30,6 +33,8 @@ import type { AuthError } from './types/auth-error.js';
  * even though no session or code exchange is involved in a magic-link/email-OTP/register call.
  */
 function parseAuthEndpointError(status: number, body: { detail?: string; request_id?: string }): AuthError {
+  const challenge = botChallengeError(body);
+  if (challenge) return challenge;
   const requestId = extractRequestId(body);
   return { code: 'SIGN_IN_FAILED', message: body.detail ?? `Request failed with HTTP ${status}`, ...(requestId && { requestId }) };
 }
@@ -96,7 +101,7 @@ export async function verifyEmailOtp(input: VerifyEmailOtpInput): Promise<Verify
   });
 }
 
-export interface RegisterInput {
+export interface RegisterInput extends BotChallengeOptions {
   http: HttpClient;
   baseUrl: string;
   clientId: string;
@@ -117,14 +122,96 @@ export type RegisterFlowResult =
   | { ok: false; error: AuthError };
 
 export async function register(input: RegisterInput): Promise<RegisterFlowResult> {
+  const turnstileToken = await resolveBotChallengeToken(input, 'register');
   const result = await postJson(input.http, `${input.baseUrl}/v1/auth/register`, input.clientId, {
     email: input.email,
     password: input.password,
     consent: input.consent,
+    ...(turnstileToken ? { turnstile_token: turnstileToken } : {}),
   });
   if (!result.ok) return result;
   const signupBinding = bindingOf(result.data);
   return signupBinding ? { ok: true, signupBinding } : { ok: true };
+}
+
+export interface SignInWithPasswordInput extends BotChallengeOptions {
+  http: HttpClient;
+  baseUrl: string;
+  clientId: string;
+  email: string;
+  password: string;
+}
+
+/**
+ * `mfa`: the account has a second factor — verify it with the challenge token (`verifyMfaLogin`).
+ * `mfaSetupRequired`: the tenant requires a second factor the account has not set up; it may still
+ * sign in until `graceDeadlineAt`, through a flow that enrols one.
+ */
+export type SignInWithPasswordResult =
+  | { ok: true; tokens: OAuthTokenResponse }
+  | { ok: false; mfa: { challengeToken: string; expiresIn: number } }
+  | { ok: false; mfaSetupRequired: { graceDeadlineAt: string } }
+  | { ok: false; error: AuthError };
+
+/** Email + password sign-in (`POST /v1/auth/login`). */
+export async function signInWithPassword(input: SignInWithPasswordInput): Promise<SignInWithPasswordResult> {
+  const turnstileToken = await resolveBotChallengeToken(input, 'login');
+  const result = await postJson(input.http, `${input.baseUrl}/v1/auth/login`, input.clientId, {
+    email: input.email,
+    password: input.password,
+    ...(turnstileToken ? { turnstile_token: turnstileToken } : {}),
+  });
+  if (!result.ok) return result;
+  const data = result.data;
+  if (data['next_step'] === 'mfa_challenge') {
+    const challengeToken = data['mfa_challenge_token'];
+    if (typeof challengeToken !== 'string' || challengeToken.length === 0) {
+      return { ok: false, error: { code: 'SIGN_IN_FAILED', message: 'MFA challenge token missing from response' } };
+    }
+    return {
+      ok: false,
+      mfa: { challengeToken, expiresIn: typeof data['mfa_expires_in'] === 'number' ? data['mfa_expires_in'] : 300 },
+    };
+  }
+  if (data['next_step'] === 'mfa_setup_required') {
+    return {
+      ok: false,
+      mfaSetupRequired: { graceDeadlineAt: typeof data['grace_deadline_at'] === 'string' ? data['grace_deadline_at'] : '' },
+    };
+  }
+  const accessToken = data['access_token'];
+  if (typeof accessToken !== 'string' || accessToken.length === 0 || typeof data['expires_in'] !== 'number' || typeof data['token_type'] !== 'string') {
+    return { ok: false, error: { code: 'SIGN_IN_FAILED', message: 'login response did not match the expected shape' } };
+  }
+  const refreshToken = data['refresh_token'];
+  return {
+    ok: true,
+    tokens: {
+      access_token: accessToken,
+      token_type: data['token_type'],
+      expires_in: data['expires_in'],
+      ...(typeof refreshToken === 'string' && refreshToken.length > 0 ? { refresh_token: refreshToken } : {}),
+    },
+  };
+}
+
+export interface ForgotPasswordInput extends BotChallengeOptions {
+  http: HttpClient;
+  baseUrl: string;
+  clientId: string;
+  email: string;
+}
+
+/**
+ * Asks for a password-reset e-mail (`POST /v1/auth/forgot-password`). The answer is the same whether
+ * or not an account exists for the address; an error means the request itself was refused.
+ */
+export async function forgotPassword(input: ForgotPasswordInput): Promise<RequestResult> {
+  const turnstileToken = await resolveBotChallengeToken(input, 'reset');
+  return postNoContent(input.http, `${input.baseUrl}/v1/auth/forgot-password`, input.clientId, {
+    email: input.email,
+    ...(turnstileToken ? { turnstile_token: turnstileToken } : {}),
+  });
 }
 
 export interface VerifyEmailInput {

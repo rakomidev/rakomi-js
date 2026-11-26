@@ -1,3 +1,19 @@
+## 0.10.0 — 2026-11-26
+
+- Bot challenge (Cloudflare Turnstile) on the public auth endpoints. An environment can require that register, password sign-in and forgot-password, called with a publishable key, carry a Turnstile token.
+  - `parseAuthConfigResponse()` returns `botChallenge: { siteKey }` when the environment requires one for this key.
+  - `register()` takes `turnstileToken` or `turnstileTokenProvider(action)`; new `signInWithPassword()` (`POST /v1/auth/login`) and `forgotPassword()` (`POST /v1/auth/forgot-password`) take the same options.
+  - A refusal is a new `AuthError` variant: `{ code: 'BOT_CHALLENGE_FAILED', reason: 'missing' | 'invalid' | 'unavailable' }`. Breaking: an exhaustive `switch` over `AuthError['code']` needs the new case.
+  - `botChallengeError()` and `resolveBotChallengeToken()` are exported for UI layers that call these endpoints themselves.
+- Breaking: (introduced in 0.9.0, missing from the 0.9.0 and 0.9.1 changelogs) `register()` takes a required `consent` (the API refuses a registration without it) and returns `signupBinding`.
+  - Breaking: `verifyEmail()` and `resendVerification()` take `signupBindings` (every binding kept since the registration, at most 5) instead of `signupBinding`.
+- Bot challenge (Cloudflare Turnstile) pass-through. When `useAuthConfig().config.botChallenge` is present, the environment requires a Turnstile token on sign-up, password sign-in and forgot-password; this package renders no widget, the app supplies the token.
+  - `useRegister().register(email, password, consent, { turnstileToken | turnstileTokenProvider })`.
+  - New `usePasswordSignIn()` (`signIn(email, password, options)`, stores the session on success) and `useForgotPassword()` (`request(email, options)`).
+  - `<SignUp turnstileTokenProvider={...} />`.
+  - A refusal is an `AuthError` with code `BOT_CHALLENGE_FAILED`.
+  - `@rakomi/sdk-core`: `SignInOptions.turnstileToken`, matching `@rakomi/react`.
+
 ## 0.9.1 — 2026-11-25
 
 - `@rakomi/sdk-core` 0.9.0, `@rakomi/react` 0.13.0, `@rakomi/react-native` 0.9.0 and `create-rakomi-app` 0.2.1 were tagged but never published to npm. This release (`@rakomi/sdk-core` 0.9.1, `@rakomi/react` 0.13.1, `@rakomi/react-native` 0.9.1, `create-rakomi-app` 0.2.2) is the first published one after `@rakomi/sdk-core` 0.8.0, `@rakomi/react` 0.12.0, `@rakomi/react-native` 0.8.0 and `create-rakomi-app` 0.2.0, and contains everything listed under the unpublished versions. If you upgrade from those versions, note the breaking changes made there:

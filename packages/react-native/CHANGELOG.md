@@ -1,3 +1,13 @@
+## 0.10.0 — 2026-11-26
+
+- Breaking: (introduced in 0.9.0, missing from the 0.9.0 and 0.9.1 changelogs) `useRegister().register(email, password, consent)`.
+- Bot challenge (Cloudflare Turnstile) pass-through. When `useAuthConfig().config.botChallenge` is present, the environment requires a Turnstile token on sign-up, password sign-in and forgot-password; this package renders no widget, the app supplies the token.
+  - `useRegister().register(email, password, consent, { turnstileToken | turnstileTokenProvider })`.
+  - New `usePasswordSignIn()` (`signIn(email, password, options)`, stores the session on success) and `useForgotPassword()` (`request(email, options)`).
+  - `<SignUp turnstileTokenProvider={...} />`.
+  - A refusal is an `AuthError` with code `BOT_CHALLENGE_FAILED`.
+  - `@rakomi/sdk-core`: `SignInOptions.turnstileToken`, matching `@rakomi/react`.
+
 ## 0.9.1 — 2026-11-25
 
 - `@rakomi/sdk-core` 0.9.0, `@rakomi/react` 0.13.0, `@rakomi/react-native` 0.9.0 and `create-rakomi-app` 0.2.1 were tagged but never published to npm. This release (`@rakomi/sdk-core` 0.9.1, `@rakomi/react` 0.13.1, `@rakomi/react-native` 0.9.1, `create-rakomi-app` 0.2.2) is the first published one after `@rakomi/sdk-core` 0.8.0, `@rakomi/react` 0.12.0, `@rakomi/react-native` 0.8.0 and `create-rakomi-app` 0.2.0, and contains everything listed under the unpublished versions. If you upgrade from those versions, note the breaking changes made there:

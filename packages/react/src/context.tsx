@@ -454,6 +454,7 @@ export function RakomiProvider(props: RakomiProviderProps): React.ReactElement {
           email: options.email,
           password: options.password,
           apiKey: clientId,
+          ...(options.turnstileToken ? { turnstileToken: options.turnstileToken } : {}),
         });
 
         if (!result.ok) {

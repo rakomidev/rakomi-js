@@ -17,6 +17,7 @@ export type {
   AuthConfig,
   AuthEvent,
   AuthMachineState,
+  BotChallengeConfig,
   BrandingConfig,
   BrandingPalette,
   HasParams,
@@ -49,6 +50,8 @@ export { extractRequestId } from './internal/request-id.js';
 export { parseAuthConfigResponse } from './auth-config-parser.js';
 export type { MachineAction, MachineSnapshot } from './auth-machine.js';
 export { INITIAL_SNAPSHOT, isSignedIn, reduce, shouldRefresh } from './auth-machine.js';
+export type { BotChallengeAction, BotChallengeOptions, BotChallengeTokenProvider } from './bot-challenge.js';
+export { botChallengeError, resolveBotChallengeToken } from './bot-challenge.js';
 export { EventLog } from './event-log.js';
 export type { Locale, TranslationFn, TranslationKey, Translations } from './i18n.js';
 export { createTranslator, selectPluralForm } from './i18n.js';
@@ -69,12 +72,15 @@ export { deriveTenantStorageKey } from './storage-keys.js';
 export { isSafeUrl, type PasswordStrength, scorePassword } from './utils.js';
 
 export type {
+  ForgotPasswordInput,
   RegisterFlowResult,
   RegisterInput,
   RequestEmailOtpInput,
   RequestMagicLinkInput,
   RequestResult,
   ResendVerificationInput,
+  SignInWithPasswordInput,
+  SignInWithPasswordResult,
   VerifyEmailInput,
   VerifyEmailOtpInput,
   VerifyEmailResult,
@@ -82,10 +88,12 @@ export type {
   VerifyResult,
 } from './auth-flows.js';
 export {
+  forgotPassword,
   register,
   requestEmailOtp,
   requestMagicLink,
   resendVerification,
+  signInWithPassword,
   verifyEmail,
   verifyEmailOtp,
   verifyMagicLink,

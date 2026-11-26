@@ -36,6 +36,20 @@ export function App() {
 }
 ```
 
+## Bot challenge (Cloudflare Turnstile)
+
+An environment can require a Cloudflare Turnstile token on sign-up, password sign-in and forgot-password
+calls made with a publishable key. `<SignUp />` and `<SignIn />` handle it: when `GET /v1/auth/config`
+says a challenge is required, they render the Turnstile widget with the environment's site key, keep the
+submit button disabled until it is solved, and send the token. The script is loaded only then, from
+`https://challenges.cloudflare.com`. A page with a Content Security Policy must allow that origin in
+`script-src` and `frame-src`. The widget must be solved on a host of one of the environment's allowed
+redirect URIs.
+
+Headless: read `useAuthConfig().config?.botChallenge?.siteKey`, render the widget yourself and pass the
+token to `signIn({ mode: 'direct', email, password, turnstileToken })`. A token is single-use. A refusal
+is an `AuthError` with code `BOT_CHALLENGE_FAILED` and reason `missing`, `invalid` or `unavailable`.
+
 ## Localization
 
 The SDK ships with 5 GA locales: **English (`en`)**, **Polish (`pl`)**, **German (`de`)**,

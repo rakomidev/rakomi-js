@@ -125,6 +125,11 @@ export interface SignInOptions {
   mode?: 'redirect' | 'direct' | 'anonymous';
   email?: string;
   password?: string;
+  /**
+   * Direct mode: a Cloudflare Turnstile token solved for the `login` action, required when
+   * `useAuthConfig().config.botChallenge` is present. Single-use: solve a new one per attempt.
+   */
+  turnstileToken?: string;
   returnTo?: string;
   /**
  * Tenant-supplied metadata attached to the anonymous user row.
@@ -285,6 +290,17 @@ export interface AuthConfig {
   mfaEnforced: boolean;
   mfaGracePeriodHours?: number;
   branding?: BrandingConfig;
+  /**
+   * Present when register, direct sign-in and forgot-password must carry a Cloudflare Turnstile
+   * token solved with `siteKey`. The prebuilt components render the widget themselves.
+   */
+  botChallenge?: BotChallengeConfig;
+}
+
+/** The Turnstile widget configuration for an environment that requires a bot challenge. */
+export interface BotChallengeConfig {
+  /** The environment's Turnstile site key (public). */
+  siteKey: string;
 }
 
 export interface SessionInfo {

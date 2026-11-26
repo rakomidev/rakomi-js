@@ -3,7 +3,7 @@
  * Always returns success-shaped response (email enumeration prevention).
  */
 
-import { extractRequestId } from '@rakomi/sdk-core';
+import { botChallengeError, extractRequestId } from '@rakomi/sdk-core';
 
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError } from '../types.js';
@@ -23,8 +23,10 @@ export async function registerUser(options: {
   password: string;
   consent: boolean;
   apiKey: string;
+  /** Cloudflare Turnstile token, when the environment requires a bot challenge. */
+  turnstileToken?: string;
 }): Promise<RegisterApiResult> {
-  const { baseUrl, email, password, consent, apiKey } = options;
+  const { baseUrl, email, password, consent, apiKey, turnstileToken } = options;
 
   if (requiresHttpsUpgrade(baseUrl)) {
     return { ok: false, error: { code: 'INVALID_CONFIG' as const, message: 'baseUrl must use HTTPS for non-localhost origins' } };
@@ -35,7 +37,7 @@ export async function registerUser(options: {
     response = await sdkFetch(`${baseUrl}/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({ email, password, consent }),
+      body: JSON.stringify({ email, password, consent, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) }),
     });
   } catch (err) {
     return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: normalizeNetworkError(err) } };
@@ -44,6 +46,8 @@ export async function registerUser(options: {
   if (!response.ok) {
     let json: unknown;
     try { json = await response.json(); } catch { }
+    const challenge = botChallengeError(json);
+    if (challenge) return { ok: false, error: challenge };
     const body = json as { detail?: string; request_id?: string } | undefined;
     return { ok: false, error: { code: 'SIGN_IN_FAILED' as const, message: body?.detail ?? 'Registration failed', ...(extractRequestId(body) && { requestId: extractRequestId(body) }) } };
   }

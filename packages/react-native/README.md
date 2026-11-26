@@ -8,14 +8,14 @@ React Native / Expo SDK for [Rakomi](https://rakomi.com) — EU-native auth-as-a
 > and type-checked, but not every export's **behavior** is wired to the network yet.
 >
 > **Works today:** social sign-in via the system browser (`<SignIn providers={[...]} />` /
-> `startSocialSignIn()`), magic link, email OTP, registration, MFA (TOTP), passkeys
+> `startSocialSignIn()`), magic link, email OTP, registration, email + password sign-in
+> (`usePasswordSignIn()`), forgot password (`useForgotPassword()`), MFA (TOTP), passkeys
 > (sign-in/step-up/register/list/rename/delete), session management (`useAuth`, `useSession`,
-> `getToken`), `<UserButton>`, `<SignedIn>`/`<SignedOut>`, `<Protect>`, `useOrganization` /
-> `useOrganizationList` (JWT-claim reads), `useAuthConfig`, `useBranding`, `useBaasPlans`,
-> `useBaasSubscription`.
+> `getToken`), `<UserButton>`, `<SignedIn>`/`<SignedOut>`, `<Protect>`, `useOrganization` / `useOrganizationList`
+> (JWT-claim reads), `useAuthConfig`, `useBranding`, `useBaasPlans`, `useBaasSubscription`.
 >
 > **Not yet wired — calls resolve/return an error placeholder, no network request is made:**
-> `useAuth().signIn()` (direct email+password) and `useAuth().switchOrganization()`;
+> `useAuth().signIn()` (direct email+password — use `usePasswordSignIn()`) and `useAuth().switchOrganization()`;
 > `useLinkedAccounts().link()`/`.unlink()`; `useAnonymousSignin().signInAnonymously()`. `<SignIn />`
 > renders social providers and MFA TOTP entry only — there is no password field in the pre-built
 > component. `<UserProfile>` and `<Feature>` are marked preview individually below. Each of these is
@@ -73,6 +73,30 @@ export default function App() {
 - **Native adapter contract:** `NativeAuthAdapter` interface with forward-compat slots (`verifiers` for EUDI, `dpopProver` for DPoP, `par` for RFC 9126 PAR).
 - **`tokenCache` injection sugar** — replace storage without re-implementing the full adapter.
 - **HKDF-style storage key derivation** — domain-separated per tenant + per purpose.
+
+## Bot challenge (Cloudflare Turnstile)
+
+An environment can require a Cloudflare Turnstile token on sign-up, password sign-in and forgot-password calls
+made with a publishable key. `useAuthConfig().config?.botChallenge?.siteKey` is present when it does. This package
+renders no widget (no WebView): obtain the token in your app, for example from a WebView that hosts the Turnstile
+widget on a host of one of the environment's allowed redirect URIs, solved for the action `register`, `login` or
+`reset`. Then pass it through:
+
+```tsx
+const { register } = useRegister();
+await register(email, password, true, { turnstileToken });
+
+const { signIn } = usePasswordSignIn();
+await signIn(email, password, { turnstileTokenProvider: (action) => getTurnstileToken(action) });
+
+const { request } = useForgotPassword();
+await request(email, { turnstileToken });
+
+<SignUp turnstileTokenProvider={(action) => getTurnstileToken(action)} />
+```
+
+A token is single-use; a provider is asked once per call. A refusal is an `AuthError` with code
+`BOT_CHALLENGE_FAILED` and reason `missing`, `invalid` or `unavailable`.
 
 ## Passkeys (WebAuthn)
 

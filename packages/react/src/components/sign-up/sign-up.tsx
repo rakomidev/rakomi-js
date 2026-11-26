@@ -12,12 +12,14 @@ import { PASSWORD_MIN_LENGTH } from '../../_inlined-symbols.js';
 
 import { resolveClassName, useGlobalAppearance } from '../../appearance.js';
 import { useAuth } from '../../hooks/use-auth.js';
+import { useAuthConfig } from '../../hooks/use-auth-config.js';
 import { useBranding } from '../../hooks/use-branding.js';
 import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
 import { PasswordInput } from '../../internal/password-input.js';
 import { forgetSignupBindings, keepSignupBinding, readSignupBindings } from '../../internal/signup-binding-store.js';
+import { useBotChallenge } from '../../internal/turnstile.js';
 import { useColorScheme, usePrefersDarkScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
 import { sdkFetch } from '../../lib/fetch-client.js';
 import { resendVerification } from '../../oauth/profile.js';
@@ -72,6 +74,8 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [blurErrors, setBlurErrors] = useState<Partial<Record<'email' | 'password' | 'confirmPassword', string>>>({});
   const formSubmitted = useRef(false);
+  const { config: authConfig } = useAuthConfig();
+  const botChallenge = useBotChallenge(authConfig?.botChallenge?.siteKey, 'register');
 
   const strength = getPasswordStrength(passwordStrength);
 
@@ -234,7 +238,9 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
         password: passwordValue,
         consent: true,
         apiKey: internals.clientId,
+        ...(botChallenge.token ? { turnstileToken: botChallenge.token } : {}),
       });
+      botChallenge.reset();
 
       if (result.ok) {
         keepSignupBinding(internals.clientId, result.signupBinding);
@@ -444,7 +450,9 @@ function SignUpInner(props: SignUpProps): React.ReactElement {
           <div id={`${idPrefix}-sign-up-error`} role="alert" data-rakomi-sign-up-error className={cls('errorMessage') || undefined}>{error}</div>
         )}
 
-        <button type="submit" disabled={loading || !consent} data-rakomi-sign-up-submit-button className={cls('submitButton') || undefined}>
+        {botChallenge.widget}
+
+        <button type="submit" disabled={loading || !consent || (botChallenge.required && !botChallenge.token)} data-rakomi-sign-up-submit-button className={cls('submitButton') || undefined}>
           {loading ? t('common.loading') : t('signUp.consentLink')}
         </button>
       </form>

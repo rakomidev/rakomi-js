@@ -34,7 +34,7 @@ export class AuthConfigManager {
     this.clientId = clientId;
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
-    this.cacheKey = `rakomi:config:v4:${clientId}:${encodeURIComponent(baseUrl)}`;
+    this.cacheKey = `rakomi:config:v5:${clientId}:${encodeURIComponent(baseUrl)}`;
   }
 
   /** Public method to check if this manager matches given config */
@@ -136,6 +136,7 @@ export class AuthConfigManager {
       if (this.state.status === 'loaded') {
         Object.freeze(this.state.config.methods);
         Object.freeze(this.state.config.socialProviders);
+        if (this.state.config.botChallenge) Object.freeze(this.state.config.botChallenge);
         if (this.state.config.branding) {
           if (this.state.config.branding.dark) Object.freeze(this.state.config.branding.dark);
           Object.freeze(this.state.config.branding);
@@ -183,6 +184,12 @@ export class AuthConfigManager {
         if (typeof flags['signIn'] !== 'boolean' || typeof flags['signUp'] !== 'boolean') return null;
       }
       if (typeof config['mfaEnforced'] !== 'boolean') return null;
+      const cachedBotChallenge = config['botChallenge'];
+      if (cachedBotChallenge !== undefined) {
+        if (!cachedBotChallenge || typeof cachedBotChallenge !== 'object' || Array.isArray(cachedBotChallenge)) return null;
+        const siteKey = (cachedBotChallenge as Record<string, unknown>)['siteKey'];
+        if (typeof siteKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(siteKey)) return null;
+      }
 
       const cachedBranding = config['branding'] as Record<string, unknown> | undefined;
       if (cachedBranding && typeof cachedBranding === 'object') {
