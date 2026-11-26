@@ -13,7 +13,15 @@
 
 import { type ReactNode,useState } from 'react';
 
-import { type AuthError, extractRequestId, isSafeUrl, scorePassword } from '@rakomi/sdk-core';
+import {
+  type AuthError,
+  botChallengeError,
+  type BotChallengeTokenProvider,
+  extractRequestId,
+  isSafeUrl,
+  resolveBotChallengeToken,
+  scorePassword,
+} from '@rakomi/sdk-core';
 
 import { useRakomiContext } from '../context.js';
 import { loadRnPrimitives as loadRn } from '../internal/rn-primitives.js';
@@ -28,6 +36,12 @@ export interface SignUpProps {
   termsOfServiceUrl?: string;
   /** Privacy policy URL; same rule as `termsOfServiceUrl`. */
   privacyPolicyUrl?: string;
+  /**
+   * Supplies a Cloudflare Turnstile token (action `register`) when the environment requires a bot
+   * challenge (`useAuthConfig().config.botChallenge`). Called once per submit; a token is single-use.
+   * This component renders no widget: obtain the token in your app (for example from a WebView).
+   */
+  turnstileTokenProvider?: BotChallengeTokenProvider;
   style?: any;
 }
 
@@ -63,16 +77,22 @@ export function SignUp(props: SignUpProps): ReactNode {
     setBusy(true);
     ctx.events.push({ type: 'sign_in_attempted', severity: 'info', metadata: { mode: 'register' } });
     try {
+      const turnstileToken = await resolveBotChallengeToken({ turnstileTokenProvider: props.turnstileTokenProvider }, 'register');
       const response = await ctx.http.fetch(props.registerEndpoint ?? '/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-API-Key': ctx.publishableKey },
-        body: JSON.stringify({ email, password, consent: true, returnTo }),
+        body: JSON.stringify({ email, password, consent: true, returnTo, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) }),
       });
       if (!response.ok) {
         let parsed: { detail?: string; request_id?: string } = {};
         try {
           parsed = (await response.json()) as typeof parsed;
         } catch {
+        }
+        const challenge = botChallengeError(parsed);
+        if (challenge) {
+          setStep({ kind: 'error', error: challenge });
+          return;
         }
         const requestId = extractRequestId(parsed);
         setStep({

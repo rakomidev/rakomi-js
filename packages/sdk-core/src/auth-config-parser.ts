@@ -1,3 +1,4 @@
+import { parseBotChallengeConfig } from './bot-challenge.js';
 import type { AuthConfig, BrandingConfig, BrandingPalette, SocialProviderFlags, ThemeMode } from './types/auth.js';
 
 const UNSAFE_PROVIDER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -104,11 +105,14 @@ export function parseAuthConfigResponse(raw: unknown, baseUrl: string): AuthConf
     }
   }
 
+  const botChallenge = parseBotChallengeConfig(r);
+
   return {
     methods: Array.isArray(r['methods']) ? (r['methods'] as unknown[]).filter((m): m is string => typeof m === 'string') : [],
     socialProviders,
     mfaEnforced: typeof r['mfa_enforced'] === 'boolean' ? r['mfa_enforced'] : false,
     ...(typeof r['mfa_grace_period_hours'] === 'number' ? { mfaGracePeriodHours: r['mfa_grace_period_hours'] } : {}),
     ...(branding ? { branding } : {}),
+    ...(botChallenge ? { botChallenge } : {}),
   };
 }

@@ -56,7 +56,19 @@ export type AuthError =
   | { code: 'SIGN_IN_FAILED'; message: string; requestId?: string }
   | { code: 'INVALID_CONFIG'; message: string; requestId?: string }
   | { code: 'NETWORK_ERROR'; message: string; requestId?: string }
-  | { code: 'PROVIDER_ERROR'; message: string; requestId?: string };
+  | { code: 'PROVIDER_ERROR'; message: string; requestId?: string }
+  | {
+      /**
+       * The environment requires a bot challenge (Cloudflare Turnstile) on this call and refused it:
+       * `missing` — no `turnstileToken` was sent; `invalid` — the token did not verify (expired,
+       * already used, or solved for another site or action), solve a new one; `unavailable` — the
+       * check cannot run right now, try again shortly.
+       */
+      code: 'BOT_CHALLENGE_FAILED';
+      reason: 'missing' | 'invalid' | 'unavailable';
+      message: string;
+      requestId?: string;
+    };
 
 /** Extract a display-safe message from any AuthError variant. */
 export function getErrorMessage(error: AuthError): string {

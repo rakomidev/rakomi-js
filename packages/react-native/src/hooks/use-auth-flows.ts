@@ -1,5 +1,11 @@
 /**
- * Direct-auth hooks — (magic-link, email-OTP, register, verify-email).
+ * Direct-auth hooks — (magic-link, email-OTP, register, verify-email, password sign-in, forgot-password).
+ *
+ * Bot challenge: when `useAuthConfig().config.botChallenge` is present, register, password sign-in and
+ * forgot-password must carry a Cloudflare Turnstile token. This package renders no widget; pass a token
+ * your app obtained (for example from a WebView hosting the Turnstile widget on one of the environment's
+ * allowed redirect URI hosts) as `{ turnstileToken }` or `{ turnstileTokenProvider }`. A refusal is an
+ * `AuthError` with code `BOT_CHALLENGE_FAILED`.
  *
  * Wraps `@rakomi/sdk-core` direct-auth helpers with `useRakomiContext` wiring so
  * consumers don't have to thread `http` / `baseUrl` / `clientId` themselves.
@@ -15,12 +21,16 @@
 
 import {
   type AuthError,
+  type BotChallengeOptions,
+  forgotPassword as coreForgotPassword,
   register as coreRegister,
   type RegisterFlowResult,
   requestEmailOtp as coreRequestEmailOtp,
   requestMagicLink as coreRequestMagicLink,
   type RequestResult,
   resendVerification as coreResendVerification,
+  signInWithPassword as coreSignInWithPassword,
+  type SignInWithPasswordResult,
   verifyEmail as coreVerifyEmail,
   verifyEmailOtp as coreVerifyEmailOtp,
   type VerifyEmailResult,
@@ -85,7 +95,7 @@ export function useEmailOtp(): UseEmailOtpResult {
 export interface UseRegisterResult {
   /** `consent`: the user accepted the tenant's terms and privacy policy (the API refuses a registration without it). The
    *  answer's signup binding is kept in memory for {@link useVerifyEmail} (never persisted). */
-  register: (email: string, password: string, consent: boolean) => Promise<RegisterFlowResult>;
+  register: (email: string, password: string, consent: boolean, options?: BotChallengeOptions) => Promise<RegisterFlowResult>;
   /** Resends the verification e-mail with the binding kept in memory, and keeps the new link's binding instead. */
   resendVerification: (email: string) => Promise<RegisterFlowResult>;
 }
@@ -93,9 +103,9 @@ export interface UseRegisterResult {
 export function useRegister(): UseRegisterResult {
   const ctx = useRakomiContext();
   return {
-    register: async (email, password, consent) => {
+    register: async (email, password, consent, options) => {
       ctx.events.push({ type: 'sign_in_attempted', severity: 'info', metadata: { method: 'register' } });
-      const result = await coreRegister({ http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, email, password, consent });
+      const result = await coreRegister({ ...options, http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, email, password, consent });
       if (result.ok) keepSignupBinding(ctx.publishableKey, result.signupBinding);
       return result;
     },
@@ -129,6 +139,43 @@ export function useVerifyEmail(): UseVerifyEmailResult {
       else emitError(ctx.events, result.error);
       return result;
     },
+  };
+}
+
+export interface UsePasswordSignInResult {
+  /**
+   * Email + password sign-in. On `tokens` the session is stored; `mfa` / `mfaSetupRequired` are returned
+   * for the app to drive (`useMfa`). `options`: the Turnstile token when the environment requires one.
+   */
+  signIn: (email: string, password: string, options?: BotChallengeOptions) => Promise<SignInWithPasswordResult>;
+}
+
+export function usePasswordSignIn(): UsePasswordSignInResult {
+  const ctx = useRakomiContext();
+  return {
+    signIn: async (email, password, options) => {
+      ctx.events.push({ type: 'sign_in_attempted', severity: 'info', metadata: { method: 'password' } });
+      const result = await coreSignInWithPassword({ ...options, http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, email, password });
+      if (result.ok) {
+        const nonce = await ctx.beginAuthFlow();
+        await ctx.submitOAuthTokens(result.tokens, nonce);
+      } else if ('error' in result) {
+        emitError(ctx.events, result.error);
+      }
+      return result;
+    },
+  };
+}
+
+export interface UseForgotPasswordResult {
+  /** Asks for a password-reset e-mail; the answer is the same whether or not the account exists. */
+  request: (email: string, options?: BotChallengeOptions) => Promise<RequestResult>;
+}
+
+export function useForgotPassword(): UseForgotPasswordResult {
+  const ctx = useRakomiContext();
+  return {
+    request: async (email, options) => coreForgotPassword({ ...options, http: ctx.http, baseUrl: ctx.baseUrl, clientId: ctx.publishableKey, email }),
   };
 }
 

@@ -112,6 +112,7 @@ export type {
   AuthError,
   AuthEvent,
   AuthState,
+  BotChallengeConfig,
   BrandingConfig,
   BrandingPalette,
   HasParams,

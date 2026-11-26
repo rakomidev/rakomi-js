@@ -3,7 +3,7 @@
  * Always returns success-shaped response for forgot-password (email enumeration prevention).
  */
 
-import { extractRequestId } from '@rakomi/sdk-core';
+import { botChallengeError, extractRequestId } from '@rakomi/sdk-core';
 
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError } from '../types.js';
@@ -21,8 +21,10 @@ export async function sendForgotPassword(options: {
   baseUrl: string;
   email: string;
   apiKey: string;
+  /** Cloudflare Turnstile token, when the environment requires a bot challenge. */
+  turnstileToken?: string;
 }): Promise<ForgotPasswordResult> {
-  const { baseUrl, email, apiKey } = options;
+  const { baseUrl, email, apiKey, turnstileToken } = options;
 
   if (requiresHttpsUpgrade(baseUrl)) {
     return { ok: false, error: { code: 'INVALID_CONFIG' as const, message: 'baseUrl must use HTTPS for non-localhost origins' } };
@@ -33,13 +35,17 @@ export async function sendForgotPassword(options: {
     response = await sdkFetch(`${baseUrl}/v1/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) }),
     });
   } catch (err) {
     return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: normalizeNetworkError(err) } };
   }
 
   if (!response.ok) {
+    let json: unknown;
+    try { json = await response.json(); } catch { }
+    const challenge = botChallengeError(json);
+    if (challenge) return { ok: false, error: challenge };
     return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: 'Forgot password request failed' } };
   }
 

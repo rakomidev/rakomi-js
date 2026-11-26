@@ -7,6 +7,8 @@
  * HTTPS enforcement: rejects http:// baseUrl on non-localhost.
  */
 
+import { botChallengeError } from '@rakomi/sdk-core';
+
 import { normalizeNetworkError,sdkFetch } from '../lib/fetch-client.js';
 import type { AuthError,OAuthTokenResponse } from '../types.js';
 
@@ -38,8 +40,10 @@ export async function directSignIn(options: {
   email: string;
   password: string;
   apiKey?: string;
+  /** Cloudflare Turnstile token, when the environment requires a bot challenge. */
+  turnstileToken?: string;
 }): Promise<DirectSignInResult> {
-  const { baseUrl, email, password, apiKey } = options;
+  const { baseUrl, email, password, apiKey, turnstileToken } = options;
 
   if (baseUrl.startsWith('http://') && !isLocalhost(baseUrl)) {
     return {
@@ -59,7 +63,7 @@ export async function directSignIn(options: {
     response = await sdkFetch(`${baseUrl}/v1/auth/login`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) }),
     });
   } catch (err) {
     return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: normalizeNetworkError(err) } };
@@ -71,6 +75,9 @@ export async function directSignIn(options: {
   } catch {
     return { ok: false, error: { code: 'NETWORK_ERROR' as const, message: 'Invalid JSON response from login endpoint' } };
   }
+
+  const challenge = response.ok ? undefined : botChallengeError(json);
+  if (challenge) return { ok: false, error: challenge };
 
   if (response.status === 401 || response.status === 400) {
     const body = json as { detail?: string };

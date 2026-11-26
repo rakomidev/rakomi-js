@@ -16,6 +16,7 @@ import { useTranslation } from '../../hooks/use-translation.js';
 import { AuthErrorBoundary } from '../../internal/auth-error-boundary.js';
 import { applyBranding, hasBrandingStyles } from '../../internal/branding-styles.js';
 import { PasswordInput } from '../../internal/password-input.js';
+import { useBotChallenge } from '../../internal/turnstile.js';
 import { useColorScheme, usePrefersDarkScheme, useRakomiInternals } from '../../internal/use-auth-internals.js';
 import { sendEmailOtp, verifyEmailOtpCode } from '../../oauth/email-otp.js';
 import { sendMagicLink, verifyMagicLinkToken } from '../../oauth/magic-link.js';
@@ -123,6 +124,8 @@ function SignInInner(props: SignInProps): React.ReactElement {
   const colorScheme = useColorScheme();
   const prefersDarkScheme = usePrefersDarkScheme();
   const [state, dispatch] = useReducer(reducer, initialState);
+  const loginChallenge = useBotChallenge(config?.botChallenge?.siteKey, 'login');
+  const resetChallenge = useBotChallenge(config?.botChallenge?.siteKey, 'reset');
 
   const cls = (element: string) => resolveClassName(element, props.appearance, globalAppearance);
   const submitting = useRef(false);
@@ -491,7 +494,11 @@ function SignInInner(props: SignInProps): React.ReactElement {
         await internals.setPersistence('local');
       }
       internals.emitEvent({ type: 'sign_in_attempted', severity: 'info', metadata: { method: 'password' } });
-      const result = await auth.signIn({ mode: 'direct', email, password });
+      const result = await auth.signIn({
+        mode: 'direct', email, password,
+        ...(loginChallenge.token ? { turnstileToken: loginChallenge.token } : {}),
+      });
+      loginChallenge.reset();
 
       if (result.status === 'complete') {
         emitComponentEvent('email_password', 'complete');
@@ -735,11 +742,17 @@ function SignInInner(props: SignInProps): React.ReactElement {
     }
 
     try {
-      await sendForgotPassword({
+      const result = await sendForgotPassword({
         baseUrl: internals.baseUrl,
         email,
         apiKey: internals.clientId,
+        ...(resetChallenge.token ? { turnstileToken: resetChallenge.token } : {}),
       });
+      resetChallenge.reset();
+      if (!result.ok && result.error.code === 'BOT_CHALLENGE_FAILED') {
+        dispatch({ type: 'SET_ERROR', error: getErrorMessage(result.error) });
+        return;
+      }
 
       dispatch({ type: 'SET_ERROR', error: null });
       dispatch({ type: 'SET_FORGOT_PASSWORD_SUCCESS' });
@@ -908,9 +921,11 @@ function SignInInner(props: SignInProps): React.ReactElement {
               <div role="alert" data-rakomi-sign-in-error className={cls('errorMessage') || undefined}>{state.error}</div>
             )}
 
+            {loginChallenge.widget}
+
             <button
               type="submit"
-              disabled={state.loading}
+              disabled={state.loading || (loginChallenge.required && !loginChallenge.token)}
               data-rakomi-sign-in-submit-button
               className={cls('submitButton') || undefined}
             >
@@ -1144,7 +1159,9 @@ function SignInInner(props: SignInProps): React.ReactElement {
 
                   {state.error && <div role="alert" data-rakomi-sign-in-error className={cls('errorMessage') || undefined}>{state.error}</div>}
 
-                  <button type="submit" disabled={state.loading} data-rakomi-sign-in-submit-button className={cls('submitButton') || undefined}>
+                  {resetChallenge.widget}
+
+                  <button type="submit" disabled={state.loading || (resetChallenge.required && !resetChallenge.token)} data-rakomi-sign-in-submit-button className={cls('submitButton') || undefined}>
                     {state.loading ? t('common.loading') : t('signIn.forgotPasswordInline.submit')}
                   </button>
                 </form>

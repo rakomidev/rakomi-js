@@ -34,6 +34,7 @@ pnpm add @rakomi/sdk-core
 - **JWKS cache** — `createJwksCache` (host-pinned signing-key verification).
 - **JWT decode** — `decodeJwtPayload`, `decodeSession`, `decodeUser`.
 - **OAuth** — `buildAuthorizationUrl`, PKCE helpers, typed OAuth error mapping.
+- **Direct auth** — `register`, `signInWithPassword`, `forgotPassword`, magic link, email OTP. When `GET /v1/auth/config` returns a `botChallenge` site key, these three take a Cloudflare Turnstile token: pass `turnstileToken`, or a `turnstileTokenProvider(action)` that returns a fresh one per call (actions `register`, `login`, `reset`); a refusal is an `AuthError` with code `BOT_CHALLENGE_FAILED` and reason `missing`, `invalid` or `unavailable`.
 - **RBAC** — `hasPermission`, `hasRole`.
 - **i18n** — `createTranslator`, plural selection.
 - **Utilities** — `isSafeUrl`, `scorePassword`, `deriveTenantStorageKey`.
